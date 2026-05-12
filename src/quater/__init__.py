@@ -5,6 +5,7 @@ from quater.config import AppConfig
 from quater.cookies import SignedCookieSigner
 from quater.cors import CORSConfig
 from quater.exceptions import HTTPError
+from quater.groups import RouteGroup
 from quater.observability import AccessLogEvent, AccessLogHook
 from quater.request import Request
 from quater.response import (
@@ -41,6 +42,7 @@ __all__ = [
     "RedirectResponse",
     "Request",
     "Response",
+    "RouteGroup",
     "SignedCookieSigner",
     "StreamResponse",
     "MCPTestClient",

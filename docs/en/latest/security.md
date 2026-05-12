@@ -128,6 +128,10 @@ CLI actions also receive request context:
 Route `auth=` still protects the handler. If `cli_auth` and route `auth=` are
 the same function, Quater still runs route auth against the handler route.
 
+When a route belongs to a `RouteGroup`, group `auth=` runs before route `auth=`.
+That applies to normal HTTP requests, MCP tool calls, and CLI action calls. A
+tool or action cannot bypass the feature-level auth you put on the group.
+
 ## Approval Checks
 
 `needs_approval=True` adds a second gate for exposed MCP tools and CLI actions.
@@ -211,6 +215,13 @@ The RPC endpoint validates JSON shape, rejects unknown arguments, enforces
 body limits, and caps action responses before returning them to the client.
 
 Use the `quater` CLI instead of calling these endpoints directly.
+
+Quater reserves its own protocol paths so application routes cannot accidentally
+shadow them:
+
+- `/mcp` and `/mcp/...`
+- `/.well-known/quater-actions.json`
+- `/__quater__` and `/__quater__/...`
 
 ## Production Server Checks
 

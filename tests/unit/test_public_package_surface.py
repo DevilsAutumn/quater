@@ -20,6 +20,7 @@ from quater import (
     CORSConfig,
     MCPTestClient,
     Quater,
+    RouteGroup,
     SignedCookieSigner,
     TestClient,
     TestResponse,
@@ -88,6 +89,7 @@ def test_public_exports_are_intentionally_small() -> None:
         "RedirectResponse",
         "Request",
         "Response",
+        "RouteGroup",
         "SignedCookieSigner",
         "StreamResponse",
         "MCPTestClient",
@@ -98,6 +100,7 @@ def test_public_exports_are_intentionally_small() -> None:
         "__version__",
     ]
     assert quater.Quater is Quater
+    assert quater.RouteGroup is RouteGroup
     assert not hasattr(quater, "App")
     assert quater.ActionApproval is ActionApproval
     assert quater.AccessLogEvent is AccessLogEvent

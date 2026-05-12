@@ -16,6 +16,7 @@ from quater.actions.approval import (
 from quater.auth import authenticate_request
 from quater.core import RouteDefinition
 from quater.exceptions import BadRequestError
+from quater.middleware import MiddlewareStack, compile_middleware_pipeline
 from quater.params import BoundParameter, HandlerPlan
 from quater.request import Request
 from quater.response import Response, normalize_response
@@ -76,6 +77,7 @@ async def execute_action(
     authenticated_by: Authenticate | None = None,
     approval_hook: ActionApproval | None = None,
     approval_token: str | None = None,
+    debug: bool = False,
 ) -> Response:
     prepared = await prepare_action_call(
         action,
@@ -94,8 +96,40 @@ async def execute_action(
             auth=prepared.request.auth,
             context=prepared.request.context,
         )
-    result = await action.handler_plan.handler(**prepared.bound_arguments)
-    return normalize_response(result)
+
+    async def endpoint(
+        action_request: Request,
+        _path_params: Mapping[str, object],
+    ) -> Response:
+        result = await action.handler_plan.handler(
+            **_handler_arguments_for_request(
+                action.handler_plan,
+                prepared.bound_arguments,
+                action_request,
+            )
+        )
+        return normalize_response(result)
+
+    pipeline = compile_middleware_pipeline(
+        endpoint,
+        global_stack=MiddlewareStack(),
+        route_stack=action.route.middleware,
+        debug=debug,
+        handle_unhandled_exceptions=False,
+    )
+    return await pipeline(prepared.request, prepared.path_params)
+
+
+def _handler_arguments_for_request(
+    handler_plan: HandlerPlan,
+    bound_arguments: Mapping[str, object],
+    request: Request,
+) -> dict[str, object]:
+    arguments = dict(bound_arguments)
+    for parameter in handler_plan.parameters:
+        if parameter.source == "request":
+            arguments[parameter.name] = request
+    return arguments
 
 
 async def preflight_action(

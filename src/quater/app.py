@@ -55,7 +55,7 @@ from quater.protocol.actions import (
 )
 from quater.request import Request
 from quater.response import EmptyResponse, HTMLResponse, JSONResponse, Response
-from quater.router import Router
+from quater.router import Match, Router
 from quater.security import (
     RequestSecurityContext,
     add_security_headers,
@@ -73,6 +73,14 @@ MCP_PATH = "/mcp"
 MCP_AUTH_REQUIRED_MESSAGE = "MCP tools require mcp_auth"
 CLI_AUTH_REQUIRED_MESSAGE = "CLI actions require cli_auth"
 ACTION_APPROVAL_REQUIRED_MESSAGE = "Approval-required actions require action_approval"
+_RESERVED_USER_ROUTE_PREFIXES = (MCP_PATH, "/__quater__")
+_RESERVED_USER_ROUTE_PATHS = frozenset(
+    {
+        MCP_PATH,
+        ACTIONS_MANIFEST_PATH,
+        ACTIONS_RPC_PATH,
+    }
+)
 
 
 if TYPE_CHECKING:
@@ -86,6 +94,7 @@ if TYPE_CHECKING:
         RSGIWebSocketProtocol,
     )
     from quater.adapters.wsgi import StartResponse, WSGIAdapter, WSGIEnvironment
+    from quater.groups import RouteGroup
     from quater.tools.audit import AuditHook
     from quater.tools.registry import ToolRegistry
 
@@ -300,6 +309,7 @@ class Quater:
             cli=cli,
             needs_approval=needs_approval,
         )
+        _validate_user_route_path(path)
 
         route = RouteDefinition(
             method=method.upper(),
@@ -319,12 +329,24 @@ class Quater:
                 exception_handlers=exception_handlers,
             ),
         )
-        self._routes.append(route)
-        self._action_registry = None
-        self._openapi_schema = None
-        self._tool_registry = None
-        self._routes_dirty = True
+        self._register_route_definition(route)
         return route
+
+    def include(self, group: RouteGroup) -> RouteGroup:
+        """Include a route group in the application."""
+
+        from quater.groups import RouteGroup
+
+        if not isinstance(group, RouteGroup):
+            raise TypeError("include() requires a RouteGroup")
+        group._ensure_app_includable()
+        routes = group._flatten_routes()
+        for route in routes:
+            self._validate_route_definition(route)
+        for route in routes:
+            self._register_route_definition(route)
+        group._mark_mounted()
+        return group
 
     def route(
         self,
@@ -529,6 +551,9 @@ class Quater:
     def compile_routes(self) -> Router:
         """Compile route definitions into a dispatcher."""
 
+        for route in self._routes:
+            self._validate_route_definition(route)
+
         self._router = Router.compile(
             (*self._routes, *self._builtin_routes()),
             middleware=self._middleware,
@@ -633,6 +658,8 @@ class Quater:
         ensure_request_id(request, self.config)
         context = resolve_request_security_context(request, self.config)
         is_mcp_request = request.path == MCP_PATH
+        router: Router | None = None
+        match: Match | None = None
         try:
             context = prepare_request_security(request, self.config)
             if self.config.cors is not None and is_cors_preflight(request):
@@ -679,6 +706,8 @@ class Quater:
                 debug=self.config.debug,
             )
         else:
+            assert router is not None
+            assert match is not None
             response = await router.dispatch_match(request, match)
         return await self._finalize_request(
             response,
@@ -916,6 +945,7 @@ class Quater:
                 authenticated_by=self.cli_auth,
                 approval_hook=self.action_approval,
                 approval_token=approval_token,
+                debug=self.config.debug,
             )
             payload = await response_payload(response)
             status_code = response.status_code if response.status_code >= 400 else 200
@@ -1015,6 +1045,22 @@ class Quater:
                 needs_approval=action.needs_approval,
             )
 
+    def _validate_route_definition(self, route: RouteDefinition) -> None:
+        _validate_user_route_path(route.path)
+        self._validate_route_exposure(
+            route.name,
+            tool=route.tool,
+            cli=route.cli,
+            needs_approval=route.needs_approval,
+        )
+
+    def _register_route_definition(self, route: RouteDefinition) -> None:
+        self._routes.append(route)
+        self._action_registry = None
+        self._openapi_schema = None
+        self._tool_registry = None
+        self._routes_dirty = True
+
     def _ensure_middleware_mutable(self) -> None:
         if self._router is not None:
             raise MiddlewareStateError(
@@ -1095,6 +1141,27 @@ def _action_approval_token(payload: Mapping[object, object]) -> str | None:
     if not isinstance(value, str) or not value.strip():
         raise BadRequestError("Invalid approval token")
     return value
+
+
+def _validate_user_route_path(path: str) -> None:
+    normalized = _normalized_user_route_path(path)
+    if normalized is None:
+        return
+    if normalized in _RESERVED_USER_ROUTE_PATHS or any(
+        normalized == prefix or normalized.startswith(f"{prefix}/")
+        for prefix in _RESERVED_USER_ROUTE_PREFIXES
+    ):
+        raise ConfigurationError(
+            f"Route path {path!r} is reserved by Quater. "
+            "Choose a different application route."
+        )
+
+
+def _normalized_user_route_path(path: str) -> str | None:
+    if not path.startswith("/"):
+        return None
+    parts = [part for part in path.strip("/").split("/") if part]
+    return "/" if not parts else "/" + "/".join(parts)
 
 
 def _action_error_response(

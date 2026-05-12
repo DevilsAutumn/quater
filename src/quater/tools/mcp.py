@@ -254,6 +254,7 @@ async def _handle_tools_call(
             authenticated_by=transport_auth,
             approval_hook=approval_hook,
             approval_token=approval_token,
+            debug=debug,
         )
     except BadRequestError as exc:
         await _audit(

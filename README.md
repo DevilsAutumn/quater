@@ -92,6 +92,28 @@ Quater serves docs by default:
 - `GET /openapi.json` for OpenAPI.
 - `GET /mcp/docs` for exposed MCP tools.
 
+For larger apps, group routes by feature without adding another runtime router:
+
+```python
+from quater import Quater, RouteGroup
+
+app = Quater()
+orders = RouteGroup(prefix="/orders", tags=["orders"])
+
+
+@orders.get("/{order_id}")
+async def get_order(order_id: str) -> dict[str, str]:
+    return {"order_id": order_id}
+
+
+app.include(orders)
+```
+
+Groups are flattened into normal Quater routes when you include them, so the
+native matcher still handles the final path. Define routes on a group before
+calling `app.include(orders)`; included groups are locked so late route
+decorators cannot silently disappear.
+
 ## One Handler, Multiple Access Paths
 
 ```python

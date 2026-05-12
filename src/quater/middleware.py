@@ -58,12 +58,30 @@ class MiddlewareStack:
         )
 
 
+def merge_middleware_stack(
+    parent: MiddlewareStack,
+    child: MiddlewareStack,
+) -> MiddlewareStack:
+    """Merge group middleware into child route middleware."""
+
+    return MiddlewareStack(
+        before=(*parent.before, *child.before),
+        after=(*child.after, *parent.after),
+        around=(*parent.around, *child.around),
+        exception_handlers=(
+            *child.exception_handlers,
+            *parent.exception_handlers,
+        ),
+    )
+
+
 def compile_middleware_pipeline(
     endpoint: RouteHandler,
     *,
     global_stack: MiddlewareStack,
     route_stack: MiddlewareStack,
     debug: bool,
+    handle_unhandled_exceptions: bool = True,
 ) -> RouteHandler:
     before = (*global_stack.before, *route_stack.before)
     after = (*route_stack.after, *global_stack.after)
@@ -97,7 +115,10 @@ def compile_middleware_pipeline(
                 exc,
                 exception_handlers,
                 debug=debug,
+                handle_unhandled=handle_unhandled_exceptions,
             )
+            if response is None:
+                raise
 
         try:
             for after_middleware in after:
@@ -108,7 +129,10 @@ def compile_middleware_pipeline(
                 exc,
                 exception_handlers,
                 debug=debug,
+                handle_unhandled=handle_unhandled_exceptions,
             )
+            if response is None:
+                raise
 
         return response
 
@@ -147,17 +171,22 @@ async def _resolve_exception(
     handlers: tuple[ExceptionHandlerEntry, ...],
     *,
     debug: bool,
-) -> Response:
+    handle_unhandled: bool,
+) -> Response | None:
     for entry in handlers:
         if not isinstance(exc, entry.exception_type):
             continue
         try:
             response = await entry.handler(request, exc)
         except Exception as handler_error:
+            if not handle_unhandled:
+                raise
             return default_exception_response(handler_error, debug=debug)
         if response is not None:
             return response
 
+    if not handle_unhandled:
+        return None
     return default_exception_response(exc, debug=debug)
 
 

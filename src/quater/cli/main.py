@@ -151,6 +151,7 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
             surface_auth=app.cli_auth,
             approval_hook=app.action_approval,
             approval_token=approval_token,
+            debug=app.config.debug,
         )
         return await print_response(response, as_json=namespace.as_json)
 

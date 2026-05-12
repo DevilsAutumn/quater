@@ -104,6 +104,9 @@ workflow.
 
 - **Route-first design:** HTTP, MCP, and CLI expose separate surfaces, but MCP
   tools and CLI actions are generated from the route definition when you opt in.
+- **Route groups:** feature-level prefixes, tags, auth, and middleware are
+  flattened into normal routes before matching, so structure does not add a hot
+  path router layer.
 - **Explicit auth boundaries:** HTTP routes use route `auth=...`; MCP uses
   `mcp_auth`; CLI actions use `cli_auth`.
 - **Progressive action discovery:** list or search for action names first, then

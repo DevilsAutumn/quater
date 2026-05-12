@@ -99,6 +99,51 @@ async def create_user(user: UserIn) -> dict[str, object]:
     return {"name": user.name, "age": user.age}
 ```
 
+## Route Groups
+
+Once an app grows past a few routes, move related routes into a `RouteGroup`.
+Groups are a compile-time structure: Quater flattens the prefix, tags, auth,
+metadata, and middleware into normal route definitions when you include the
+group.
+
+```python
+from quater import Quater, RouteGroup
+
+app = Quater()
+orders = RouteGroup(prefix="/orders", tags=["orders"])
+
+
+@orders.get("/{order_id}")
+async def get_order(order_id: str) -> dict[str, str]:
+    return {"order_id": order_id}
+
+
+@orders.post("/")
+async def create_order() -> dict[str, bool]:
+    return {"created": True}
+
+
+app.include(orders)
+```
+
+The final HTTP paths are `/orders/{order_id}` and `/orders`. The native route
+matcher sees those final paths directly, so grouping does not add another
+matching layer on every request.
+
+Define routes before calling `app.include(group)`. Included groups are locked,
+so adding routes later raises an error instead of silently leaving them out of
+the app.
+
+Group `auth=`, `before`, `after`, `around`, and `exception_handlers` apply to
+HTTP routes and to the same routes when they are exposed as MCP tools or CLI
+actions. Route-level auth still runs after group auth.
+
+::: tip Feature modules
+Create a group in a feature module, register routes on it, then call
+`app.include(group)` from your app entrypoint. That keeps the app shape clear
+without turning every endpoint into a separate wrapper.
+:::
+
 ## First MCP Tool
 
 Expose a route as a tool with `tool=True`. Tool descriptions are required because

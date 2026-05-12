@@ -25,6 +25,7 @@ from quater import (
     RedirectResponse,
     Request,
     Response,
+    RouteGroup,
     SignedCookieSigner,
     StreamResponse,
     TestClient,
@@ -125,6 +126,77 @@ a useful description and the app must be created with `cli_auth`.
 
 `needs_approval=True` can be used with `tool=True` or `cli=True`. It requires an
 `action_approval` hook on the app.
+
+Quater reserves its own protocol paths. User routes cannot be registered under
+`/mcp`, under `/mcp/...`, at `/.well-known/quater-actions.json`, or under
+`/__quater__/...`.
+
+## Route Groups
+
+`RouteGroup` keeps feature routes together while still compiling down to normal
+Quater routes.
+
+```python
+from quater import Quater, RouteGroup
+
+app = Quater()
+orders = RouteGroup(prefix="/orders", tags=["orders"])
+
+
+@orders.get("/{order_id}", description="Fetch one order.")
+async def get_order(order_id: str) -> dict[str, str]:
+    return {"order_id": order_id}
+
+
+app.include(orders)
+```
+
+Stable group constructor options:
+
+- `prefix`
+- `tags`
+- `auth`
+- `metadata`
+- `before`
+- `after`
+- `around`
+- `exception_handlers`
+
+Groups expose the same route decorators as the app: `get`, `post`, `put`,
+`patch`, `delete`, and `route`.
+
+You can nest groups:
+
+```python
+api = RouteGroup(prefix="/api", tags=["api"])
+orders = RouteGroup(prefix="/orders", tags=["orders"])
+
+api.include(orders)
+app.include(api)
+```
+
+The route `orders.get("/{order_id}")` becomes `/api/orders/{order_id}`.
+
+Define routes before including a group in the app. `app.include(group)` validates
+the flattened routes for exposure settings and reserved framework paths before
+registering anything, then locks the group. A group cannot be included twice,
+reused under two parents, or modified after it has been included.
+
+Merge rules are intentionally simple:
+
+- Parent prefixes are joined before child prefixes and route paths.
+- Parent metadata is copied first, then child metadata, then route metadata.
+- Tags are appended in order and de-duplicated.
+- Group auth runs before route auth. If either returns `None`, the request is
+  denied.
+- Group `before` and `around` middleware run before route middleware.
+- Route `after` middleware runs before group `after` middleware.
+- Route exception handlers are tried before group exception handlers.
+
+Group auth and middleware apply to normal HTTP requests and to the same route
+when it is exposed with `tool=True` or `cli=True`. This is important for
+AI-facing and operator-facing routes: a tool or action should not quietly bypass
+the feature-level policy that protects the HTTP endpoint.
 
 ## Request And Context
 

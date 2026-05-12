@@ -34,6 +34,7 @@ class ToolDefinition:
         authenticated_by: Authenticate | None = None,
         approval_hook: ActionApproval | None = None,
         approval_token: str | None = None,
+        debug: bool = False,
     ) -> Response:
         return await execute_action(
             self,
@@ -43,6 +44,7 @@ class ToolDefinition:
             authenticated_by=authenticated_by,
             approval_hook=approval_hook,
             approval_token=approval_token,
+            debug=debug,
         )
 
     def as_mcp_tool(self) -> dict[str, object]:
