@@ -7,7 +7,7 @@ from typing import cast
 import msgspec
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, Request, Response
+from quater import AuthContext, AuthRequest, HTTPError, Quater, Request, Response
 from quater.tools.mcp import MAX_TOOL_RESPONSE_BYTES
 from quater.typing import ApprovalRequest
 
@@ -223,6 +223,23 @@ async def test_handler_error_becomes_tool_result_error() -> None:
     assert status == 200
     assert body["result"] == {
         "content": [{"type": "text", "text": "Tool call failed"}],
+        "isError": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_handler_http_error_stays_json_rpc_tool_result() -> None:
+    app = Quater(mcp_auth=allow_mcp_auth)
+
+    @app.get("/missing-resource", tool=True, description="Return an HTTP error.")
+    async def missing_resource() -> dict[str, bool]:
+        raise HTTPError("Resource not found", status_code=404)
+
+    status, body = await mcp_call(app, name="missing_resource", arguments={})
+
+    assert status == 200
+    assert body["result"] == {
+        "content": [{"type": "text", "text": "Resource not found"}],
         "isError": True,
     }
 

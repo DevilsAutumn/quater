@@ -117,8 +117,9 @@ app = Quater(
 )
 ```
 
-If `mcp_allowed_origins` is empty and CORS is configured, Quater uses the CORS
-origins for MCP origin validation too.
+If `mcp_allowed_origins` is empty and CORS is configured with exact origins,
+Quater uses those exact origins for MCP origin validation too. A CORS wildcard
+does not allow browser-based MCP calls.
 
 ## Expose A Tool
 

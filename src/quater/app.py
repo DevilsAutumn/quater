@@ -19,6 +19,7 @@ from quater.config import (
 )
 from quater.core import Handler, RouteDefinition
 from quater.cors import CORSConfig, add_cors_headers, is_cors_preflight
+from quater.datastructures import normalize_response_headers
 from quater.exceptions import (
     BadRequestError,
     ConfigurationError,
@@ -1009,9 +1010,17 @@ class Quater:
         request: Request,
         context: RequestSecurityContext,
     ) -> Response:
-        if self.config.cors is not None:
-            response = add_cors_headers(response, request, self.config.cors)
-        return add_security_headers(response, context, self.config)
+        try:
+            if self.config.cors is not None:
+                response = add_cors_headers(response, request, self.config.cors)
+            response = add_security_headers(response, context, self.config)
+            response.headers = normalize_response_headers(response.headers)
+            return response
+        except (TypeError, ValueError) as exc:
+            fallback = default_exception_response(exc, debug=self.config.debug)
+            fallback = add_security_headers(fallback, context, self.config)
+            fallback.headers = normalize_response_headers(fallback.headers)
+            return fallback
 
 
 def _action_approval_token(payload: Mapping[object, object]) -> str | None:

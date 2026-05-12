@@ -65,12 +65,18 @@ def validate_mcp_origin(request: Request, config: AppConfig) -> None:
         return
 
     allowed = config.mcp_allowed_origins
-    if not allowed and config.cors is not None:
-        allowed = config.cors.allowed_origins
-    if not allowed or "*" in allowed or origin in allowed:
+    if "*" in allowed or origin in allowed:
         return
+    if not allowed and config.cors is not None:
+        allowed = tuple(
+            allowed_origin
+            for allowed_origin in config.cors.allowed_origins
+            if allowed_origin != "*"
+        )
+        if origin in allowed:
+            return
 
-    raise BadRequestError("Invalid MCP Origin")
+    raise HTTPError("Invalid MCP Origin", status_code=403)
 
 
 async def handle_mcp_request(
@@ -290,7 +296,7 @@ async def _handle_tools_call(
             success=False,
             start=start,
         )
-        return TextResponse(exc.detail, status_code=exc.status_code)
+        return _json_rpc_result(request_id, _tool_result(exc.detail, is_error=True))
     except Exception as exc:
         await _audit(
             audit_hook,

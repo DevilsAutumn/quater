@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from http.cookies import SimpleCookie
 from re import Pattern, compile
+from string import ascii_letters, digits
 from typing import TypeAlias
 from urllib.parse import parse_qsl
 
@@ -12,8 +13,10 @@ from quater.exceptions import BadRequestError
 
 HeaderValue: TypeAlias = str | bytes
 HeaderItems: TypeAlias = Iterable[tuple[HeaderValue, HeaderValue]]
+RawHeaderItem: TypeAlias = tuple[object, object]
 
 _BAD_PERCENT_ESCAPE: Pattern[str] = compile(r"%(?![0-9A-Fa-f]{2})")
+_HEADER_NAME_CHARS = frozenset(f"!#$%&'*+-.^_`|~{digits}{ascii_letters}")
 
 
 class Headers(Mapping[str, str]):
@@ -22,10 +25,9 @@ class Headers(Mapping[str, str]):
     __slots__ = ("_items", "_lookup")
 
     def __init__(self, items: HeaderItems | Mapping[str, str] = ()) -> None:
-        pairs = items.items() if isinstance(items, Mapping) else items
         normalized = tuple(
             (_decode_header(name).lower(), _decode_header(value))
-            for name, value in pairs
+            for name, value in _iter_header_items(items)
         )
         self._items = normalized
         self._lookup = dict(normalized)
@@ -120,16 +122,53 @@ def normalize_response_headers(
 ) -> tuple[tuple[str, str], ...]:
     if headers is None:
         return ()
-    pairs = headers.items() if isinstance(headers, Mapping) else headers
     return tuple(
-        (_decode_header(name).lower(), _decode_header(value)) for name, value in pairs
+        _normalize_response_header(name, value)
+        for name, value in _iter_header_items(headers)
     )
 
 
-def _decode_header(value: HeaderValue) -> str:
+def _iter_header_items(
+    items: HeaderItems | Mapping[str, str],
+) -> Iterator[RawHeaderItem]:
+    if isinstance(items, Mapping):
+        yield from items.items()
+        return
+    yield from items
+
+
+def _decode_header(value: object) -> str:
     if isinstance(value, bytes):
         return value.decode("latin-1")
-    return value
+    if isinstance(value, str):
+        return value
+    raise TypeError("Header names and values must be str or bytes")
+
+
+def _normalize_response_header(
+    name: object,
+    value: object,
+) -> tuple[str, str]:
+    decoded_name = _decode_header(name).lower()
+    decoded_value = _decode_header(value)
+    _validate_response_header(decoded_name, decoded_value)
+    return decoded_name, decoded_value
+
+
+def _validate_response_header(name: str, value: str) -> None:
+    if (
+        not name
+        or name.startswith(":")
+        or any(char not in _HEADER_NAME_CHARS for char in name)
+    ):
+        raise ValueError("Invalid response header name")
+    if any(_invalid_header_value_character(char) for char in value):
+        raise ValueError("Invalid response header value")
+
+
+def _invalid_header_value_character(char: str) -> bool:
+    ordinal = ord(char)
+    return ordinal > 255 or ordinal == 127 or (ordinal < 32 and char != "\t")
 
 
 def _decode_query_string(value: str | bytes) -> str:

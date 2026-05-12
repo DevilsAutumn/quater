@@ -25,6 +25,13 @@ def test_tampered_signed_cookie_fails_verification() -> None:
     assert signer.verify(tampered_value) is None
 
 
+def test_malformed_signed_cookie_fails_closed() -> None:
+    signer = SignedCookieSigner("current-secret")
+
+    assert signer.verify("not-base64.%%%%") is None
+    assert signer.verify("caf\xe9.signature") is None
+
+
 def test_rotated_cookie_secret_verifies_old_values_and_signs_with_new_secret() -> None:
     old_signer = SignedCookieSigner("old-secret")
     rotated_signer = SignedCookieSigner(

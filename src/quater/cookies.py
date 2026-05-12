@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 from collections.abc import Iterable
@@ -40,13 +41,13 @@ class SignedCookieSigner:
         if not separator or not payload or not signature:
             return None
 
-        for secret in (self._secret, *self._fallback_secrets):
-            expected = self._signature(payload, secret)
-            if hmac.compare_digest(signature, expected):
-                try:
+        try:
+            for secret in (self._secret, *self._fallback_secrets):
+                expected = self._signature(payload, secret)
+                if hmac.compare_digest(signature, expected):
                     return _decode(payload).decode("utf-8")
-                except UnicodeDecodeError:
-                    return None
+        except (binascii.Error, UnicodeDecodeError, UnicodeEncodeError, ValueError):
+            return None
         return None
 
     def _signature(self, payload: str, secret: bytes) -> str:
@@ -74,4 +75,8 @@ def _encode(value: bytes) -> str:
 
 def _decode(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(value + padding)
+    return base64.b64decode(
+        (value + padding).encode("ascii"),
+        altchars=b"-_",
+        validate=True,
+    )

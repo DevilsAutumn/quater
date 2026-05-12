@@ -148,12 +148,14 @@ async def test_execute_action_runs_surface_auth_then_distinct_route_auth() -> No
 
 
 @pytest.mark.asyncio
-async def test_execute_action_does_not_run_same_auth_hook_twice() -> None:
+async def test_execute_action_reruns_same_auth_hook_for_route_request() -> None:
     calls = 0
+    paths: list[str] = []
 
     async def authenticate(ctx: AuthRequest) -> AuthContext | None:
         nonlocal calls
         calls += 1
+        paths.append(ctx.path)
         return AuthContext(subject=ctx.context.source)
 
     app = Quater(cli_auth=authenticate)
@@ -175,7 +177,8 @@ async def test_execute_action_does_not_run_same_auth_hook_twice() -> None:
         surface_auth=authenticate,
     )
 
-    assert calls == 1
+    assert calls == 2
+    assert paths == ["/users/7", "/users/7"]
     assert response.body == b'{"id":7}'
 
 

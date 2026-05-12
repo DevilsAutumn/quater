@@ -178,7 +178,8 @@ app = Quater(
 ```
 
 MCP origin validation uses `mcp_allowed_origins` first. If that is empty and CORS
-is configured, Quater uses the CORS origins for MCP too.
+has exact origins, Quater reuses those exact origins for MCP too. A CORS wildcard
+does not allow browser-based MCP calls; set explicit MCP origins for that.
 
 ```python
 app = Quater(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from inspect import Signature
 from types import UnionType
@@ -157,26 +157,18 @@ async def prepare_action_call(
         ),
     )
 
-    authenticated_hooks: tuple[Authenticate, ...] = ()
+    surface_authenticated = False
     if request.auth is not None and authenticated_by is not None:
-        authenticated_hooks = (authenticated_by,)
+        surface_authenticated = authenticated_by is surface_auth
 
-    if surface_auth is not None and not _authenticated_by(
-        surface_auth,
-        authenticated_hooks,
-    ):
+    if surface_auth is not None and not surface_authenticated:
         await authenticate_request(surface_auth, action_request)
         request.auth = action_request.auth
-        authenticated_hooks = (*authenticated_hooks, surface_auth)
 
     route_auth = action.route.auth
-    if route_auth is not None and not _authenticated_by(
-        route_auth,
-        authenticated_hooks,
-    ):
+    if route_auth is not None:
         await authenticate_request(route_auth, action_request)
         request.auth = action_request.auth
-        authenticated_hooks = (*authenticated_hooks, route_auth)
 
     bound_arguments = await action.handler_plan.bind(action_request, path_params)
     return PreparedActionCall(
@@ -187,13 +179,6 @@ async def prepare_action_call(
         bound_arguments=bound_arguments,
         arguments_hash=action_arguments_hash(action.name, arguments),
     )
-
-
-def _authenticated_by(
-    authenticate: Authenticate,
-    authenticated_hooks: Sequence[Authenticate],
-) -> bool:
-    return any(authenticate is hook for hook in authenticated_hooks)
 
 
 def _build_request_parts(

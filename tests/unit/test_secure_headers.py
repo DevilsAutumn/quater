@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from quater import Quater, Request, Response
+from quater import Quater, RedirectResponse, Request, Response
 
 
 def response_headers(response: Response) -> dict[str, str]:
@@ -87,3 +87,60 @@ async def test_configured_csp_is_preserved_without_overriding_handler_header() -
     response = await app.handle(Request(method="GET", path="/custom"))
 
     assert response_headers(response)["content-security-policy"] == "default-src 'self'"
+
+
+def test_response_rejects_header_injection() -> None:
+    with pytest.raises(ValueError, match="Invalid response header value"):
+        Response(headers={"x-safe": "ok\r\nx-injected: yes"})
+
+    with pytest.raises(ValueError, match="Invalid response header name"):
+        Response(headers={"bad\nname": "ok"})
+
+
+def test_response_rejects_invalid_header_value_characters() -> None:
+    with pytest.raises(ValueError, match="Invalid response header value"):
+        Response(headers={"x-safe": "bad\x01value"})
+
+    with pytest.raises(ValueError, match="Invalid response header value"):
+        Response(headers={"x-safe": "bad\U0001f512value"})
+
+
+def test_redirect_response_rejects_location_header_injection() -> None:
+    with pytest.raises(ValueError, match="Invalid response header value"):
+        RedirectResponse("/safe\r\nset-cookie: stolen=true")
+
+
+@pytest.mark.asyncio
+async def test_mutated_unsafe_response_headers_become_safe_error_response() -> None:
+    app = Quater()
+
+    @app.get("/unsafe")
+    async def unsafe() -> Response:
+        response = Response(b"ok")
+        response.headers = (("x-safe", "ok\r\nx-injected: yes"),)
+        return response
+
+    response = await app.handle(Request(method="GET", path="/unsafe"))
+
+    assert response.status_code == 500
+    assert response.body == b"Internal Server Error"
+    assert response_headers(response)["x-content-type-options"] == "nosniff"
+    assert "x-safe" not in response_headers(response)
+
+
+@pytest.mark.asyncio
+async def test_mutated_non_string_response_headers_become_safe_error_response() -> None:
+    app = Quater()
+
+    @app.get("/unsafe")
+    async def unsafe() -> Response:
+        response = Response(b"ok")
+        response.headers = (("x-safe", object()),)  # type: ignore[assignment]
+        return response
+
+    response = await app.handle(Request(method="GET", path="/unsafe"))
+
+    assert response.status_code == 500
+    assert response.body == b"Internal Server Error"
+    assert response_headers(response)["x-content-type-options"] == "nosniff"
+    assert "x-safe" not in response_headers(response)
