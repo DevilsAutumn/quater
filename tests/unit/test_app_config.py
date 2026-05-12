@@ -60,6 +60,7 @@ def test_secure_defaults_are_represented_before_enforcement_exists() -> None:
     assert app.config.openapi_path == "/openapi.json"
     assert app.config.mcp_docs_path == "/mcp/docs"
     assert app.config.mcp_allowed_origins == ()
+    assert app.config.request_id_header == "x-request-id"
 
 
 @pytest.mark.parametrize("value", ["", "2", "mb", "2tb", "-1mb"])
@@ -113,6 +114,12 @@ def test_trusted_proxies_must_be_ip_addresses_or_networks() -> None:
 def test_empty_content_security_policy_fails_early() -> None:
     with pytest.raises(ConfigurationError):
         Quater(content_security_policy=" ")
+
+
+@pytest.mark.parametrize("header_name", ["", ":request-id", "bad header", "bad\rname"])
+def test_invalid_request_id_header_fails_early(header_name: str) -> None:
+    with pytest.raises(ConfigurationError, match="request_id_header"):
+        Quater(request_id_header=header_name)
 
 
 @pytest.mark.asyncio

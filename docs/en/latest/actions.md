@@ -31,6 +31,7 @@ async def get_order(order_id: str, request: Request) -> dict[str, object]:
         "order_id": order_id,
         "subject": request.auth.subject,
         "source": request.context.source,
+        "entrypoint": request.context.entrypoint,
     }
 ```
 
@@ -244,7 +245,8 @@ Sample output:
   "body": {
     "order_id": "ord_1001",
     "subject": "admin",
-    "source": "remote_cli"
+    "source": "cli",
+    "entrypoint": "server"
   }
 }
 ```
@@ -289,6 +291,7 @@ async def get_order(order_id: str, request: Request) -> dict[str, object]:
     return {
         "order_id": order_id,
         "source": request.context.source,
+        "entrypoint": request.context.entrypoint,
         "action": request.context.action_name,
     }
 ```
@@ -303,20 +306,22 @@ request.context.action_name is None
 Local CLI action calls use:
 
 ```python
-request.context.source == "local_cli"
+request.context.source == "cli"
+request.context.entrypoint == "local"
 request.context.action_name == "get_order"
 ```
 
 Remote CLI action calls use:
 
 ```python
-request.context.source == "remote_cli"
+request.context.source == "cli"
+request.context.entrypoint == "server"
 request.context.action_name == "get_order"
 ```
 
-`AuthRequest.context` receives the same source before the handler runs. That
-lets one auth hook accept different credentials for normal API calls, local
-operator calls, and hosted remote CLI calls.
+`AuthRequest.context` receives the same source and entrypoint before the handler
+runs. That lets one auth hook accept different credentials for normal API
+calls, local operator calls, and hosted remote CLI calls.
 
 ## Dry Run
 

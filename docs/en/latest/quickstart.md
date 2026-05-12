@@ -161,6 +161,7 @@ async def get_order(order_id: str, request: Request) -> dict[str, object]:
     return {
         "order_id": order_id,
         "source": request.context.source,
+        "entrypoint": request.context.entrypoint,
         "subject": request.auth.subject,
     }
 ```

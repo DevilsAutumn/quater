@@ -104,8 +104,9 @@ app = Quater(mcp_auth=authenticate)
 Route `auth=` still protects the handler. If `mcp_auth` and route `auth=` are
 the same function, Quater still runs route auth against the handler route.
 
-`AuthRequest.context.source` is `"api"` for HTTP, `"mcp"` for MCP protocol
-requests, and `"tool"` for MCP `tools/call`.
+`AuthRequest.context.source` is `"api"` for normal HTTP routes, `"mcp"` for MCP
+requests, and `"cli"` for Quater CLI actions. For MCP tool calls,
+`AuthRequest.context.tool_name` is set before auth runs.
 
 For CLI actions, pass an auth hook to the app as `cli_auth`:
 
@@ -119,8 +120,10 @@ manifest discovery, and remote action execution. If an app exposes even one
 
 CLI actions also receive request context:
 
-- `"local_cli"` for in-process local CLI calls.
-- `"remote_cli"` for hosted action calls through the remote action protocol.
+- `context.source == "cli"` for both local and remote CLI actions.
+- `context.entrypoint == "local"` for in-process local CLI calls.
+- `context.entrypoint == "server"` for hosted action calls through the remote
+  action protocol.
 
 Route `auth=` still protects the handler. If `cli_auth` and route `auth=` are
 the same function, Quater still runs route auth against the handler route.
@@ -222,6 +225,18 @@ Use the `quater` CLI instead of calling these endpoints directly.
 
 Use `--allow-insecure` only in a controlled environment where you intentionally
 want to skip those checks.
+
+## Request IDs And Access Logs
+
+Quater accepts `x-request-id` by default, but only when the value is short,
+printable ASCII, and safe to echo in a response header. Unsafe values are
+replaced with a generated id before the handler, auth hooks, or access logger
+see them.
+
+`access_logger` receives structured request metadata after the response is
+created. The event includes the request id, method, path, status code, duration,
+source, entrypoint, client address, and current tool/action name. It does not
+include request headers, request bodies, or query-string values.
 
 ## Documentation Endpoints
 

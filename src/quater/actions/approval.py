@@ -76,10 +76,7 @@ def _canonical_value(value: object) -> object:
             if not isinstance(key, str):
                 raise BadRequestError("Invalid action arguments")
             items.append((key, _canonical_value(item)))
-        return {
-            key: item
-            for key, item in sorted(items, key=lambda entry: entry[0])
-        }
+        return {key: item for key, item in sorted(items, key=lambda entry: entry[0])}
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return [_canonical_value(item) for item in value]
     return value

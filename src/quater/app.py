@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from contextlib import suppress
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
@@ -37,6 +40,12 @@ from quater.middleware import (
     MiddlewareStack,
     default_exception_response,
 )
+from quater.observability import (
+    AccessLogHook,
+    access_log_event,
+    add_request_id_header,
+    ensure_request_id,
+)
 from quater.protocol.actions import (
     ACTIONS_MANIFEST_PATH,
     ACTIONS_RPC_PATH,
@@ -57,7 +66,7 @@ from quater.tools.descriptions import (
     normalize_route_description,
     resolve_tool_description,
 )
-from quater.typing import ActionApproval, Authenticate, LifespanHook, RequestContext
+from quater.typing import ActionApproval, Authenticate, LifespanHook
 
 HandlerT = TypeVar("HandlerT", bound=Handler)
 MCP_PATH = "/mcp"
@@ -86,6 +95,7 @@ class Quater:
 
     __slots__ = (
         "action_approval",
+        "access_logger",
         "cli_auth",
         "config",
         "mcp_audit",
@@ -122,8 +132,10 @@ class Quater:
         mcp_audit: AuditHook | None = None,
         cli_auth: Authenticate | None = None,
         action_approval: ActionApproval | None = None,
+        access_logger: AccessLogHook | None = None,
         docs_path: str | None | _Unset = _UNSET,
         openapi_path: str | None | _Unset = _UNSET,
+        request_id_header: str | None | _Unset = _UNSET,
     ) -> None:
         self.name = name
         self.config = (config or AppConfig())._with_overrides(
@@ -138,8 +150,10 @@ class Quater:
             openapi_path=openapi_path,
             mcp_docs_path=mcp_docs_path,
             mcp_allowed_origins=mcp_allowed_origins,
+            request_id_header=request_id_header,
         )
         self.action_approval = action_approval
+        self.access_logger = access_logger
         self.cli_auth = cli_auth
         self.mcp_audit = mcp_audit
         self.mcp_auth = mcp_auth
@@ -615,12 +629,19 @@ class Quater:
         return await self._handle_request(request)
 
     async def _handle_request(self, request: Request) -> Response:
+        started_at = time.perf_counter()
+        ensure_request_id(request, self.config)
         context = resolve_request_security_context(request, self.config)
         is_mcp_request = request.path == MCP_PATH
         try:
             context = prepare_request_security(request, self.config)
             if self.config.cors is not None and is_cors_preflight(request):
-                return self._finalize_response(EmptyResponse(), request, context)
+                return await self._finalize_request(
+                    EmptyResponse(),
+                    request,
+                    context,
+                    started_at=started_at,
+                )
             if is_mcp_request:
                 from quater.tools.mcp import mcp_request_context, validate_mcp_origin
 
@@ -639,7 +660,12 @@ class Quater:
                     await self._authenticate_route(match.route.definition, request)
         except Exception as exc:
             response = default_exception_response(exc, debug=self.config.debug)
-            return self._finalize_response(response, request, context)
+            return await self._finalize_request(
+                response,
+                request,
+                context,
+                started_at=started_at,
+            )
 
         if is_mcp_request:
             from quater.tools.mcp import handle_mcp_request
@@ -654,7 +680,12 @@ class Quater:
             )
         else:
             response = await router.dispatch_match(request, match)
-        return self._finalize_response(response, request, context)
+        return await self._finalize_request(
+            response,
+            request,
+            context,
+            started_at=started_at,
+        )
 
     def _compiled_router(self) -> Router:
         if self._router is None or self._routes_dirty:
@@ -844,6 +875,13 @@ class Quater:
         dry_run = payload.get("dry_run", False)
         if not isinstance(action_name, str) or not action_name:
             return _action_error_response("invalid_action", "Invalid action", 400)
+        request.context = replace(
+            request.context,
+            source="cli",
+            entrypoint="server",
+            tool_name=None,
+            action_name=action_name,
+        )
         if not isinstance(arguments, Mapping):
             return _action_error_response("invalid_arguments", "Invalid arguments", 400)
         if not isinstance(dry_run, bool):
@@ -864,7 +902,7 @@ class Quater:
                     action,
                     request,
                     cast(Mapping[str, object], arguments),
-                    source="remote_cli",
+                    source="cli",
                     authenticated_by=self.cli_auth,
                     approval_token=approval_token,
                 )
@@ -874,7 +912,7 @@ class Quater:
                 action,
                 request,
                 cast(Mapping[str, object], arguments),
-                source="remote_cli",
+                source="cli",
                 authenticated_by=self.cli_auth,
                 approval_hook=self.action_approval,
                 approval_token=approval_token,
@@ -1002,7 +1040,32 @@ class Quater:
             "actions_call",
         }:
             return
-        request.context = RequestContext(source="remote_cli")
+        request.context = replace(
+            request.context,
+            source="cli",
+            entrypoint="server",
+            tool_name=None,
+            action_name=None,
+        )
+
+    async def _finalize_request(
+        self,
+        response: Response,
+        request: Request,
+        context: RequestSecurityContext,
+        *,
+        started_at: float,
+    ) -> Response:
+        finalized = self._finalize_response(response, request, context)
+        if self.access_logger is not None:
+            event = access_log_event(
+                request,
+                finalized,
+                started_at=started_at,
+            )
+            with suppress(Exception):
+                await self.access_logger(event)
+        return finalized
 
     def _finalize_response(
         self,
@@ -1014,11 +1077,13 @@ class Quater:
             if self.config.cors is not None:
                 response = add_cors_headers(response, request, self.config.cors)
             response = add_security_headers(response, context, self.config)
+            response = add_request_id_header(response, request, self.config)
             response.headers = normalize_response_headers(response.headers)
             return response
         except (TypeError, ValueError) as exc:
             fallback = default_exception_response(exc, debug=self.config.debug)
             fallback = add_security_headers(fallback, context, self.config)
+            fallback = add_request_id_header(fallback, request, self.config)
             fallback.headers = normalize_response_headers(fallback.headers)
             return fallback
 

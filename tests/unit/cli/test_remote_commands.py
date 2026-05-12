@@ -239,8 +239,7 @@ def test_cli_remote_actions_describe_includes_usage(
         },
     ]
     assert payload["usage"]["command"] == (
-        "quater call billing orders.update_status "
-        "--order-id example --status example"
+        "quater call billing orders.update_status --order-id example --status example"
     )
     assert "kebab-case" in payload["usage"]["argument_style"]
     assert payload["usage"]["approval_command"] == (

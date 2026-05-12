@@ -59,7 +59,7 @@ async def test_mcp_uses_same_auth_denial_policy_as_http() -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_hook_sees_tool_source_for_tools_call() -> None:
+async def test_auth_hook_sees_mcp_source_for_tools_call() -> None:
     seen: list[tuple[str, str | None]] = []
 
     async def authenticate(ctx: AuthRequest) -> AuthContext | None:
@@ -82,9 +82,9 @@ async def test_auth_hook_sees_tool_source_for_tools_call() -> None:
     )
     body = json.loads(response.body)
 
-    assert seen == [("tool", "me"), ("tool", "me")]
+    assert seen == [("mcp", "me"), ("mcp", "me")]
     assert body["result"]["content"][0]["text"] == (
-        '{"subject":"user_1","source":"tool","tool":"me"}'
+        '{"subject":"user_1","source":"mcp","tool":"me"}'
     )
 
 
@@ -324,7 +324,7 @@ async def test_different_route_auth_still_runs_after_mcp_auth() -> None:
     )
 
     assert response.status_code == 200
-    assert calls == ["mcp:tool:private", "route:tool:private"]
+    assert calls == ["mcp:mcp:private", "route:mcp:private"]
     assert b'\\"subject\\":\\"route\\"' in response.body
 
 

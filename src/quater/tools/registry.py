@@ -39,7 +39,7 @@ class ToolDefinition:
             self,
             request,
             arguments,
-            source="tool",
+            source="mcp",
             authenticated_by=authenticated_by,
             approval_hook=approval_hook,
             approval_token=approval_token,

@@ -36,8 +36,9 @@ async def get_user(id: int, request: Request) -> dict[str, object]:
     assert_type(id, int)
     assert_type(
         request.context.source,
-        Literal["api", "mcp", "tool", "local_cli", "remote_cli"],
+        Literal["api", "mcp", "cli"],
     )
+    assert_type(request.context.entrypoint, Literal["server", "local"])
     return {
         "id": id,
         "source": request.context.source,

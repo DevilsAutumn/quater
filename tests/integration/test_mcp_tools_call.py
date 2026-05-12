@@ -70,13 +70,15 @@ async def test_tools_call_invokes_handler_with_tool_request_context() -> None:
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int, request: Request) -> dict[str, object]:
-        assert request.context.source == "tool"
+        assert request.context.source == "mcp"
+        assert request.context.entrypoint == "server"
         assert request.context.tool_name == "get_user"
         assert request.context.action_name == "get_user"
         assert request.auth is not None
         return {
             "id": id,
             "source": request.context.source,
+            "entrypoint": request.context.entrypoint,
             "action": request.context.action_name,
             "subject": request.auth.subject,
         }
@@ -88,7 +90,10 @@ async def test_tools_call_invokes_handler_with_tool_request_context() -> None:
         "content": [
             {
                 "type": "text",
-                "text": '{"id":7,"source":"tool","action":"get_user","subject":"mcp"}',
+                "text": (
+                    '{"id":7,"source":"mcp","entrypoint":"server",'
+                    '"action":"get_user","subject":"mcp"}'
+                ),
             },
         ],
         "isError": False,
@@ -358,7 +363,8 @@ async def test_approval_required_tool_call_rejects_bad_token() -> None:
     assert seen[0].token == "bad"
     assert seen[0].auth is not None
     assert seen[0].auth.subject == "mcp"
-    assert seen[0].context.source == "tool"
+    assert seen[0].context.source == "mcp"
+    assert seen[0].context.entrypoint == "server"
     assert seen[0].context.tool_name == "mark_paid"
     assert handler_calls == 0
 

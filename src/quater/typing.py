@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, TypeAlias
 
+RequestSource: TypeAlias = Literal["api", "mcp", "cli"]
+RequestEntrypoint: TypeAlias = Literal["server", "local"]
+
 
 def _empty_str_map() -> Mapping[str, str]:
     return MappingProxyType({})
@@ -18,9 +21,11 @@ def _empty_metadata() -> Mapping[str, object]:
 
 @dataclass(slots=True, frozen=True)
 class RequestContext:
-    """Small per-call context shared by HTTP APIs and tool calls."""
+    """Small per-call context shared by HTTP APIs, MCP, and CLI actions."""
 
-    source: Literal["api", "mcp", "tool", "local_cli", "remote_cli"] = "api"
+    source: RequestSource = "api"
+    entrypoint: RequestEntrypoint = "server"
+    request_id: str | None = None
     tool_name: str | None = None
     action_name: str | None = None
 
@@ -66,4 +71,6 @@ __all__ = [
     "AuthRequest",
     "LifespanHook",
     "RequestContext",
+    "RequestEntrypoint",
+    "RequestSource",
 ]

@@ -153,8 +153,7 @@ def test_cli_describes_local_action_usage(
     payload = json.loads(captured.out)
     assert payload["name"] == "create_user"
     assert payload["usage"]["command"] == (
-        "quater call create_user --user "
-        '\'{"name":"example","age":1}\''
+        'quater call create_user --user \'{"name":"example","age":1}\''
     )
     assert payload["arguments"] == [
         {
@@ -300,7 +299,7 @@ def test_cli_call_rejects_empty_approval_token(
     assert captured.err == "Approval token must not be empty\n"
 
 
-def test_cli_call_auth_sees_local_cli_context(
+def test_cli_call_auth_sees_local_entrypoint_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -310,10 +309,14 @@ def test_cli_call_auth_sees_local_cli_context(
         """
         from quater import AuthContext, AuthRequest, Quater, Request
 
-        seen_contexts: list[tuple[str, str | None]] = []
+        seen_contexts: list[tuple[str, str, str | None]] = []
 
         async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
-            seen_contexts.append((ctx.context.source, ctx.context.action_name))
+            seen_contexts.append((
+                ctx.context.source,
+                ctx.context.entrypoint,
+                ctx.context.action_name,
+            ))
             if ctx.headers.get("authorization") == "Bearer secret":
                 return AuthContext(subject="cli")
             return None
@@ -325,6 +328,7 @@ def test_cli_call_auth_sees_local_cli_context(
             return {
                 "id": id,
                 "source": request.context.source,
+                "entrypoint": request.context.entrypoint,
                 "action": request.context.action_name,
             }
         """,
@@ -349,13 +353,14 @@ def test_cli_call_auth_sees_local_cli_context(
     assert code == 0
     assert json.loads(captured.out)["body"] == {
         "id": 7,
-        "source": "local_cli",
+        "source": "cli",
+        "entrypoint": "local",
         "action": "get_user",
     }
 
     sample = importlib.import_module("sample")
 
-    assert sample.seen_contexts == [("local_cli", "get_user")]
+    assert sample.seen_contexts == [("cli", "local", "get_user")]
 
 
 def test_cli_dry_run_validates_but_does_not_call_handler(

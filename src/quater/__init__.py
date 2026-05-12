@@ -5,6 +5,7 @@ from quater.config import AppConfig
 from quater.cookies import SignedCookieSigner
 from quater.cors import CORSConfig
 from quater.exceptions import HTTPError
+from quater.observability import AccessLogEvent, AccessLogHook
 from quater.request import Request
 from quater.response import (
     BytesResponse,
@@ -24,6 +25,8 @@ __version__ = "0.1.0a1"
 
 __all__ = [
     "ActionApproval",
+    "AccessLogEvent",
+    "AccessLogHook",
     "AppConfig",
     "ApprovalRequest",
     "AuthContext",

@@ -56,17 +56,18 @@ async def test_preflight_validates_inputs_without_calling_handler_or_approval() 
         action_for(app, "create_user"),
         Request(method="POST", path="/__quater__/actions/call"),
         {"user": {"name": "Ada", "age": 37}},
-        source="remote_cli",
+        source="cli",
         surface_auth=allow_auth,
     )
 
     assert result.action == "create_user"
-    assert result.source == "remote_cli"
+    assert result.source == "cli"
+    assert result.entrypoint == "server"
     assert result.method == "POST"
     assert result.path == "/users"
     assert result.needs_approval is True
     assert result.approval_required is True
-    assert result.subject == "remote_cli"
+    assert result.subject == "cli"
     assert result.arguments_hash.startswith("sha256:")
     assert handler_calls == 0
     assert approval_calls == 0
@@ -97,7 +98,7 @@ async def test_preflight_rejects_invalid_body_shape_without_approval() -> None:
             action_for(app, "create_user"),
             Request(method="POST", path="/__quater__/actions/call"),
             {"user": {"name": "Ada"}},
-            source="remote_cli",
+            source="cli",
             surface_auth=allow_auth,
         )
 
@@ -137,13 +138,13 @@ async def test_execute_action_runs_surface_auth_then_distinct_route_auth() -> No
         action_for(app, "get_user"),
         Request(method="POST", path="/__quater__/actions/call"),
         {"id": 7},
-        source="remote_cli",
+        source="cli",
         surface_auth=cli_auth,
     )
 
-    assert calls == ["cli:remote_cli:get_user", "route:remote_cli:get_user"]
+    assert calls == ["cli:cli:get_user", "route:cli:get_user"]
     assert response.body == (
-        b'{"id":7,"source":"remote_cli","action":"get_user","subject":"route"}'
+        b'{"id":7,"source":"cli","action":"get_user","subject":"route"}'
     )
 
 
@@ -173,7 +174,7 @@ async def test_execute_action_reruns_same_auth_hook_for_route_request() -> None:
         action_for(app, "get_user"),
         Request(method="POST", path="/__quater__/actions/call"),
         {"id": 7},
-        source="remote_cli",
+        source="cli",
         surface_auth=authenticate,
     )
 
@@ -210,7 +211,7 @@ async def test_execute_action_validates_arguments_before_approval() -> None:
             action_for(app, "create_user"),
             Request(method="POST", path="/__quater__/actions/call"),
             {"user": {"name": "Ada"}},
-            source="remote_cli",
+            source="cli",
             surface_auth=allow_auth,
             approval_hook=approve,
             approval_token="approved",
@@ -233,7 +234,7 @@ async def test_execute_action_rejects_non_json_body_argument() -> None:
             action_for(app, "create_user"),
             Request(method="POST", path="/__quater__/actions/call"),
             {"user": object()},
-            source="remote_cli",
+            source="cli",
             surface_auth=allow_auth,
         )
 

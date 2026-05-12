@@ -124,7 +124,11 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
             method="POST",
             path=ACTIONS_RPC_PATH,
             headers=headers,
-            context=RequestContext(source="local_cli", action_name=action.name),
+            context=RequestContext(
+                source="cli",
+                entrypoint="local",
+                action_name=action.name,
+            ),
         )
         approval_token = _non_empty_approval(namespace.approval)
         if namespace.dry_run:
@@ -132,7 +136,7 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
                 action,
                 request,
                 arguments,
-                source="local_cli",
+                source="cli",
                 surface_auth=app.cli_auth,
                 approval_token=approval_token,
             )
@@ -143,7 +147,7 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
             action,
             request,
             arguments,
-            source="local_cli",
+            source="cli",
             surface_auth=app.cli_auth,
             approval_hook=app.action_approval,
             approval_token=approval_token,
@@ -271,9 +275,7 @@ def _remote_manifest(
     token_override: str | None,
 ) -> dict[str, object]:
     token = (
-        _non_empty_token(token_override)
-        if token_override is not None
-        else remote.token
+        _non_empty_token(token_override) if token_override is not None else remote.token
     )
     manifest = fetch_manifest(remote.url, token=token)
     save_remote(
@@ -353,7 +355,7 @@ async def _authenticate_actions_request(
         method="GET",
         path=ACTIONS_RPC_PATH,
         headers=headers,
-        context=RequestContext(source="local_cli"),
+        context=RequestContext(source="cli", entrypoint="local"),
     )
     await authenticate_request(app.cli_auth, request)
 

@@ -28,7 +28,7 @@ request = Request(
     query_string="page=1",
     body=body_reader,
     auth=AuthContext(subject="user_1"),
-    context=RequestContext(source="tool", tool_name="get_user"),
+    context=RequestContext(source="mcp", tool_name="get_user"),
 )
 
 
@@ -42,8 +42,9 @@ assert_type(request.auth, AuthContext | None)
 assert_type(request.context, RequestContext)
 assert_type(
     request.context.source,
-    Literal["api", "mcp", "tool", "local_cli", "remote_cli"],
+    Literal["api", "mcp", "cli"],
 )
+assert_type(request.context.entrypoint, Literal["server", "local"])
 assert_type(request.context.tool_name, str | None)
 assert_type(request.context.action_name, str | None)
 assert_type(request.headers["authorization"], str)

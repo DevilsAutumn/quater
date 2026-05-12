@@ -96,6 +96,5 @@ def as_latin1_header_bytes(
     headers: Iterable[tuple[str, str]],
 ) -> list[tuple[bytes, bytes]]:
     return [
-        (name.encode("latin-1"), value.encode("latin-1"))
-        for name, value in headers
+        (name.encode("latin-1"), value.encode("latin-1")) for name, value in headers
     ]

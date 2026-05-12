@@ -8,6 +8,8 @@ Use top-level imports for normal app code:
 ```python
 from quater import (
     ActionApproval,
+    AccessLogEvent,
+    AccessLogHook,
     AppConfig,
     ApprovalRequest,
     AuthContext,
@@ -45,11 +47,13 @@ app = Quater(
     mcp_docs_path="/mcp/docs",
     mcp_auth=authenticate,
     cli_auth=authenticate,
+    access_logger=log_access,
 )
 ```
 
-The snippet assumes you already defined `authenticate`. For an app with no MCP
-tools, omit `mcp_auth`. For an app with no CLI actions, omit `cli_auth`.
+The snippet assumes you already defined `authenticate` and `log_access`. For an
+app with no MCP tools, omit `mcp_auth`. For an app with no CLI actions, omit
+`cli_auth`.
 
 Stable constructor options:
 
@@ -70,6 +74,8 @@ Stable constructor options:
 - `mcp_audit`
 - `cli_auth`
 - `action_approval`
+- `access_logger`
+- `request_id_header`
 
 The MCP JSON-RPC endpoint is always `/mcp`. There is no `mcp_path` option. If
 an app exposes tools, `mcp_auth` is required.
@@ -130,6 +136,7 @@ source.
 async def whoami(request: Request) -> dict[str, object]:
     return {
         "source": request.context.source,
+        "entrypoint": request.context.entrypoint,
         "tool": request.context.tool_name,
     }
 ```
@@ -138,12 +145,42 @@ async def whoami(request: Request) -> dict[str, object]:
 
 - `"api"` for normal HTTP calls.
 - `"mcp"` for MCP protocol requests such as `initialize` and `tools/list`.
-- `"tool"` for MCP `tools/call`.
-- `"local_cli"` for local Quater CLI action calls.
-- `"remote_cli"` for hosted Quater CLI action calls.
+- `"cli"` for Quater CLI action calls.
+
+`request.context.entrypoint` is:
+
+- `"server"` for calls handled by the running server, including normal API
+  calls, MCP calls, and remote CLI calls.
+- `"local"` for in-process local CLI calls that import the app directly.
 
 `request.context.tool_name` is set for MCP tool calls.
 `request.context.action_name` is set for MCP tool calls and CLI action calls.
+`request.context.request_id` is set for every handled request.
+
+## Request IDs And Access Logs
+
+Quater reads `x-request-id` by default, validates that it is safe to echo, and
+adds the final id to the response. If the incoming value is missing or unsafe,
+Quater generates a new id. Set `request_id_header=None` to stop writing a
+request-id response header.
+
+Use `access_logger` when you want one structured event after each handled
+server request:
+
+```python
+from quater import AccessLogEvent, Quater
+
+
+async def log_access(event: AccessLogEvent) -> None:
+    print(event.to_dict())
+
+
+app = Quater(access_logger=log_access)
+```
+
+The event includes method, path, status code, duration, source, entrypoint,
+client, request id, and the current tool/action name when there is one. It does
+not include request headers, body, or query-string values.
 
 ## Auth
 

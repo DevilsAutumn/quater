@@ -11,6 +11,7 @@ from quater.actions.descriptions import (
 
 MAX_TOOL_DESCRIPTION_LENGTH = MAX_ACTION_DESCRIPTION_LENGTH
 
+
 def normalize_route_description(value: str | None) -> str | None:
     if value is None:
         return None

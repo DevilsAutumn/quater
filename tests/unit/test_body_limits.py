@@ -46,9 +46,7 @@ async def test_body_reader_limit_uses_app_config_when_length_is_unknown() -> Non
     async def upload(request: Request) -> dict[str, int]:
         return {"size": len(await request.body())}
 
-    response = await app.handle(
-        Request(method="POST", path="/upload", body=b"12345")
-    )
+    response = await app.handle(Request(method="POST", path="/upload", body=b"12345"))
 
     assert response.status_code == 413
     assert response.body == b"Payload Too Large"

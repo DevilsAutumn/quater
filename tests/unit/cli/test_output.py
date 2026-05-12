@@ -13,7 +13,8 @@ def test_preflight_human_output_shows_missing_approval_token(
 ) -> None:
     result = ActionPreflightResult(
         action="update_order_status",
-        source="local_cli",
+        source="cli",
+        entrypoint="local",
         method="PATCH",
         path="/api/orders/ord_1001/status",
         arguments_hash="sha256:test",
@@ -36,7 +37,8 @@ def test_preflight_human_output_shows_provided_approval_token(
 ) -> None:
     result = ActionPreflightResult(
         action="update_order_status",
-        source="local_cli",
+        source="cli",
+        entrypoint="local",
         method="PATCH",
         path="/api/orders/ord_1001/status",
         arguments_hash="sha256:test",
@@ -57,7 +59,8 @@ def test_preflight_human_output_shows_unprotected_action(
 ) -> None:
     result = ActionPreflightResult(
         action="list_catalog",
-        source="local_cli",
+        source="cli",
+        entrypoint="local",
         method="GET",
         path="/api/catalog",
         arguments_hash="sha256:test",
@@ -78,7 +81,8 @@ def test_preflight_json_output_keeps_machine_fields(
 ) -> None:
     result = ActionPreflightResult(
         action="update_order_status",
-        source="remote_cli",
+        source="cli",
+        entrypoint="server",
         method="PATCH",
         path="/api/orders/ord_1001/status",
         arguments_hash="sha256:test",
@@ -92,5 +96,7 @@ def test_preflight_json_output_keeps_machine_fields(
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["needs_approval"] is True
+    assert payload["source"] == "cli"
+    assert payload["entrypoint"] == "server"
     assert payload["approval_required"] is True
     assert payload["approval_token_provided"] is False

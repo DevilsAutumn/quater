@@ -123,6 +123,7 @@ async def get_order(order_id: str, request: Request) -> dict[str, object]:
         "order_id": order_id,
         "subject": request.auth.subject,
         "source": request.context.source,
+        "entrypoint": request.context.entrypoint,
     }
 ```
 

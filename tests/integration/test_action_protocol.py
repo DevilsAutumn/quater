@@ -102,7 +102,7 @@ async def test_remote_action_manifest_lists_only_cli_actions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_remote_action_manifest_auth_sees_remote_cli_context() -> None:
+async def test_remote_action_manifest_auth_sees_cli_http_context() -> None:
     seen: list[AuthRequest] = []
 
     async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
@@ -127,7 +127,8 @@ async def test_remote_action_manifest_auth_sees_remote_cli_context() -> None:
 
     assert response.status_code == 200
     assert len(seen) == 1
-    assert seen[0].context.source == "remote_cli"
+    assert seen[0].context.source == "cli"
+    assert seen[0].context.entrypoint == "server"
     assert seen[0].context.action_name is None
 
 
@@ -156,7 +157,7 @@ async def test_remote_action_rpc_requires_cli_auth_before_handler_runs() -> None
 
 
 @pytest.mark.asyncio
-async def test_remote_action_rpc_auth_sees_remote_cli_context() -> None:
+async def test_remote_action_rpc_auth_sees_cli_http_context() -> None:
     seen: list[AuthRequest] = []
 
     async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
@@ -172,6 +173,7 @@ async def test_remote_action_rpc_auth_sees_remote_cli_context() -> None:
         return {
             "id": id,
             "source": request.context.source,
+            "entrypoint": request.context.entrypoint,
             "action": request.context.action_name,
         }
 
@@ -183,11 +185,13 @@ async def test_remote_action_rpc_auth_sees_remote_cli_context() -> None:
     assert status == 200
     assert body["body"] == {
         "id": 7,
-        "source": "remote_cli",
+        "source": "cli",
+        "entrypoint": "server",
         "action": "get_user",
     }
     assert len(seen) == 1
-    assert seen[0].context.source == "remote_cli"
+    assert seen[0].context.source == "cli"
+    assert seen[0].context.entrypoint == "server"
     assert seen[0].context.action_name is None
 
 
@@ -301,6 +305,7 @@ async def test_remote_action_runs_after_valid_approval() -> None:
         return {
             "id": id,
             "source": request.context.source,
+            "entrypoint": request.context.entrypoint,
             "action": request.context.action_name,
             "subject": request.auth.subject,
         }
@@ -320,13 +325,15 @@ async def test_remote_action_runs_after_valid_approval() -> None:
         "status_code": 200,
         "body": {
             "id": 7,
-            "source": "remote_cli",
+            "source": "cli",
+            "entrypoint": "server",
             "action": "lock_user",
             "subject": "cli-user",
         },
     }
     assert len(seen) == 1
-    assert seen[0].context.source == "remote_cli"
+    assert seen[0].context.source == "cli"
+    assert seen[0].context.entrypoint == "server"
     assert seen[0].auth is not None
     assert seen[0].auth.subject == "cli-user"
 

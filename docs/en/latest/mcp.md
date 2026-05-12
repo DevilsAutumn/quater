@@ -297,6 +297,7 @@ async def get_user(id: int, request: Request) -> dict[str, object]:
     return {
         "id": id,
         "source": request.context.source,
+        "entrypoint": request.context.entrypoint,
         "tool": request.context.tool_name,
     }
 ```
@@ -305,6 +306,7 @@ Normal HTTP calls use:
 
 ```python
 request.context.source == "api"
+request.context.entrypoint == "server"
 request.context.tool_name is None
 ```
 
@@ -312,13 +314,15 @@ MCP protocol requests that are not tool calls use:
 
 ```python
 request.context.source == "mcp"
+request.context.entrypoint == "server"
 request.context.tool_name is None
 ```
 
 MCP tool calls use:
 
 ```python
-request.context.source == "tool"
+request.context.source == "mcp"
+request.context.entrypoint == "server"
 request.context.tool_name == "get_user"
 request.context.action_name == "get_user"
 ```

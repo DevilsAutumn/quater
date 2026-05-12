@@ -55,6 +55,7 @@ def preflight_payload(result: ActionPreflightResult) -> dict[str, object]:
         "dry_run": True,
         "action": result.action,
         "source": result.source,
+        "entrypoint": result.entrypoint,
         "method": result.method,
         "path": result.path,
         "arguments_hash": result.arguments_hash,

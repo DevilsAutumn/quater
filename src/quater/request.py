@@ -110,12 +110,14 @@ class Request:
 
 def _coerce_body_reader(body: RequestBody) -> BodyReader:
     if body is None:
+
         async def read_empty() -> bytes:
             return b""
 
         return read_empty
 
     if isinstance(body, bytes):
+
         async def read_bytes() -> bytes:
             return body
 

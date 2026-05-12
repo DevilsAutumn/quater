@@ -44,9 +44,12 @@ def resolve_request_security_context(
     scheme = request.scheme.lower()
 
     if trusted:
-        host_header = _first_header_value(
-            request.headers.get("x-forwarded-host"),
-        ) or host_header
+        host_header = (
+            _first_header_value(
+                request.headers.get("x-forwarded-host"),
+            )
+            or host_header
+        )
         scheme = _first_header_value(request.headers.get("x-forwarded-proto")) or scheme
 
     return RequestSecurityContext(
@@ -158,8 +161,7 @@ def _client_is_trusted(client: str, trusted_proxies: tuple[str, ...]) -> bool:
         return False
 
     return any(
-        client_ip in ip_network(proxy, strict=False)
-        for proxy in trusted_proxies
+        client_ip in ip_network(proxy, strict=False) for proxy in trusted_proxies
     )
 
 

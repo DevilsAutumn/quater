@@ -103,10 +103,7 @@ def print_action_summary_detail(
         return
 
     print(_summary_string(summary, "name"))
-    print(
-        f"  {_summary_string(summary, 'method')} "
-        f"{_summary_string(summary, 'path')}"
-    )
+    print(f"  {_summary_string(summary, 'method')} {_summary_string(summary, 'path')}")
     print(f"  {_summary_string(summary, 'description')}")
     print(f"  protected action: {_yes_no(_summary_bool(summary, 'needs_approval'))}")
     print("  arguments:")
@@ -266,8 +263,7 @@ def _print_action_arguments(schema: Mapping[str, object]) -> None:
     for argument in arguments:
         requirement = "required" if argument.required else "optional"
         print(
-            f"    {argument.flag} {_schema_placeholder(argument.schema)}"
-            f"  {requirement}"
+            f"    {argument.flag} {_schema_placeholder(argument.schema)}  {requirement}"
         )
 
 

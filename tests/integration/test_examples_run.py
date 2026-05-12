@@ -100,7 +100,7 @@ async def test_auth_example_exposes_only_tool_route_to_mcp() -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_example_tool_call_uses_tool_context() -> None:
+async def test_auth_example_tool_call_uses_mcp_context() -> None:
     response = await _mcp_request(
         {
             "jsonrpc": "2.0",
@@ -115,7 +115,7 @@ async def test_auth_example_tool_call_uses_tool_context() -> None:
 
     assert response.status_code == 200
     assert content[0]["text"] == (
-        '{"id":7,"subject":"demo-user","source":"tool","tool":"get_user"}'
+        '{"id":7,"subject":"demo-user","source":"mcp","tool":"get_user"}'
     )
 
 

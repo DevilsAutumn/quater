@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from inspect import Signature
 from types import UnionType
 from typing import Literal, Protocol, Union, get_args, get_origin
@@ -20,9 +20,9 @@ from quater.params import BoundParameter, HandlerPlan
 from quater.request import Request
 from quater.response import Response, normalize_response
 from quater.routing import ParamSegment, RoutePattern
-from quater.typing import ActionApproval, Authenticate, RequestContext
+from quater.typing import ActionApproval, Authenticate, RequestEntrypoint
 
-ActionExecutionSource = Literal["tool", "local_cli", "remote_cli"]
+ActionExecutionSource = Literal["mcp", "cli"]
 
 
 class ExecutableAction(Protocol):
@@ -39,7 +39,6 @@ class ExecutableAction(Protocol):
     def handler_plan(self) -> HandlerPlan: ...
 
 
-
 @dataclass(slots=True, frozen=True)
 class PreparedActionCall:
     action: str
@@ -54,6 +53,7 @@ class PreparedActionCall:
 class ActionPreflightResult:
     action: str
     source: ActionExecutionSource
+    entrypoint: RequestEntrypoint
     method: str
     path: str
     arguments_hash: str
@@ -119,6 +119,7 @@ async def preflight_action(
     return ActionPreflightResult(
         action=action.name,
         source=source,
+        entrypoint=prepared.request.context.entrypoint,
         method=prepared.request.method,
         path=prepared.request.path,
         arguments_hash=prepared.arguments_hash,
@@ -150,9 +151,10 @@ async def prepare_action_call(
         auth=request.auth,
         client=request.client,
         max_body_size=request.max_body_size,
-        context=RequestContext(
+        context=replace(
+            request.context,
             source=source,
-            tool_name=action.name if source == "tool" else None,
+            tool_name=action.name if source == "mcp" else None,
             action_name=action.name,
         ),
     )

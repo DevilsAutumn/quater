@@ -468,9 +468,7 @@ def _cookie_header(cookies: Mapping[str, str]) -> str:
     parsed = SimpleCookie()
     for name, value in cookies.items():
         parsed[name] = value
-    return "; ".join(
-        f"{morsel.key}={morsel.coded_value}" for morsel in parsed.values()
-    )
+    return "; ".join(f"{morsel.key}={morsel.coded_value}" for morsel in parsed.values())
 
 
 async def _collect_response(response: Response) -> TestResponse:

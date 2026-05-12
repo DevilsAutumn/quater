@@ -14,9 +14,7 @@ def normalize_action_description(value: str | None) -> str | None:
     if not normalized:
         return None
     if len(normalized) > MAX_ACTION_DESCRIPTION_LENGTH:
-        raise ConfigurationError(
-            "Action descriptions must be 1000 characters or fewer"
-        )
+        raise ConfigurationError("Action descriptions must be 1000 characters or fewer")
     return normalized
 
 

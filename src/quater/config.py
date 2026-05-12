@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from ipaddress import ip_network
+from string import ascii_letters, digits
 from typing import Literal, TypeAlias, cast
 
 from quater.cors import CORSConfig
@@ -27,6 +28,7 @@ _DOCS_ASSETS = (
     "swagger-initializer.js",
     "favicon-32x32.png",
 )
+_HEADER_NAME_CHARS = frozenset(f"!#$%&'*+-.^_`|~{digits}{ascii_letters}")
 
 
 class _Unset:
@@ -51,6 +53,7 @@ class AppConfig:
     openapi_path: str | None = "/openapi.json"
     mcp_docs_path: str | None = "/mcp/docs"
     mcp_allowed_origins: tuple[str, ...] = ()
+    request_id_header: str | None = "x-request-id"
 
     def __post_init__(self) -> None:
         if self.security not in {"strict", "relaxed", "off"}:
@@ -69,6 +72,7 @@ class AppConfig:
         _validate_optional_path(self.docs_path, "docs_path")
         _validate_optional_path(self.openapi_path, "openapi_path")
         _validate_optional_path(self.mcp_docs_path, "mcp_docs_path")
+        _validate_optional_header_name(self.request_id_header, "request_id_header")
         if self.docs_path is not None and self.openapi_path is None:
             raise ConfigurationError("docs_path requires openapi_path")
         self._validate_reserved_paths()
@@ -87,6 +91,7 @@ class AppConfig:
         openapi_path: str | None | _Unset = _UNSET,
         mcp_docs_path: str | None | _Unset = _UNSET,
         mcp_allowed_origins: Iterable[str] | None = None,
+        request_id_header: str | None | _Unset = _UNSET,
     ) -> AppConfig:
         """Return a new config with explicit constructor overrides applied."""
 
@@ -125,6 +130,10 @@ class AppConfig:
                     mcp_allowed_origins,
                     "mcp_allowed_origins",
                 )
+            ),
+            request_id_header=_override_pathless_value(
+                self.request_id_header,
+                request_id_header,
             ),
         )
 
@@ -200,6 +209,27 @@ def _validate_path(value: str, field_name: str) -> None:
 def _validate_optional_path(value: str | None, field_name: str) -> None:
     if value is not None:
         _validate_path(value, field_name)
+
+
+def _validate_header_name(value: str, field_name: str) -> None:
+    if not value:
+        raise ConfigurationError(f"{field_name} must not be empty")
+    if value.startswith(":") or any(char not in _HEADER_NAME_CHARS for char in value):
+        raise ConfigurationError(f"{field_name} must be a valid HTTP header name")
+
+
+def _validate_optional_header_name(value: str | None, field_name: str) -> None:
+    if value is not None:
+        _validate_header_name(value, field_name)
+
+
+def _override_pathless_value(
+    current: str | None,
+    value: str | None | _Unset,
+) -> str | None:
+    if value is _UNSET:
+        return current
+    return cast(str | None, value)
 
 
 def docs_asset_paths(docs_path: str) -> dict[str, str]:

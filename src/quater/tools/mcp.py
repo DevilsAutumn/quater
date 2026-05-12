@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import cast
 
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
@@ -19,7 +20,7 @@ from quater.response import (
 )
 from quater.tools.audit import AuditHook, ToolAuditEvent, sanitize_arguments
 from quater.tools.registry import ToolRegistry
-from quater.typing import ActionApproval, Authenticate, RequestContext
+from quater.typing import ActionApproval, Authenticate, RequestContext, RequestSource
 
 JSONRPC_VERSION = "2.0"
 MCP_PROTOCOL_VERSION_HEADER = "mcp-protocol-version"
@@ -39,23 +40,38 @@ async def mcp_request_context(request: Request) -> RequestContext:
     try:
         payload = await request.json()
     except RequestJSONError:
-        return RequestContext(source="mcp")
+        return _mcp_context(request)
 
     if not isinstance(payload, Mapping):
-        return RequestContext(source="mcp")
+        return _mcp_context(request)
     if payload.get("method") != "tools/call":
-        return RequestContext(source="mcp")
+        return _mcp_context(request)
 
     params = payload.get("params")
     if not isinstance(params, Mapping):
-        return RequestContext(source="tool")
+        return _mcp_context(request)
 
     name = params.get("name")
     tool_name = name if isinstance(name, str) else None
-    return RequestContext(
-        source="tool",
+    return _mcp_context(
+        request,
         tool_name=tool_name,
         action_name=tool_name,
+    )
+
+
+def _mcp_context(
+    request: Request,
+    *,
+    source: RequestSource = "mcp",
+    tool_name: str | None = None,
+    action_name: str | None = None,
+) -> RequestContext:
+    return replace(
+        request.context,
+        source=source,
+        tool_name=tool_name,
+        action_name=action_name,
     )
 
 
