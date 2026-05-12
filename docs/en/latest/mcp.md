@@ -76,10 +76,10 @@ async def get_user(id: int, request: Request) -> dict[str, object]:
     return {"id": id, "subject": request.auth.subject}
 ```
 
-When `mcp_auth` and route `auth=` are the same function, Quater runs it once for
-an MCP tool call. If they are different functions, Quater runs both. That gives
-you a clean split when you need one token for the MCP client and a separate
-route-level user or scope check.
+When `mcp_auth` and route `auth=` are the same function, Quater still runs route
+auth against the handler route. That keeps path-based policies intact. Use two
+functions when you want a clean split between MCP client auth and route-level
+user or scope checks.
 
 A route without `auth=` is still public over normal HTTP. Over MCP, it is behind
 `mcp_auth` because the tool registry itself is protected.

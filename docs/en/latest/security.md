@@ -102,7 +102,7 @@ app = Quater(mcp_auth=authenticate)
 
 `mcp_auth` protects `initialize`, `tools/list`, `tools/call`, and `/mcp/docs`.
 Route `auth=` still protects the handler. If `mcp_auth` and route `auth=` are
-the same function, Quater runs it once for a tool call.
+the same function, Quater still runs route auth against the handler route.
 
 `AuthRequest.context.source` is `"api"` for HTTP, `"mcp"` for MCP protocol
 requests, and `"tool"` for MCP `tools/call`.
@@ -123,7 +123,7 @@ CLI actions also receive request context:
 - `"remote_cli"` for hosted action calls through the remote action protocol.
 
 Route `auth=` still protects the handler. If `cli_auth` and route `auth=` are
-the same function, Quater runs it once for an action call.
+the same function, Quater still runs route auth against the handler route.
 
 ## Approval Checks
 

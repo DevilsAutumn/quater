@@ -435,8 +435,9 @@ QUATER_APP=main:app quater --header "X-Operator: admin" actions list
 ```
 
 Route `auth=` still protects the handler. If `cli_auth` and route `auth=` are
-the same function, Quater runs it once for an action call. If they are different
-functions, Quater runs both.
+the same function, Quater still runs route auth against the handler route. Use
+two functions when the CLI token and route-level user or scope check should be
+separate.
 
 ::: warning Do not treat action discovery as public metadata
 Action names, descriptions, paths, and schemas can reveal operational

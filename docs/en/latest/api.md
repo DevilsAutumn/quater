@@ -18,12 +18,15 @@ from quater import (
     HTMLResponse,
     HTTPError,
     JSONResponse,
+    MCPTestClient,
     Quater,
     RedirectResponse,
     Request,
     Response,
     SignedCookieSigner,
     StreamResponse,
+    TestClient,
+    TestResponse,
     TextResponse,
     ToolAuditEvent,
 )
@@ -169,8 +172,9 @@ app = Quater(mcp_auth=authenticate)
 ```
 
 `mcp_auth` protects MCP protocol requests and `/mcp/docs`. Route `auth=` still
-protects individual handlers. If both point to the same function, Quater runs it
-once for an MCP tool call.
+protects individual handlers. If both point to the same function, Quater still
+runs route auth against the handler route so path-based policies cannot be
+accidentally skipped.
 
 For CLI actions, pass an auth hook as `cli_auth`:
 
@@ -249,6 +253,50 @@ Plain return values still cover the common case:
 - `str` becomes `TextResponse`.
 - `bytes` becomes `BytesResponse`.
 - `None` becomes `204 No Content`.
+
+## Testing
+
+Use `TestClient` to test a Quater app in process. It calls `app.handle()`
+directly, so tests do not need Granian, ASGI, WSGI, or a listening port.
+
+```python
+from quater import Quater, TestClient
+
+app = Quater()
+
+
+@app.get("/health")
+async def health() -> dict[str, bool]:
+    return {"ok": True}
+
+
+async def test_health() -> None:
+    async with TestClient(app) as client:
+        response = await client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+```
+
+The async context manager runs startup and shutdown hooks. The client keeps a
+small cookie jar, supports `params=`, `headers=`, `cookies=`, `json=`, and
+`content=`, and collects streaming responses into `response.body`.
+
+MCP helpers are available under `client.mcp`. The attribute is an
+`MCPTestClient`; most tests should use it through `TestClient` instead of
+constructing it directly.
+
+```python
+response = await client.mcp.tools_call(
+    "get_user",
+    {"id": 7},
+    token="demo-token",
+    origin="https://client.example",
+)
+```
+
+For testing patterns across auth, cookies, streams, and MCP tools, read the
+[Testing guide](/en/latest/testing).
 
 ## Config Helpers
 

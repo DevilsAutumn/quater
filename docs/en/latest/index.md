@@ -84,15 +84,19 @@ workflow.
    Learn how `cli=True`, `cli_auth`, dry-run, remote action discovery, and
    approval-protected actions work.
 
-3. [MCP](/en/latest/mcp)
+3. [Testing](/en/latest/testing)
+   Write useful in-process tests for HTTP routes, auth boundaries, cookies,
+   lifespan hooks, streams, and MCP tools.
+
+4. [MCP](/en/latest/mcp)
    Expose selected routes as MCP tools, configure bearer auth, understand the
    MCP request lifecycle, and use approval tokens for sensitive tools.
 
-4. [Security](/en/latest/security)
+5. [Security](/en/latest/security)
    Review host checks, body limits, CORS, MCP origin validation, CLI action
    security, docs endpoint exposure, and production server checks.
 
-5. [Public API](/en/latest/api)
+6. [Public API](/en/latest/api)
    Check the import surface, constructor options, route options, auth types,
    response classes, and advanced modules.
 

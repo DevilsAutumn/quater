@@ -23,4 +23,6 @@ features:
     details: "Quater keeps the hot path small: Granian on RSGI, msgspec for JSON, and a native router underneath."
   - title: Docs by default
     details: OpenAPI, Swagger UI, and MCP tool docs are generated from the route metadata you already wrote.
+  - title: In-process tests
+    details: Test routes and MCP tools without starting a server, while still exercising auth, binding, cookies, lifespan hooks, and response serialization.
 ---

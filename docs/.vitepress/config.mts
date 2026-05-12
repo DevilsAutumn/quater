@@ -61,6 +61,7 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
         { text: 'Overview', link: version.index },
         { text: 'Quickstart', link: `${version.base}quickstart` },
         { text: 'Actions and CLI', link: `${version.base}actions` },
+        { text: 'Testing', link: `${version.base}testing` },
         { text: 'Public API', link: `${version.base}api` },
         { text: 'MCP', link: `${version.base}mcp` },
         { text: 'Security', link: `${version.base}security` },

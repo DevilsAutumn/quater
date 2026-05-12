@@ -16,8 +16,11 @@ from quater import (
     AuthContext,
     AuthRequest,
     CORSConfig,
+    MCPTestClient,
     Quater,
     SignedCookieSigner,
+    TestClient,
+    TestResponse,
     ToolAuditEvent,
 )
 
@@ -83,6 +86,9 @@ def test_public_exports_are_intentionally_small() -> None:
         "Response",
         "SignedCookieSigner",
         "StreamResponse",
+        "MCPTestClient",
+        "TestClient",
+        "TestResponse",
         "TextResponse",
         "ToolAuditEvent",
         "__version__",
@@ -96,6 +102,9 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.AppConfig is AppConfig
     assert quater.CORSConfig is CORSConfig
     assert quater.SignedCookieSigner is SignedCookieSigner
+    assert quater.MCPTestClient is MCPTestClient
+    assert quater.TestClient is TestClient
+    assert quater.TestResponse is TestResponse
     assert quater.ToolAuditEvent is ToolAuditEvent
 
 

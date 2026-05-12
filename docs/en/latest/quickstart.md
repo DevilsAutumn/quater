@@ -129,7 +129,8 @@ async def get_user(id: int, request: Request) -> dict[str, object]:
 ```
 
 `mcp_auth` protects the MCP endpoint itself. Route `auth=` protects the handler.
-When both use the same function, Quater authenticates once for an MCP tool call.
+When both use the same function, Quater still runs route auth against the
+handler route.
 
 ## First CLI Action
 
