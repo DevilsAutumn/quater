@@ -461,14 +461,18 @@ app = Quater(
 
 Tool arguments are redacted before they reach the hook.
 
-## Advanced Imports
+## Import Boundary
 
-These modules are public, but most apps do not need them:
+Application code should normally import from `quater`:
 
-- `quater.typing` for `Authenticate`, `LifespanHook`, and
-  [`RequestContext`](/en/latest/reference/request#call-context).
-- `quater.exceptions` for specific framework exceptions.
-- `quater.adapters` when a server wants an explicit adapter object.
+```python
+from quater import Quater, Request
+```
 
-Do not import `quater._router`, `quater.docs.*`, or `quater.tools.registry` from
-application code. Those are framework internals for now.
+The public import rules are documented in [Stability](/en/latest/stability).
+In short: top-level `quater` exports are the normal app API, a few advanced
+compatibility modules are supported, and the rest of `quater.*` is internal.
+
+Avoid imports such as `quater.app`, `quater.router`, `quater.docs.*`, and
+`quater.tools.registry` in application code. Those modules are framework
+implementation details, even when their names look useful.

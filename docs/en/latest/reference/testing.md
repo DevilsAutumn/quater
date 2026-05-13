@@ -14,7 +14,7 @@ from quater import MCPTestClient, TestClient, TestResponse
 
 ## TestClient {#symbol-testclient}
 
-Defined in `quater.testing`.
+Public import: `from quater import TestClient`.
 
 Async in-process client for HTTP-style tests.
 
@@ -80,7 +80,7 @@ request(
 
 ## TestResponse {#symbol-testresponse}
 
-Defined in `quater.testing`.
+Public import: `from quater import TestResponse`.
 
 Response returned by [`TestClient`](#symbol-testclient).
 
@@ -109,7 +109,7 @@ TestResponse(*, status_code: int, headers: HeaderItems, body: bytes)
 
 ## MCPTestClient {#symbol-mcptestclient}
 
-Defined in `quater.testing`.
+Public import: `from quater import MCPTestClient`.
 
 Small JSON-RPC helper bound to a [`TestClient`](#symbol-testclient).
 

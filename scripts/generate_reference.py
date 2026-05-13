@@ -542,6 +542,8 @@ def render_index(
             "[Quickstart](/en/latest/quickstart) and then come back here for",
             "exact names and signatures.",
             "",
+            "For import guarantees, read [Stability](/en/latest/stability).",
+            "",
             "## Pages",
             "",
             "| Page | Use it for |",
@@ -556,8 +558,8 @@ def render_index(
             "",
             "## Public Imports",
             "",
-            "Use top-level imports for app code. Advanced internal modules can still",
-            "change while Quater is pre-release.",
+            "Use top-level imports for normal app code. These are the public",
+            "symbols covered by Quater's compatibility promise.",
             "",
         ]
     )
@@ -1405,10 +1407,9 @@ def symbol_intro(
 
 
 def source_line(package: Any, symbol: str) -> str:
-    obj = object_for(package, symbol)
-    path = str(getattr(obj, "path", "unknown"))
-    module = path.rsplit(".", 1)[0] if "." in path else path
-    return f"Defined in `{module}`."
+    if symbol == "__version__":
+        return "Public import: `from quater import __version__`."
+    return f"Public import: `from quater import {symbol}`."
 
 
 def class_signature(package: Any, symbol: str) -> str:

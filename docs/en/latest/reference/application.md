@@ -14,7 +14,7 @@ from quater import AppConfig, CORSConfig, Quater, RouteGroup
 
 ## Quater {#symbol-quater}
 
-Defined in `quater.app`.
+Public import: `from quater import Quater`.
 
 The application object.
 
@@ -133,7 +133,7 @@ operation.
 
 ## RouteGroup {#symbol-routegroup}
 
-Defined in `quater.groups`.
+Public import: `from quater import RouteGroup`.
 
 A compile-time group for related routes.
 
@@ -219,7 +219,7 @@ routes.
 
 ## AppConfig {#symbol-appconfig}
 
-Defined in `quater.config`.
+Public import: `from quater import AppConfig`.
 
 Immutable application configuration.
 
@@ -263,7 +263,7 @@ Fields:
 
 ## CORSConfig {#symbol-corsconfig}
 
-Defined in `quater.cors`.
+Public import: `from quater import CORSConfig`.
 
 Browser CORS policy.
 
@@ -295,7 +295,7 @@ Fields:
 
 ## __version__ {#symbol-version}
 
-Defined in `quater`.
+Public import: `from quater import __version__`.
 
 Installed Quater version.
 

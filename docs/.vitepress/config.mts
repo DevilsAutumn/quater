@@ -63,6 +63,7 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
         { text: 'Actions and CLI', link: `${version.base}actions` },
         { text: 'Testing', link: `${version.base}testing` },
         { text: 'Public API', link: `${version.base}api` },
+        { text: 'Stability', link: `${version.base}stability` },
         {
           text: 'Reference',
           collapsed: true,

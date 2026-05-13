@@ -9,6 +9,8 @@ If you are still learning the framework, start with the
 [Quickstart](/en/latest/quickstart) and then come back here for
 exact names and signatures.
 
+For import guarantees, read [Stability](/en/latest/stability).
+
 ## Pages
 
 | Page | Use it for |
@@ -22,8 +24,8 @@ exact names and signatures.
 
 ## Public Imports
 
-Use top-level imports for app code. Advanced internal modules can still
-change while Quater is pre-release.
+Use top-level imports for normal app code. These are the public
+symbols covered by Quater's compatibility promise.
 
 - **Application:** [`AppConfig`](./application#symbol-appconfig), [`CORSConfig`](./application#symbol-corsconfig), [`Quater`](./application#symbol-quater), [`RouteGroup`](./application#symbol-routegroup), [`__version__`](./application#symbol-version)
 - **Request:** [`Request`](./request#symbol-request)

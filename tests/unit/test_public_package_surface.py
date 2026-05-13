@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import importlib
 import importlib.resources
 import json
 import os
 import pathlib
+import pkgutil
 import re
 import subprocess
 import sys
@@ -25,6 +27,11 @@ from quater import (
     TestClient,
     TestResponse,
     ToolAuditEvent,
+)
+from quater._api_boundary import (
+    INTERNAL_SUBMODULES,
+    PUBLIC_API_SYMBOLS,
+    PUBLIC_SUBMODULES,
 )
 
 
@@ -71,34 +78,7 @@ print(json.dumps({
 
 
 def test_public_exports_are_intentionally_small() -> None:
-    assert quater.__all__ == [
-        "ActionApproval",
-        "AccessLogEvent",
-        "AccessLogHook",
-        "AppConfig",
-        "ApprovalRequest",
-        "AuthContext",
-        "AuthRequest",
-        "BytesResponse",
-        "CORSConfig",
-        "EmptyResponse",
-        "HTTPError",
-        "HTMLResponse",
-        "JSONResponse",
-        "Quater",
-        "RedirectResponse",
-        "Request",
-        "Response",
-        "RouteGroup",
-        "SignedCookieSigner",
-        "StreamResponse",
-        "MCPTestClient",
-        "TestClient",
-        "TestResponse",
-        "TextResponse",
-        "ToolAuditEvent",
-        "__version__",
-    ]
+    assert quater.__all__ == list(PUBLIC_API_SYMBOLS)
     assert quater.Quater is Quater
     assert quater.RouteGroup is RouteGroup
     assert not hasattr(quater, "App")
@@ -115,6 +95,27 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.TestClient is TestClient
     assert quater.TestResponse is TestResponse
     assert quater.ToolAuditEvent is ToolAuditEvent
+
+
+def test_top_level_submodules_are_intentionally_classified() -> None:
+    package_path = pathlib.Path(quater.__file__).parent
+    discovered = {
+        module.name
+        for module in pkgutil.iter_modules([str(package_path)])
+        if not module.name.startswith("_")
+    }
+
+    assert PUBLIC_SUBMODULES.isdisjoint(INTERNAL_SUBMODULES)
+    assert discovered == PUBLIC_SUBMODULES | INTERNAL_SUBMODULES
+
+
+def test_public_submodules_have_explicit_exports() -> None:
+    for module_name in sorted(PUBLIC_SUBMODULES):
+        module = importlib.import_module(f"quater.{module_name}")
+        exports = getattr(module, "__all__", None)
+        assert isinstance(exports, list)
+        assert exports
+        assert all(isinstance(name, str) for name in exports)
 
 
 def test_version_uses_pep440_compatible_shape() -> None:

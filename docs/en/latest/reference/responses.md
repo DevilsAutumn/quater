@@ -24,7 +24,7 @@ from quater import JSONResponse, RedirectResponse, StreamResponse
 
 ## Response {#symbol-response}
 
-Defined in `quater.response`.
+Public import: `from quater import Response`.
 
 Use this when you already have bytes and want full control.
 
@@ -49,7 +49,7 @@ Response(
 
 ## JSONResponse {#symbol-jsonresponse}
 
-Defined in `quater.response`.
+Public import: `from quater import JSONResponse`.
 
 Use this when you need explicit status or headers for JSON.
 
@@ -72,7 +72,7 @@ JSONResponse(
 
 ## TextResponse {#symbol-textresponse}
 
-Defined in `quater.response`.
+Public import: `from quater import TextResponse`.
 
 Use this for plain text.
 
@@ -97,7 +97,7 @@ TextResponse(
 
 ## HTMLResponse {#symbol-htmlresponse}
 
-Defined in `quater.response`.
+Public import: `from quater import HTMLResponse`.
 
 Use this for HTML.
 
@@ -120,7 +120,7 @@ HTMLResponse(
 
 ## BytesResponse {#symbol-bytesresponse}
 
-Defined in `quater.response`.
+Public import: `from quater import BytesResponse`.
 
 Use this for raw bytes.
 
@@ -145,7 +145,7 @@ BytesResponse(
 
 ## StreamResponse {#symbol-streamresponse}
 
-Defined in `quater.response`.
+Public import: `from quater import StreamResponse`.
 
 Use this for async byte streams.
 
@@ -170,7 +170,7 @@ StreamResponse(
 
 ## RedirectResponse {#symbol-redirectresponse}
 
-Defined in `quater.response`.
+Public import: `from quater import RedirectResponse`.
 
 Use this for redirects.
 
@@ -193,7 +193,7 @@ RedirectResponse(
 
 ## EmptyResponse {#symbol-emptyresponse}
 
-Defined in `quater.response`.
+Public import: `from quater import EmptyResponse`.
 
 Use this for responses with no body.
 

@@ -18,6 +18,8 @@ QueryParams: TypeAlias = Mapping[str, QueryValue] | QueryPairs
 RequestContent: TypeAlias = bytes | bytearray | memoryview | str
 JSONRPCID: TypeAlias = str | int
 
+__all__ = ["MCPTestClient", "TestClient", "TestResponse"]
+
 _MCP_PATH = "/mcp"
 _MCP_PROTOCOL_VERSION = "2025-11-25"
 

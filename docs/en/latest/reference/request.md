@@ -14,7 +14,7 @@ from quater import Request
 
 ## Request {#symbol-request}
 
-Defined in `quater.request`.
+Public import: `from quater import Request`.
 
 Transport-neutral request data.
 

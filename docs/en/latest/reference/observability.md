@@ -12,7 +12,7 @@ from quater import AccessLogEvent, AccessLogHook, ToolAuditEvent
 
 ## AccessLogEvent {#symbol-accesslogevent}
 
-Defined in `quater.observability`.
+Public import: `from quater import AccessLogEvent`.
 
 Structured event emitted after a request is handled.
 
@@ -55,7 +55,7 @@ expect JSON-like data.
 
 ## AccessLogHook {#symbol-accessloghook}
 
-Defined in `quater.observability`.
+Public import: `from quater import AccessLogHook`.
 
 Callable type for access-log hooks.
 
@@ -67,7 +67,7 @@ AccessLogHook = Callable[[AccessLogEvent], Awaitable[None]]
 
 ## ToolAuditEvent {#symbol-toolauditevent}
 
-Defined in `quater.tools.audit`.
+Public import: `from quater import ToolAuditEvent`.
 
 Structured event emitted for MCP tool calls.
 

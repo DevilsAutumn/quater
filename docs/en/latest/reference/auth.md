@@ -22,7 +22,7 @@ from quater import (
 
 ## AuthRequest {#symbol-authrequest}
 
-Defined in `quater.typing`.
+Public import: `from quater import AuthRequest`.
 
 Input passed to an auth hook.
 
@@ -48,7 +48,7 @@ Fields:
 
 ## AuthContext {#symbol-authcontext}
 
-Defined in `quater.typing`.
+Public import: `from quater import AuthContext`.
 
 Authenticated subject returned by an auth hook.
 
@@ -68,7 +68,7 @@ Fields:
 
 ## ApprovalRequest {#symbol-approvalrequest}
 
-Defined in `quater.typing`.
+Public import: `from quater import ApprovalRequest`.
 
 Input passed to the approval hook for protected tools and actions.
 
@@ -98,7 +98,7 @@ Fields:
 
 ## ActionApproval {#symbol-actionapproval}
 
-Defined in `quater.typing`.
+Public import: `from quater import ActionApproval`.
 
 Callable type for approval hooks.
 
@@ -111,7 +111,7 @@ ActionApproval = Callable[[ApprovalRequest], Awaitable[bool]]
 
 ## HTTPError {#symbol-httperror}
 
-Defined in `quater.exceptions`.
+Public import: `from quater import HTTPError`.
 
 Exception that becomes an HTTP-style error response.
 
@@ -130,7 +130,7 @@ HTTPError(detail: str | None = None, *, status_code: int | None = None)
 
 ## SignedCookieSigner {#symbol-signedcookiesigner}
 
-Defined in `quater.cookies`.
+Public import: `from quater import SignedCookieSigner`.
 
 HMAC signer for small cookie values.
 
