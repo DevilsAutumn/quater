@@ -101,7 +101,7 @@ route(
 | --- | --- | --- |
 | `method` | `str` | HTTP method. Only passed to `route()` or `add_route()`. |
 | `path` | `str` | Route path, such as `/orders/{order_id}`. |
-| `name` | `str \| None` | Stable operation name. Defaults to the handler name. |
+| `name` | `str \| None` | Operation name used in docs and exposed metadata. Defaults to the handler name. |
 | `description` | `str \| None` | Human text used by MCP tools, CLI actions, and docs. |
 | `tool` | `bool` | Expose this route as an MCP tool. |
 | `cli` | `bool` | Expose this route as a Quater CLI action. |
@@ -200,7 +200,7 @@ route(
 | --- | --- | --- |
 | `method` | `str` | HTTP method. Only passed to `route()` or `add_route()`. |
 | `path` | `str` | Group-relative route path, such as `/{order_id}`. |
-| `name` | `str \| None` | Stable operation name. Defaults to the handler name. |
+| `name` | `str \| None` | Operation name used in docs and exposed metadata. Defaults to the handler name. |
 | `description` | `str \| None` | Human text used by MCP tools, CLI actions, and docs. |
 | `tool` | `bool` | Expose this route as an MCP tool. |
 | `cli` | `bool` | Expose this route as a Quater CLI action. |

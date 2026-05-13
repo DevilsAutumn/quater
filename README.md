@@ -161,10 +161,10 @@ Dry run OK: get_order
 
 ## Current Status
 
-Quater is in its first alpha. The core is intentionally small: typed handlers,
+Quater is pre-release. The core is intentionally small: typed handlers,
 RSGI-first serving, generated docs, MCP tools, CLI actions, explicit auth, and
-security defaults. The public import boundary is documented, but the API is
-still pre-release, so some names may change before the first stable version.
+security defaults. The public import boundary is documented, but some names may
+still change while the API settles.
 
 ## Read Next
 

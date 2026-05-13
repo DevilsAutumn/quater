@@ -1,7 +1,7 @@
 # Public API
 
-This is the surface Quater expects users to import for the first release.
-Everything else can still move while the framework is pre-release.
+This is the surface Quater expects application code to use during the current
+pre-release. Everything else can still move while the framework settles.
 
 This page explains the public surface in human terms. For generated signatures
 and class members, use the [Reference](/en/latest/reference/).
@@ -59,7 +59,7 @@ The snippet assumes you already defined `authenticate` and `log_access`. For an
 app with no MCP tools, omit `mcp_auth`. For an app with no CLI actions, omit
 `cli_auth`.
 
-Stable constructor options:
+Documented constructor options:
 
 - `name`
 - `config`
@@ -112,7 +112,7 @@ Available decorators:
 - `app.delete`
 - `app.route`
 
-Stable decorator options:
+Documented decorator options:
 
 - `name`
 - `description`
@@ -160,7 +160,7 @@ async def get_order(order_id: str) -> dict[str, str]:
 app.include(orders)
 ```
 
-Stable group constructor options:
+Documented group constructor options:
 
 - `prefix`
 - `tags`

@@ -1,45 +1,41 @@
 # Stability
 
-Quater is still in alpha, so the rules here matter. They explain which parts of
-the framework you can build on, and which parts are still free for Quater to
-change while the internals settle.
+Quater is in pre-release phase. That does not mean every piece is experimental,
+but it does mean the project is still young enough to fix names, defaults, and
+contracts before they become hard to change.
 
-## Public Import API
+This page explains what to rely on today, and what to avoid building against.
 
-For application code, import from `quater`:
+## What To Import
+
+For normal application code, import from `quater`:
 
 ```python
-from quater import AuthContext, AuthRequest, JSONResponse, Quater, Request
+from quater import AuthContext, AuthRequest, Quater, Request
 ```
 
-The names exported by `quater.__all__` are the public Python API. Those names are
-what the [Reference](/en/latest/reference/) documents.
+The [Public API](/en/latest/api) page is the source of truth for the documented
+import surface. If a guide imports a name from `quater`, that is the path you
+should copy into your app.
 
-Quater also keeps a few compatibility modules public for advanced typing and
-server integration:
+Some compatibility modules are also documented for specific cases:
 
-| Module | Use it when |
-| --- | --- |
-| `quater.adapters` | You need an explicit `ASGIAdapter`, `RSGIAdapter`, or `WSGIAdapter`. Most apps use `app.asgi`, `app.rsgi`, or `app.wsgi` instead. |
-| `quater.exceptions` | You need to catch a specific framework exception. |
-| `quater.testing` | You prefer importing `TestClient` from the testing module instead of the top-level package. |
-| `quater.typing` | You need hook aliases such as `Authenticate`, `LifespanHook`, or `RequestContext`. |
-| `quater.types` | Backward-compatible typing aliases. Prefer `quater.typing` in new code. |
+- `quater.adapters` for explicit ASGI, RSGI, or WSGI adapter classes.
+- `quater.exceptions` when you need to catch a framework exception.
+- `quater.testing` if you prefer importing test clients from the testing module.
+- `quater.typing` for hook aliases and request context types.
 
-::: tip
-If a guide or reference page imports a name from `quater`, that import path is
-the one to copy into your app.
-:::
+Those modules are okay to use when the docs point you there. For everyday app
+code, the top-level package should be enough.
 
-## Internal Modules
+## What Is Internal
 
-Anything else under `quater.*` is internal unless a page says otherwise. That
-includes modules such as `quater.app`, `quater.router`, `quater.actions`,
-`quater.protocol`, `quater.docs`, and `quater.tools.registry`.
+Most modules under `quater.*` are framework internals. Examples include
+`quater.app`, `quater.router`, `quater.actions`, `quater.protocol`,
+`quater.docs`, and `quater.tools.registry`.
 
-Those modules exist because the framework needs them, but they are not extension
-points. They may move, change shape, or disappear before Quater reaches a stable
-release.
+They exist because Quater needs structure internally, not because they are meant
+to be extension points. They may move or change while the framework settles.
 
 Use this:
 
@@ -56,37 +52,30 @@ from quater.request import Request
 
 ## Versioning
 
-Quater follows semantic versioning once it reaches `1.0.0`.
+For now, pin the Quater version you are using and read the release notes before
+upgrading. Breaking changes should be rare and intentional, but they are still
+possible while the API is being shaped.
 
-Before `1.0.0`, breaking changes can happen in minor or alpha releases, but they
-should be called out in release notes and kept focused. The goal is to fix bad
-names and weak contracts early, not to surprise people for no reason.
+After `1.0`, version numbers should mean the usual thing: patch releases fix
+bugs, minor releases add compatible features, and major releases carry breaking
+changes.
 
-After `1.0.0`:
+## CLI And Remote Protocol
 
-- patch releases fix bugs without breaking public APIs.
-- minor releases add public APIs without breaking existing ones.
-- major releases are the place for breaking changes.
+The `quater` command is user-facing. Documented commands should stay familiar,
+even if new options are added over time.
 
-## Experimental APIs
-
-Quater does not currently expose experimental Python APIs as stable imports. If
-an experimental API is added later, it should be documented as experimental and
-kept out of the normal stability promise until it graduates.
-
-Internal modules are not experimental APIs. They are private framework code.
-
-## Command Line and Protocol Paths
-
-The `quater` command is public user interface. Commands may grow new options,
-but existing documented commands should stay compatible unless a release note
-clearly says otherwise.
-
-The remote action endpoints are implementation details of the Quater CLI:
+The remote action endpoints are different:
 
 - `/.well-known/quater-actions.json`
 - `/__quater__/actions/call`
 
-Use the CLI instead of writing third-party clients against those paths for now.
-The protocol can become a formal public contract later, but it should not be
-treated as one during the alpha.
+They are used by the Quater CLI, but they are not yet a standalone public
+protocol for third-party clients. Use `quater actions ...` and `quater call ...`
+instead of writing directly against those URLs.
+
+## Practical Rule
+
+If it appears in a guide, the public API page, or the reference, it is something
+you can try in application code today. If you had to discover it by opening an
+internal module, treat it as private.

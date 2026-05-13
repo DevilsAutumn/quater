@@ -106,7 +106,7 @@ workflow.
 
 8. [Stability](/en/latest/stability)
    Understand which imports are public, which modules are internal, and how
-   Quater handles compatibility while it is still alpha.
+   Quater handles compatibility while it is pre-release.
 
 9. [Reference](/en/latest/reference/)
    Look up generated signatures and public objects after you know which part of

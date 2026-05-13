@@ -251,7 +251,12 @@ QUATER_OPTIONS: tuple[tuple[str, str, str], ...] = (
 ROUTE_OPTIONS: tuple[tuple[str, str, str], ...] = (
     ("method", "str", "HTTP method. Only passed to `route()` or `add_route()`."),
     ("path", "str", "Route path, such as `/orders/{order_id}`."),
-    ("name", "str | None", "Stable operation name. Defaults to the handler name."),
+    (
+        "name",
+        "str | None",
+        "Operation name used in docs and exposed metadata. "
+        "Defaults to the handler name.",
+    ),
     (
         "description",
         "str | None",
@@ -279,7 +284,12 @@ ROUTE_OPTIONS: tuple[tuple[str, str, str], ...] = (
 GROUP_ROUTE_OPTIONS: tuple[tuple[str, str, str], ...] = (
     ("method", "str", "HTTP method. Only passed to `route()` or `add_route()`."),
     ("path", "str", "Group-relative route path, such as `/{order_id}`."),
-    ("name", "str | None", "Stable operation name. Defaults to the handler name."),
+    (
+        "name",
+        "str | None",
+        "Operation name used in docs and exposed metadata. "
+        "Defaults to the handler name.",
+    ),
     (
         "description",
         "str | None",
