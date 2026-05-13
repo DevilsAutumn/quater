@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
+from quater._state import State
 from quater.datastructures import Cookies, HeaderItems, Headers, QueryParams
 from quater.exceptions import PayloadTooLargeError
 from quater.typing import AuthContext, RequestContext
+
+if TYPE_CHECKING:
+    from quater.app import Quater
 
 BodyReader: TypeAlias = Callable[[], Awaitable[bytes]]
 RequestBody: TypeAlias = bytes | BodyReader | None
@@ -24,6 +28,7 @@ class Request:
     """
 
     __slots__ = (
+        "app",
         "client",
         "context",
         "max_body_size",
@@ -39,6 +44,7 @@ class Request:
         "_raw_headers",
         "_raw_query_string",
         "_query",
+        "_state",
     )
 
     def __init__(
@@ -53,11 +59,13 @@ class Request:
         auth: AuthContext | None = None,
         client: str | None = None,
         context: RequestContext | None = None,
+        app: Quater | None = None,
         max_body_size: int | None = None,
     ) -> None:
         self.method = method.upper()
         self.path = path
         self.scheme = scheme.lower()
+        self.app = app
         self.client = client
         self.context = context or RequestContext()
         self.max_body_size = max_body_size
@@ -70,6 +78,7 @@ class Request:
         self._cookies: Cookies | None = None
         self._body_cache: bytes | object = _UNSET
         self._json_cache: Any = _UNSET
+        self._state: State | None = None
 
     @property
     def headers(self) -> Headers:
@@ -96,6 +105,14 @@ class Request:
     @auth.setter
     def auth(self, value: AuthContext | None) -> None:
         self._auth = value
+
+    @property
+    def state(self) -> State:
+        state = self._state
+        if state is None:
+            state = State()
+            self._state = state
+        return state
 
     async def body(self) -> bytes:
         if self._body_cache is _UNSET:

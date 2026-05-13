@@ -7,9 +7,11 @@ from quater import (
     BytesResponse,
     EmptyResponse,
     JSONResponse,
+    Quater,
     RedirectResponse,
     Request,
     Response,
+    State,
     StreamResponse,
     TextResponse,
 )
@@ -30,6 +32,8 @@ request = Request(
     auth=AuthContext(subject="user_1"),
     context=RequestContext(source="mcp", tool_name="get_user"),
 )
+app = Quater()
+attached_request = Request(method="GET", path="/", app=app)
 
 
 async def chunks() -> AsyncIterator[bytes]:
@@ -38,6 +42,9 @@ async def chunks() -> AsyncIterator[bytes]:
 
 assert_type(request.method, str)
 assert_type(request.path, str)
+assert_type(request.app, Quater | None)
+assert_type(request.state, State)
+assert_type(attached_request.app, Quater | None)
 assert_type(request.auth, AuthContext | None)
 assert_type(request.context, RequestContext)
 assert_type(

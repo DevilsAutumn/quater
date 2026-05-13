@@ -274,9 +274,12 @@ def make_app(auth_subjects: list[str], handler_calls: list[str]) -> Quater:
         return AuthContext(subject=subject)
 
     app = Quater(allowed_hosts=["api.example.com"])
+    app.state.transport_marker = "shared"
 
     @app.get("/me", auth=authenticate)
     async def me(request: Request) -> dict[str, str]:
+        assert request.app is app
+        assert request.app.state.transport_marker == "shared"
         assert request.auth is not None
         handler_calls.append(request.auth.subject)
         return {"subject": request.auth.subject}

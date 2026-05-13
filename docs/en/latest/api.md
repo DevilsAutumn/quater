@@ -36,6 +36,7 @@ from quater import (
     Response,
     RouteGroup,
     SignedCookieSigner,
+    State,
     StreamResponse,
     TestClient,
     TestResponse,
@@ -98,6 +99,11 @@ Before deploying through a server command that does not use `quater run`, call
 fails fast on unsafe production settings such as `debug=True`, disabled
 security, or missing `allowed_hosts`. See [Deployment](/en/latest/deployment)
 for server examples.
+
+Use [`app.state`](/en/latest/reference/request#symbol-state) for application
+resources that should live as long as the app instance, such as database pools,
+cache clients, or SDK clients created in startup hooks. Do not put per-request
+values there; use `request.state` for that.
 
 ## Routes
 
@@ -302,7 +308,7 @@ the feature-level policy that protects the HTTP endpoint.
 ## Request And Context
 
 Use [`Request`](/en/latest/reference/request#symbol-request) when the handler
-needs headers, body access, auth, or the call source.
+needs headers, body access, auth, app state, or the call source.
 
 ```python
 @app.get("/whoami")
@@ -312,6 +318,25 @@ async def whoami(request: Request) -> dict[str, object]:
         "entrypoint": request.context.entrypoint,
         "tool": request.context.tool_name,
     }
+```
+
+`request.app` is the [`Quater`](/en/latest/reference/application#symbol-quater)
+instance handling the request. It is set by Quater before auth, middleware, and
+the handler run, including MCP tool calls and CLI actions.
+
+Use [`request.state`](/en/latest/reference/request#symbol-state) for values that
+belong to one request:
+
+```python
+@app.before_request
+async def attach_trace(request: Request) -> Response | None:
+    request.state.trace_id = request.context.request_id
+    return None
+
+
+@app.get("/trace")
+async def trace(request: Request) -> dict[str, object]:
+    return {"trace_id": request.state.trace_id}
 ```
 
 `request.context.source` is:

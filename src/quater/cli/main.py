@@ -129,6 +129,7 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
                 entrypoint="local",
                 action_name=action.name,
             ),
+            app=app,
         )
         approval_token = _non_empty_approval(namespace.approval)
         if namespace.dry_run:
@@ -363,6 +364,7 @@ async def _authenticate_actions_request(
         path=ACTIONS_RPC_PATH,
         headers=headers,
         context=RequestContext(source="cli", entrypoint="local"),
+        app=app,
     )
     await authenticate_request(app.cli_auth, request)
 

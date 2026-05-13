@@ -71,6 +71,12 @@ Quater(
 | `openapi_path` | `str \| None` | OpenAPI JSON path. `None` disables it. |
 | `request_id_header` | `str \| None` | Correlation header name. `None` disables it. |
 
+### App state
+
+`app.state` is a [`State`](./request#symbol-state) container for
+resources that belong to the app instance. It is available from
+handlers as `request.app.state`.
+
 ### Route decorators
 
 Use decorators for normal route registration. `get`, `post`, `put`,

@@ -1,6 +1,7 @@
 """Public package surface for Quater."""
 
 from quater._parameters import Body, Cookie, Header, Path, Query
+from quater._state import State
 from quater.app import Quater
 from quater.config import AppConfig
 from quater.cookies import SignedCookieSigner
@@ -51,6 +52,7 @@ __all__ = [
     "Response",
     "RouteGroup",
     "SignedCookieSigner",
+    "State",
     "StreamResponse",
     "MCPTestClient",
     "TestClient",

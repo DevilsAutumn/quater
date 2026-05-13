@@ -9,7 +9,7 @@ For simple path/query/body parameters, let Quater bind the function
 arguments directly instead.
 
 ```python
-from quater import Request
+from quater import Request, State
 ```
 
 ## Request {#symbol-request}
@@ -33,6 +33,7 @@ Request(
     auth: AuthContext | None = None,
     client: str | None = None,
     context: RequestContext | None = None,
+    app: Quater | None = None,
     max_body_size: int | None = None,
 )
 ```
@@ -50,6 +51,7 @@ Request(
 | `auth` | [`AuthContext`](/en/latest/reference/auth#symbol-authcontext) \| None | Initial auth context. Most apps let route auth set this. |
 | `client` | `str \| None` | Client address when available. |
 | `context` | [`RequestContext`](/en/latest/reference/request#call-context) \| None | Call-source context. Quater creates a default when omitted. |
+| `app` | [`Quater`](/en/latest/reference/application#symbol-quater) \| None | Application handling the request. Quater sets this at the app boundary. |
 | `max_body_size` | `int \| None` | Optional body-size limit for this request. |
 
 In normal app code, Quater creates the request and passes it to your
@@ -65,6 +67,37 @@ Most handlers use `request.headers`, `request.query`, `request.cookies`,
 Helper objects such as [`Headers`](#headers),
 [`QueryParams`](#queryparams), and [`Cookies`](#cookies) are not
 top-level public imports. Treat them as read-only request views.
+
+## State {#symbol-state}
+
+Public import: `from quater import State`.
+
+Attribute storage for application and request-local state.
+
+`app.state` is shared by the application instance. Use it for
+resources created at startup, such as database pools or clients.
+`request.state` is created fresh for each request and is useful for
+middleware that needs to pass values to handlers.
+
+```python
+State()
+```
+
+Keep per-request data on `request.state`, not `app.state`. If you
+store shared objects on `app.state`, make sure those objects are safe
+for your concurrency and deployment model.
+
+```python
+@app.on_startup
+async def startup() -> None:
+    app.state.db = await open_database_pool()
+
+@app.get("/users/{id}")
+async def get_user(id: str, request: Request) -> dict[str, object]:
+    assert request.app is not None
+    user = await request.app.state.db.fetch_user(id)
+    return {"id": user.id}
+```
 
 ## Call Context
 
@@ -160,6 +193,8 @@ subject = request.auth.subject if request.auth else None
 
 | Name | Meaning |
 | --- | --- |
+| <span id="type-state"></span>[`State`](/en/latest/reference/request#symbol-state) | Attribute container exposed as `app.state` and `request.state`. |
+| <span id="type-quater"></span>[`Quater`](/en/latest/reference/application#symbol-quater) | Application object available as `request.app` after a request enters an app. |
 | <span id="type-headeritems"></span>`HeaderItems` | `(name, value)` header pairs. Names and values may be `str` or `bytes`. |
 | <span id="type-requestbody"></span>`RequestBody` | `bytes`, an async body reader, or `None`. App handlers usually use `await request.body()`. |
 | <span id="type-authcontext"></span>[`AuthContext`](/en/latest/reference/auth#symbol-authcontext) | Auth result returned by a route auth hook. See [AuthContext](./auth#symbol-authcontext). |

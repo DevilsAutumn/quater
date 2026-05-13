@@ -47,8 +47,8 @@ PAGES: tuple[ReferencePage, ...] = (
     ReferencePage(
         slug="request",
         title="Request",
-        description="Request data passed to handlers.",
-        symbols=("Request",),
+        description="Request data and state passed through handlers.",
+        symbols=("Request", "State"),
     ),
     ReferencePage(
         slug="parameters",
@@ -193,6 +193,11 @@ REQUEST_CONSTRUCTOR_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "context",
         "RequestContext | None",
         "Call-source context. Quater creates a default when omitted.",
+    ),
+    (
+        "app",
+        "Quater | None",
+        "Application handling the request. Quater sets this at the app boundary.",
     ),
     ("max_body_size", "int | None", "Optional body-size limit for this request."),
 )
@@ -704,6 +709,12 @@ def render_application(package: Any) -> str:
     )
     lines.extend(
         [
+            "### App state",
+            "",
+            "`app.state` is a [`State`](./request#symbol-state) container for",
+            "resources that belong to the app instance. It is available from",
+            "handlers as `request.app.state`.",
+            "",
             "### Route decorators",
             "",
             "Use decorators for normal route registration. `get`, `post`, `put`,",
@@ -893,7 +904,7 @@ def render_request(package: Any) -> str:
             "arguments directly instead.",
             "",
             "```python",
-            "from quater import Request",
+            "from quater import Request, State",
             "```",
             "",
         ]
@@ -933,10 +944,39 @@ def render_request(package: Any) -> str:
             "Helper objects such as [`Headers`](#headers),",
             "[`QueryParams`](#queryparams), and [`Cookies`](#cookies) are not",
             "top-level public imports. Treat them as read-only request views.",
+            "",
         ]
     )
+    symbol_intro(
+        lines,
+        package,
+        "State",
+        "Attribute storage for application and request-local state.",
+        [
+            "`app.state` is shared by the application instance. Use it for",
+            "resources created at startup, such as database pools or clients.",
+            "`request.state` is created fresh for each request and is useful for",
+            "middleware that needs to pass values to handlers.",
+        ],
+    )
+    lines.extend(signature_block("State()"))
     lines.extend(
         [
+            "Keep per-request data on `request.state`, not `app.state`. If you",
+            "store shared objects on `app.state`, make sure those objects are safe",
+            "for your concurrency and deployment model.",
+            "",
+            "```python",
+            "@app.on_startup",
+            "async def startup() -> None:",
+            "    app.state.db = await open_database_pool()",
+            "",
+            '@app.get("/users/{id}")',
+            "async def get_user(id: str, request: Request) -> dict[str, object]:",
+            "    assert request.app is not None",
+            "    user = await request.app.state.db.fetch_user(id)",
+            '    return {"id": user.id}',
+            "```",
             "",
             "## Call Context",
             "",
@@ -1041,6 +1081,15 @@ def render_request(package: Any) -> str:
     lines.extend(
         type_section(
             (
+                (
+                    "State",
+                    "Attribute container exposed as `app.state` and `request.state`.",
+                ),
+                (
+                    "Quater",
+                    "Application object available as `request.app` after a "
+                    "request enters an app.",
+                ),
                 (
                     "HeaderItems",
                     "`(name, value)` header pairs. Names and values may be "

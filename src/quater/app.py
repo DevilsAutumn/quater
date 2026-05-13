@@ -8,6 +8,7 @@ from contextlib import suppress
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
+from quater._state import State
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
 from quater.actions.descriptions import resolve_action_description
 from quater.actions.executor import execute_action, preflight_action
@@ -116,6 +117,7 @@ class Quater:
         "mcp_audit",
         "mcp_auth",
         "name",
+        "state",
         "_action_registry",
         "_asgi_adapter",
         "_lifespan",
@@ -172,6 +174,7 @@ class Quater:
         self.cli_auth = cli_auth
         self.mcp_audit = mcp_audit
         self.mcp_auth = mcp_auth
+        self.state = State()
         self._action_registry: ActionRegistry | None = None
         self._asgi_adapter: ASGIAdapter | None = None
         self._lifespan = LifespanManager()
@@ -668,6 +671,7 @@ class Quater:
 
     async def _handle_request(self, request: Request) -> Response:
         started_at = time.perf_counter()
+        request.app = self
         ensure_request_id(request, self.config)
         context = resolve_request_security_context(request, self.config)
         is_mcp_request = request.path == MCP_PATH

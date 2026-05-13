@@ -202,6 +202,7 @@ async def prepare_action_call(
         client=request.client,
         max_body_size=request.max_body_size,
         context=context,
+        app=request.app,
     )
 
     surface_authenticated = False
@@ -424,6 +425,7 @@ def _request_with_action_headers(
         auth=request.auth,
         client=request.client,
         context=request.context,
+        app=request.app,
         max_body_size=request.max_body_size,
     )
 

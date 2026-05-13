@@ -30,6 +30,7 @@ PUBLIC_API_SYMBOLS: Final[tuple[str, ...]] = (
     "Response",
     "RouteGroup",
     "SignedCookieSigner",
+    "State",
     "StreamResponse",
     "MCPTestClient",
     "TestClient",

@@ -30,6 +30,7 @@ from quater import (
     Query,
     RouteGroup,
     SignedCookieSigner,
+    State,
     TestClient,
     TestResponse,
     ToolAuditEvent,
@@ -103,6 +104,7 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.CORSConfig is CORSConfig
     assert quater.ImproperlyConfigured is ImproperlyConfigured
     assert quater.SignedCookieSigner is SignedCookieSigner
+    assert quater.State is State
     assert quater.MCPTestClient is MCPTestClient
     assert quater.TestClient is TestClient
     assert quater.TestResponse is TestResponse
