@@ -101,7 +101,8 @@ async def create_user(user: UserIn) -> dict[str, object]:
 
 ## Route Groups
 
-Once an app grows past a few routes, move related routes into a `RouteGroup`.
+Once an app grows past a few routes, move related routes into a
+[`RouteGroup`](/en/latest/reference/application#symbol-routegroup).
 Groups are a compile-time structure: Quater flattens the prefix, tags, auth,
 metadata, and middleware into normal route definitions when you include the
 group.
@@ -247,7 +248,8 @@ Handlers can return plain values or response objects:
 - `str` becomes text.
 - `bytes` becomes bytes.
 - `None` becomes `204 No Content`.
-- `Response` subclasses are returned directly.
+- [`Response`](/en/latest/reference/responses#symbol-response) subclasses are
+  returned directly.
 
 ## Adapters
 

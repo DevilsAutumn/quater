@@ -13,7 +13,11 @@ ResponseBody: TypeAlias = bytes | bytearray | memoryview
 
 
 class Response:
-    """HTTP response data independent of any server protocol."""
+    """Explicit response with bytes, status, and headers.
+
+    Server adapters read this object after a handler finishes. Most handlers
+    can return plain Python values and let Quater convert them automatically.
+    """
 
     __slots__ = ("body", "headers", "status_code")
 
@@ -41,7 +45,11 @@ class Response:
 
 
 class JSONResponse(Response):
-    """JSON response serialized with msgspec."""
+    """Explicit JSON response serialized with msgspec.
+
+    Use this when a JSON handler needs a custom status code or response
+    headers.
+    """
 
     def __init__(
         self,
@@ -61,7 +69,11 @@ class JSONResponse(Response):
 
 
 class TextResponse(Response):
-    """UTF-8 text response."""
+    """UTF-8 text response.
+
+    Use this when a handler should return text with explicit status or headers.
+    Plain ``str`` return values are converted to this response automatically.
+    """
 
     def __init__(
         self,
@@ -80,7 +92,11 @@ class TextResponse(Response):
 
 
 class HTMLResponse(TextResponse):
-    """UTF-8 HTML response."""
+    """UTF-8 HTML response.
+
+    Use this for small HTML responses such as generated docs pages or simple
+    browser-facing endpoints.
+    """
 
     def __init__(
         self,
@@ -98,7 +114,11 @@ class HTMLResponse(TextResponse):
 
 
 class BytesResponse(Response):
-    """Raw byte response."""
+    """Raw byte response.
+
+    Use this for bytes-like values when you need explicit headers, status, or a
+    content type. Plain ``bytes`` return values are converted automatically.
+    """
 
     def __init__(
         self,
@@ -117,7 +137,11 @@ class BytesResponse(Response):
 
 
 class StreamResponse(Response):
-    """Response backed by an async byte iterator."""
+    """Response backed by an async byte iterator.
+
+    Use this when the body should be yielded chunk by chunk instead of stored as
+    one byte string before the response starts.
+    """
 
     __slots__ = ("body_iterator",)
 
@@ -143,7 +167,11 @@ class StreamResponse(Response):
 
 
 class RedirectResponse(Response):
-    """Redirect response with a Location header."""
+    """Redirect response with a ``Location`` header.
+
+    The default status is ``307`` so the request method is preserved unless you
+    choose another redirect status.
+    """
 
     def __init__(
         self,
@@ -157,7 +185,11 @@ class RedirectResponse(Response):
 
 
 class EmptyResponse(Response):
-    """Response with no body."""
+    """Response with no body.
+
+    This is the explicit form of returning ``None`` from a handler, which Quater
+    converts into a ``204 No Content`` response.
+    """
 
     def __init__(
         self,

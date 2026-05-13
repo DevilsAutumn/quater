@@ -3,9 +3,10 @@
 Quater tests should prove the behavior your app promises, not just that a route
 returns `200`.
 
-Use `TestClient` when you want to call a Quater app in process. It runs through
-the same request handling path as the framework, but it does not start Granian,
-ASGI, WSGI, or a listening port.
+Use [`TestClient`](/en/latest/reference/testing#symbol-testclient) when you want
+to call a Quater app in process. It runs through the same request handling path
+as the framework, but it does not start Granian, ASGI, WSGI, or a listening
+port.
 
 ```python
 from quater import Quater, TestClient
@@ -52,7 +53,7 @@ Most Quater tests should follow this shape:
 
 1. Create a small app for the scenario.
 2. Register only the route and hooks needed for the behavior.
-3. Call the route with `TestClient`.
+3. Call the route with [`TestClient`](/en/latest/reference/testing#symbol-testclient).
 4. Assert the observable result and the important side effect.
 
 ```python
@@ -201,8 +202,9 @@ already touched data.
 
 ## Cookies
 
-`TestClient` keeps a small cookie jar. Cookies returned by one response are sent
-with later requests from the same client.
+[`TestClient`](/en/latest/reference/testing#symbol-testclient) keeps a small
+cookie jar. Cookies returned by one response are sent with later requests from
+the same client.
 
 ```python
 import pytest
@@ -315,8 +317,10 @@ async def missing() -> dict[str, bool]:
 
 ## Streams
 
-The test client collects `StreamResponse` bodies into `response.body`. That keeps
-tests simple while still running the streaming response path.
+The test client collects
+[`StreamResponse`](/en/latest/reference/responses#symbol-streamresponse) bodies
+into `response.body`. That keeps tests simple while still running the streaming
+response path.
 
 ```python
 from collections.abc import AsyncIterator
@@ -348,8 +352,10 @@ async def test_stream_response() -> None:
 ## MCP Tools
 
 Routes exposed with `tool=True` can be tested through `client.mcp`.
-`client.mcp` is an `MCPTestClient` created by `TestClient`; you usually do not
-need to instantiate it yourself.
+`client.mcp` is an
+[`MCPTestClient`](/en/latest/reference/testing#symbol-mcptestclient) created by
+[`TestClient`](/en/latest/reference/testing#symbol-testclient); you usually do
+not need to instantiate it yourself.
 
 This is the right place to test MCP auth, origin checks, argument binding, and
 the JSON-RPC shape the client sees.
@@ -451,7 +457,7 @@ test that catches real bugs.
 
 ## Reference
 
-`TestClient` accepts:
+[`TestClient`](/en/latest/reference/testing#symbol-testclient) accepts:
 
 - `host`
 - `scheme`
@@ -483,8 +489,9 @@ MCP helpers live under `client.mcp`:
 - `tools_call(...)`
 - `request(...)`
 
-`client.mcp` is an `MCPTestClient`. It is exported for typing and advanced
-tests, but the normal pattern is still:
+`client.mcp` is an
+[`MCPTestClient`](/en/latest/reference/testing#symbol-mcptestclient). It is
+exported for typing and advanced tests, but the normal pattern is still:
 
 ```python
 client = TestClient(app)

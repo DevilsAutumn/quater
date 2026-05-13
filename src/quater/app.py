@@ -100,7 +100,12 @@ if TYPE_CHECKING:
 
 
 class Quater:
-    """Central Quater application object."""
+    """Application object that owns routes, configuration, and adapters.
+
+    Create one instance per app. Register normal HTTP routes with decorators,
+    and opt selected routes into MCP tools or Quater CLI actions with
+    ``tool=True`` and ``cli=True``.
+    """
 
     __slots__ = (
         "action_approval",

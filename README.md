@@ -184,6 +184,7 @@ the first stable version.
 - [MCP](docs/en/latest/mcp.md)
 - [Security](docs/en/latest/security.md)
 - [Public API](docs/en/latest/api.md)
+- [Reference](docs/en/latest/reference/index.md)
 
 ## Working On Quater
 
@@ -201,6 +202,7 @@ Docs use VitePress:
 
 ```bash
 npm install
+npm run docs:reference
 npm run docs:dev
 npm run docs:build
 ```

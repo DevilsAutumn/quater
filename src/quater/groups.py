@@ -27,7 +27,12 @@ HandlerT = TypeVar("HandlerT", bound=Handler)
 
 
 class RouteGroup:
-    """Compile-time group for routes that share a prefix and policy."""
+    """Compile-time group for routes that share prefix, metadata, and policy.
+
+    Use groups to organize feature areas without adding another router to the
+    request path. Quater flattens a group into normal route definitions when
+    the group is included in the app.
+    """
 
     __slots__ = (
         "auth",

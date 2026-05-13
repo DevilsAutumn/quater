@@ -23,7 +23,11 @@ _MCP_PROTOCOL_VERSION = "2025-11-25"
 
 
 class TestResponse:
-    """Response returned by Quater's in-process test client."""
+    """Collected response returned by ``TestClient``.
+
+    It stores status, headers, and the full body bytes. Streaming responses are
+    consumed into ``body`` so tests can assert them without running a server.
+    """
 
     __test__: ClassVar[bool] = False
     __slots__ = ("body", "headers", "status_code")
@@ -54,7 +58,12 @@ class TestResponse:
 
 
 class TestClient:
-    """Async in-process client for testing a Quater app without a server."""
+    """Async in-process client for testing a Quater app.
+
+    Requests go through ``Quater.handle()`` without a socket, so tests exercise
+    routing, middleware, auth, cookies, lifespan, response conversion, and MCP
+    helpers quickly.
+    """
 
     __test__: ClassVar[bool] = False
     __slots__ = (
@@ -283,7 +292,12 @@ class TestClient:
 
 
 class MCPTestClient:
-    """Small MCP JSON-RPC helper bound to a TestClient."""
+    """JSON-RPC helper for testing Quater MCP tools.
+
+    Access it as ``client.mcp`` from ``TestClient``. It sends ``initialize``,
+    ``tools/list``, ``tools/call``, and custom payloads through the same
+    ``/mcp`` path as a real client.
+    """
 
     __test__: ClassVar[bool] = False
     __slots__ = ("_client",)

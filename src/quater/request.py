@@ -16,7 +16,12 @@ _UNSET = object()
 
 
 class Request:
-    """Transport-neutral HTTP request data."""
+    """Normalized request data passed to handlers.
+
+    Quater creates this object after server, MCP, or CLI input has entered the
+    framework. Use it when a handler needs headers, cookies, raw body access,
+    auth context, or call-source metadata.
+    """
 
     __slots__ = (
         "client",

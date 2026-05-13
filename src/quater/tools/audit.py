@@ -9,6 +9,12 @@ from typing import TypeAlias
 
 @dataclass(slots=True, frozen=True)
 class ToolAuditEvent:
+    """Structured event emitted after an MCP tool call.
+
+    Tool arguments are redacted before this object reaches user code. Use it
+    for audit logging and visibility, not for authorization decisions.
+    """
+
     tool_name: str
     subject: str | None
     success: bool

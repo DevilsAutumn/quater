@@ -63,6 +63,22 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
         { text: 'Actions and CLI', link: `${version.base}actions` },
         { text: 'Testing', link: `${version.base}testing` },
         { text: 'Public API', link: `${version.base}api` },
+        {
+          text: 'Reference',
+          collapsed: true,
+          items: [
+            { text: 'Overview', link: `${version.base}reference/` },
+            { text: 'Application', link: `${version.base}reference/application` },
+            { text: 'Request', link: `${version.base}reference/request` },
+            { text: 'Responses', link: `${version.base}reference/responses` },
+            { text: 'Auth and Security', link: `${version.base}reference/auth` },
+            {
+              text: 'Observability',
+              link: `${version.base}reference/observability`,
+            },
+            { text: 'Testing', link: `${version.base}reference/testing` },
+          ],
+        },
         { text: 'MCP', link: `${version.base}mcp` },
         { text: 'Security', link: `${version.base}security` },
       ],
@@ -87,6 +103,7 @@ const nav: DefaultTheme.NavItem[] = [
   { text: 'Guide', link: `${latestBase}quickstart` },
   { text: 'CLI', link: `${latestBase}actions` },
   { text: 'API', link: `${latestBase}api` },
+  { text: 'Reference', link: `${latestBase}reference/` },
   { text: 'MCP', link: `${latestBase}mcp` },
   {
     text: 'Version',

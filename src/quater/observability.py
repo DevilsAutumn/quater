@@ -20,7 +20,11 @@ _MAX_REQUEST_ID_LENGTH = 128
 
 @dataclass(slots=True, frozen=True)
 class AccessLogEvent:
-    """Structured access-log data emitted after a request is handled."""
+    """Structured access-log event emitted after a server request.
+
+    The event contains route-level metadata useful for logs and metrics. It
+    does not include request bodies, request headers, or query-string values.
+    """
 
     request_id: str
     method: str

@@ -13,7 +13,12 @@ _DEFAULT_METHODS = ("DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT")
 
 @dataclass(slots=True, frozen=True)
 class CORSConfig:
-    """Validated CORS settings."""
+    """Validated browser CORS settings.
+
+    CORS decides which browser origins may read responses from your app. It is
+    not an authentication layer; protect routes, MCP tools, and CLI actions
+    with their auth hooks.
+    """
 
     allowed_origins: tuple[str, ...]
     allowed_methods: tuple[str, ...] = _DEFAULT_METHODS

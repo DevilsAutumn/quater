@@ -21,7 +21,12 @@ def _empty_metadata() -> Mapping[str, object]:
 
 @dataclass(slots=True, frozen=True)
 class RequestContext:
-    """Small per-call context shared by HTTP APIs, MCP, and CLI actions."""
+    """Call-source metadata attached to a request.
+
+    ``source`` tells whether the call came through the HTTP API, MCP, or CLI.
+    ``entrypoint`` separates hosted server requests from local in-process CLI
+    calls.
+    """
 
     source: RequestSource = "api"
     entrypoint: RequestEntrypoint = "server"
@@ -32,7 +37,11 @@ class RequestContext:
 
 @dataclass(slots=True, frozen=True)
 class AuthRequest:
-    """Small request view passed to the future central auth hook."""
+    """Request view passed to an auth hook.
+
+    It contains the fields auth code usually needs: method, path, normalized
+    headers, and Quater call context.
+    """
 
     method: str
     path: str
@@ -42,7 +51,11 @@ class AuthRequest:
 
 @dataclass(slots=True, frozen=True)
 class AuthContext:
-    """Authenticated subject information returned by a user auth hook."""
+    """Authenticated identity returned by an auth hook.
+
+    ``subject`` should be a stable user, service, or agent id. ``metadata`` is
+    for small request-scoped values your app wants to carry into the handler.
+    """
 
     subject: str
     metadata: Mapping[str, object] = field(default_factory=_empty_metadata)
@@ -50,7 +63,11 @@ class AuthContext:
 
 @dataclass(slots=True, frozen=True)
 class ApprovalRequest:
-    """Request passed to an approval hook before a protected action runs."""
+    """Input passed to an approval hook for protected tools and CLI actions.
+
+    The arguments hash is computed after binding and validation. Use it to
+    match a prior approval to the exact action arguments being executed.
+    """
 
     action: str
     arguments_hash: str

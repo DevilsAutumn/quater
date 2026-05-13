@@ -40,7 +40,12 @@ _UNSET = _Unset()
 
 @dataclass(slots=True, frozen=True)
 class AppConfig:
-    """Immutable app configuration."""
+    """Immutable configuration shared by a Quater app.
+
+    Most apps pass keyword options to ``Quater(...)`` directly. Use
+    ``AppConfig`` when several app instances should start from the same
+    validated defaults, or when tests need an explicit config object.
+    """
 
     debug: bool = False
     security: SecurityMode = "strict"

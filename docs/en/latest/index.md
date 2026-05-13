@@ -100,6 +100,10 @@ workflow.
    Check the import surface, constructor options, route options, auth types,
    response classes, and advanced modules.
 
+7. [Reference](/en/latest/reference/)
+   Look up generated signatures and public objects after you know which part of
+   the framework you need.
+
 ## Core Concepts
 
 - **Route-first design:** HTTP, MCP, and CLI expose separate surfaces, but MCP

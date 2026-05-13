@@ -128,9 +128,11 @@ CLI actions also receive request context:
 Route `auth=` still protects the handler. If `cli_auth` and route `auth=` are
 the same function, Quater still runs route auth against the handler route.
 
-When a route belongs to a `RouteGroup`, group `auth=` runs before route `auth=`.
-That applies to normal HTTP requests, MCP tool calls, and CLI action calls. A
-tool or action cannot bypass the feature-level auth you put on the group.
+When a route belongs to a
+[`RouteGroup`](/en/latest/reference/application#symbol-routegroup), group
+`auth=` runs before route `auth=`. That applies to normal HTTP requests, MCP
+tool calls, and CLI action calls. A tool or action cannot bypass the
+feature-level auth you put on the group.
 
 ## Approval Checks
 
@@ -171,7 +173,8 @@ without calling the handler or approval hook.
 
 ## CORS And MCP Origins
 
-Use `CORSConfig` for browser CORS headers:
+Use [`CORSConfig`](/en/latest/reference/application#symbol-corsconfig) for
+browser CORS headers:
 
 ```python
 from quater import CORSConfig, Quater
@@ -278,8 +281,8 @@ If `docs_path` is enabled, `openapi_path` must also be enabled.
 
 ## Signed Cookies
 
-`SignedCookieSigner` signs small cookie values with HMAC and supports fallback
-secrets for rotation:
+[`SignedCookieSigner`](/en/latest/reference/auth#symbol-signedcookiesigner)
+signs small cookie values with HMAC and supports fallback secrets for rotation:
 
 ```python
 from quater import SignedCookieSigner

@@ -3,6 +3,9 @@
 This is the surface Quater expects users to import for the first release.
 Everything else can still move while the framework is pre-release.
 
+This page explains the public surface in human terms. For generated signatures
+and class members, use the [Reference](/en/latest/reference/).
+
 Use top-level imports for normal app code:
 
 ```python
@@ -133,8 +136,8 @@ Quater reserves its own protocol paths. User routes cannot be registered under
 
 ## Route Groups
 
-`RouteGroup` keeps feature routes together while still compiling down to normal
-Quater routes.
+[`RouteGroup`](/en/latest/reference/application#symbol-routegroup) keeps feature
+routes together while still compiling down to normal Quater routes.
 
 ```python
 from quater import Quater, RouteGroup
@@ -200,8 +203,8 @@ the feature-level policy that protects the HTTP endpoint.
 
 ## Request And Context
 
-Use `Request` when the handler needs headers, body access, auth, or the call
-source.
+Use [`Request`](/en/latest/reference/request#symbol-request) when the handler
+needs headers, body access, auth, or the call source.
 
 ```python
 @app.get("/whoami")
@@ -236,8 +239,9 @@ adds the final id to the response. If the incoming value is missing or unsafe,
 Quater generates a new id. Set `request_id_header=None` to stop writing a
 request-id response header.
 
-Use `access_logger` when you want one structured event after each handled
-server request:
+Use `access_logger` with
+[`AccessLogEvent`](/en/latest/reference/observability#symbol-accesslogevent)
+when you want one structured event after each handled server request:
 
 ```python
 from quater import AccessLogEvent, Quater
@@ -256,7 +260,9 @@ not include request headers, body, or query-string values.
 
 ## Auth
 
-Auth hooks receive `AuthRequest` and return `AuthContext | None`.
+Auth hooks receive
+[`AuthRequest`](/en/latest/reference/auth#symbol-authrequest) and return
+[`AuthContext`](/en/latest/reference/auth#symbol-authcontext) or `None`.
 
 ```python
 async def authenticate(ctx: AuthRequest) -> AuthContext | None:
@@ -335,7 +341,7 @@ async def update_order_status(order_id: str, status: str) -> dict[str, str]:
     return {"order_id": order_id, "status": status}
 ```
 
-`ApprovalRequest` includes:
+[`ApprovalRequest`](/en/latest/reference/auth#symbol-approvalrequest) includes:
 
 - `action`
 - `arguments_hash`
@@ -348,8 +354,8 @@ returns the same argument hash without calling the handler or approval hook.
 
 ## Responses
 
-Use response objects when you need explicit status, headers, content type, or
-streaming:
+Use [response objects](/en/latest/reference/responses) when you need explicit
+status, headers, content type, or streaming:
 
 ```python
 from quater import JSONResponse, StreamResponse, TextResponse
@@ -359,14 +365,15 @@ Plain return values still cover the common case:
 
 - `dict`, `list`, `tuple`, `bool`, `int`, and `float` become JSON.
 - dataclass instances and `msgspec.Struct` instances become JSON.
-- `str` becomes `TextResponse`.
-- `bytes` becomes `BytesResponse`.
+- `str` becomes [`TextResponse`](/en/latest/reference/responses#symbol-textresponse).
+- `bytes` becomes [`BytesResponse`](/en/latest/reference/responses#symbol-bytesresponse).
 - `None` becomes `204 No Content`.
 
 ## Testing
 
-Use `TestClient` to test a Quater app in process. It calls `app.handle()`
-directly, so tests do not need Granian, ASGI, WSGI, or a listening port.
+Use [`TestClient`](/en/latest/reference/testing#symbol-testclient) to test a
+Quater app in process. It calls `app.handle()` directly, so tests do not need
+Granian, ASGI, WSGI, or a listening port.
 
 ```python
 from quater import Quater, TestClient
@@ -392,7 +399,9 @@ small cookie jar, supports `params=`, `headers=`, `cookies=`, `json=`, and
 `content=`, and collects streaming responses into `response.body`.
 
 MCP helpers are available under `client.mcp`. The attribute is an
-`MCPTestClient`; most tests should use it through `TestClient` instead of
+[`MCPTestClient`](/en/latest/reference/testing#symbol-mcptestclient); most tests
+should use it through
+[`TestClient`](/en/latest/reference/testing#symbol-testclient) instead of
 constructing it directly.
 
 ```python
@@ -409,7 +418,8 @@ For testing patterns across auth, cookies, streams, and MCP tools, read the
 
 ## Config Helpers
 
-`CORSConfig` is the public CORS helper:
+[`CORSConfig`](/en/latest/reference/application#symbol-corsconfig) is the public
+CORS helper:
 
 ```python
 app = Quater(
@@ -417,14 +427,16 @@ app = Quater(
 )
 ```
 
-`AppConfig` is useful when several app instances should share one base config:
+[`AppConfig`](/en/latest/reference/application#symbol-appconfig) is useful when
+several app instances should share one base config:
 
 ```python
 base = AppConfig(allowed_hosts=("api.example.com",))
 app = Quater(config=base)
 ```
 
-`SignedCookieSigner` signs small cookie values with HMAC:
+[`SignedCookieSigner`](/en/latest/reference/auth#symbol-signedcookiesigner)
+signs small cookie values with HMAC:
 
 ```python
 signer = SignedCookieSigner("new-secret", fallback_secrets=["old-secret"])
@@ -433,7 +445,8 @@ cookie_value = signer.sign("user_123")
 
 ## MCP Audit
 
-Use `ToolAuditEvent` to type an audit hook:
+Use [`ToolAuditEvent`](/en/latest/reference/observability#symbol-toolauditevent)
+to type an audit hook:
 
 ```python
 async def audit(event: ToolAuditEvent) -> None:
@@ -452,7 +465,8 @@ Tool arguments are redacted before they reach the hook.
 
 These modules are public, but most apps do not need them:
 
-- `quater.typing` for `Authenticate`, `LifespanHook`, and `RequestContext`.
+- `quater.typing` for `Authenticate`, `LifespanHook`, and
+  [`RequestContext`](/en/latest/reference/request#call-context).
 - `quater.exceptions` for specific framework exceptions.
 - `quater.adapters` when a server wants an explicit adapter object.
 

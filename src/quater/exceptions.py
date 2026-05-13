@@ -16,7 +16,11 @@ class LifespanStateError(QuaterError, RuntimeError):
 
 
 class HTTPError(QuaterError):
-    """Error that can be represented as an HTTP response."""
+    """Exception converted into an HTTP-style error response.
+
+    Raise it from handlers, middleware, or auth-adjacent code when you want a
+    specific status code and client-facing detail.
+    """
 
     status_code = 500
     detail = "Internal Server Error"

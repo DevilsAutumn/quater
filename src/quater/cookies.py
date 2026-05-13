@@ -14,7 +14,12 @@ SecretValue = str | bytes
 
 
 class SignedCookieSigner:
-    """HMAC signer for small cookie values."""
+    """Sign and verify small cookie values with HMAC-SHA256.
+
+    Use fallback secrets during rotation so old cookies can still verify while
+    new cookies are signed with the current secret. Values are signed, not
+    encrypted.
+    """
 
     __slots__ = ("_fallback_secrets", "_salt", "_secret")
 
