@@ -156,6 +156,36 @@ def test_dev_reports_missing_auto_discovered_app(
     assert "Could not find a Quater app file" in captured.err
 
 
+def test_dev_reports_app_file_syntax_error_with_source_location(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_module(
+        tmp_path,
+        "main.py",
+        """
+        from quater import Quater
+
+        app = Quater(
+            allowed_hosts=[*],
+        )
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    code = main(["dev"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    assert "Could not inspect app file 'main.py':" in captured.err
+    assert "line " in captured.err
+    assert "column " in captured.err
+    assert "allowed_hosts=[*]" in captured.err
+    assert "^" in captured.err
+
+
 def test_run_disables_reload_and_keeps_production_checks_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -327,6 +357,34 @@ def test_run_reports_insecure_production_config(
     assert "Production safety check failed" in captured.err
     assert "debug must be disabled" in captured.err
     assert "allowed_hosts must be configured" in captured.err
+
+
+def test_run_reports_explicit_app_import_syntax_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_module(
+        tmp_path,
+        "main.py",
+        """
+        from quater import Quater
+
+        app = Quater(
+            allowed_hosts=[*],
+        )
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    code = main(["run", "main:app"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    assert "Could not import app module 'main':" in captured.err
+    assert "allowed_hosts=[*]" in captured.err
+    assert "Command failed" not in captured.err
 
 
 def test_run_can_explicitly_skip_production_checks(

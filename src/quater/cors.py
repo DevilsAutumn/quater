@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from string import ascii_letters, digits
 
 from quater.exceptions import ConfigurationError
 from quater.request import Request
 from quater.response import Response
 
 _DEFAULT_METHODS = ("DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT")
+_HEADER_NAME_CHARS = frozenset(f"!#$%&'*+-.^_`|~{digits}{ascii_letters}")
 
 
 @dataclass(slots=True, frozen=True)
@@ -33,11 +35,18 @@ class CORSConfig:
             method.strip().upper()
             for method in _normalize_values(self.allowed_methods, "allowed_methods")
         )
-        allowed_headers = _normalize_values(
+        allowed_headers = _normalize_header_names(
             self.allowed_headers,
             "allowed_headers",
+            allow_wildcard=True,
+            lowercase=True,
         )
-        expose_headers = _normalize_values(self.expose_headers, "expose_headers")
+        expose_headers = _normalize_header_names(
+            self.expose_headers,
+            "expose_headers",
+            allow_wildcard=True,
+            lowercase=False,
+        )
 
         if "*" in origins and self.allow_credentials:
             raise ConfigurationError(
@@ -83,8 +92,7 @@ def add_cors_headers(
             "access-control-allow-methods",
             ", ".join(config.allowed_methods),
         )
-        requested_headers = request.headers.get("access-control-request-headers")
-        allow_headers = requested_headers or ", ".join(config.allowed_headers)
+        allow_headers = _preflight_allowed_headers(request, config)
         if allow_headers:
             headers = _set_header(
                 headers,
@@ -151,3 +159,65 @@ def _normalize_values(values: tuple[str, ...], field_name: str) -> tuple[str, ..
     if any(not value for value in normalized):
         raise ConfigurationError(f"CORS {field_name} cannot contain empty values")
     return normalized
+
+
+def _preflight_allowed_headers(request: Request, config: CORSConfig) -> str:
+    if config.allowed_headers:
+        if "*" in config.allowed_headers:
+            return _requested_headers(request) or "*"
+        return ", ".join(config.allowed_headers)
+    return _requested_headers(request)
+
+
+def _requested_headers(request: Request) -> str:
+    value = request.headers.get("access-control-request-headers")
+    if value is None:
+        return ""
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in value.split(","):
+        name = item.strip().lower()
+        if not name:
+            continue
+        if not _is_valid_header_name(name):
+            return ""
+        if name not in seen:
+            names.append(name)
+            seen.add(name)
+    return ", ".join(names)
+
+
+def _normalize_header_names(
+    values: tuple[str, ...],
+    field_name: str,
+    *,
+    allow_wildcard: bool,
+    lowercase: bool,
+) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        name = value.strip().lower()
+        display_name = name if lowercase else value.strip()
+        if allow_wildcard and name == "*":
+            if name not in seen:
+                normalized.append("*")
+                seen.add(name)
+            continue
+        if not _is_valid_header_name(name):
+            raise ConfigurationError(
+                f"CORS {field_name} must contain valid HTTP header names"
+            )
+        if name not in seen:
+            normalized.append(display_name)
+            seen.add(name)
+    return tuple(normalized)
+
+
+def _is_valid_header_name(value: str) -> bool:
+    return (
+        bool(value)
+        and not value.startswith(":")
+        and all(char in _HEADER_NAME_CHARS for char in value)
+    )

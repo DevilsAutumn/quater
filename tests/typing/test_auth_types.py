@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import assert_type
 
-from quater import CORSConfig, Quater, Request, SignedCookieSigner
+from quater import CORSConfig, ImproperlyConfigured, Quater, Request, SignedCookieSigner
 from quater.typing import AuthContext, Authenticate, AuthRequest
 
 
@@ -39,6 +39,7 @@ request = Request(
     client="127.0.0.1",
 )
 signer = SignedCookieSigner("secret")
+setup_error = ImproperlyConfigured("bad setup")
 
 
 assert_type(authenticator, Authenticate)
@@ -48,3 +49,4 @@ assert_type(request.scheme, str)
 assert_type(request.client, str | None)
 assert_type(signer.sign("value"), str)
 assert_type(signer.verify("value.signature"), str | None)
+assert_type(setup_error, ImproperlyConfigured)

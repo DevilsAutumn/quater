@@ -19,7 +19,7 @@ from quater.response import (
     TextResponse,
 )
 from quater.tools.audit import AuditHook, ToolAuditEvent, sanitize_arguments
-from quater.tools.registry import ToolRegistry
+from quater.tools.registry import ToolDefinition, ToolRegistry
 from quater.typing import ActionApproval, Authenticate, RequestContext, RequestSource
 
 JSONRPC_VERSION = "2.0"
@@ -34,6 +34,12 @@ _NOTIFICATION_METHODS = frozenset({"notifications/initialized"})
 
 class _ToolResponseTooLarge(Exception):
     pass
+
+
+class _AuditHookError(Exception):
+    def __init__(self, cause: Exception) -> None:
+        self.cause = cause
+        super().__init__("Audit hook failed")
 
 
 async def mcp_request_context(request: Request) -> RequestContext:
@@ -246,11 +252,46 @@ async def _handle_tools_call(
     except _JSONRPCError as exc:
         return _json_rpc_error(request_id, exc.code, exc.message)
 
+    try:
+        return await _call_tool_with_audit(
+            request,
+            request_id,
+            name,
+            arguments,
+            tool,
+            transport_auth=transport_auth,
+            approval_hook=approval_hook,
+            approval_token=approval_token,
+            audit_hook=audit_hook,
+            debug=debug,
+        )
+    except _AuditHookError as exc:
+        return _json_rpc_error(
+            request_id,
+            -32603,
+            _audit_hook_error_message(exc, debug=debug),
+        )
+
+
+async def _call_tool_with_audit(
+    request: Request,
+    request_id: object,
+    name: str,
+    arguments: Mapping[object, object],
+    tool: ToolDefinition,
+    *,
+    transport_auth: Authenticate | None,
+    approval_hook: ActionApproval | None,
+    approval_token: str | None,
+    audit_hook: AuditHook | None,
+    debug: bool,
+) -> Response:
     start = time.perf_counter()
+    typed_arguments = cast(Mapping[str, object], arguments)
     try:
         response = await tool.call(
             request,
-            cast(Mapping[str, object], arguments),
+            typed_arguments,
             authenticated_by=transport_auth,
             approval_hook=approval_hook,
             approval_token=approval_token,
@@ -261,7 +302,7 @@ async def _handle_tools_call(
             audit_hook,
             request,
             name,
-            arguments,
+            typed_arguments,
             success=False,
             start=start,
         )
@@ -271,7 +312,7 @@ async def _handle_tools_call(
             audit_hook,
             request,
             name,
-            arguments,
+            typed_arguments,
             success=False,
             start=start,
         )
@@ -290,7 +331,7 @@ async def _handle_tools_call(
             audit_hook,
             request,
             name,
-            arguments,
+            typed_arguments,
             success=False,
             start=start,
         )
@@ -309,7 +350,7 @@ async def _handle_tools_call(
             audit_hook,
             request,
             name,
-            arguments,
+            typed_arguments,
             success=False,
             start=start,
         )
@@ -319,7 +360,7 @@ async def _handle_tools_call(
             audit_hook,
             request,
             name,
-            arguments,
+            typed_arguments,
             success=False,
             start=start,
         )
@@ -334,7 +375,7 @@ async def _handle_tools_call(
             audit_hook,
             request,
             name,
-            arguments,
+            typed_arguments,
             success=False,
             start=start,
         )
@@ -347,7 +388,7 @@ async def _handle_tools_call(
         audit_hook,
         request,
         name,
-        arguments,
+        typed_arguments,
         success=success,
         start=start,
     )
@@ -418,8 +459,14 @@ async def _audit(
     )
     try:
         await audit_hook(event)
-    except Exception:
-        return
+    except Exception as exc:
+        raise _AuditHookError(exc) from exc
+
+
+def _audit_hook_error_message(error: _AuditHookError, *, debug: bool) -> str:
+    if not debug:
+        return "Audit hook failed"
+    return f"Audit hook failed: {type(error.cause).__name__}: {error.cause}"
 
 
 def _json_rpc_result(request_id: object, result: object) -> JSONResponse:

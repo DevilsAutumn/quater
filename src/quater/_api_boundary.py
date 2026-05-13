@@ -17,6 +17,7 @@ PUBLIC_API_SYMBOLS: Final[tuple[str, ...]] = (
     "EmptyResponse",
     "HTTPError",
     "HTMLResponse",
+    "ImproperlyConfigured",
     "JSONResponse",
     "Quater",
     "RedirectResponse",

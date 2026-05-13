@@ -366,3 +366,6 @@ app = Quater(
 ```
 
 Arguments are redacted before they reach the hook.
+If the audit hook raises, Quater returns a JSON-RPC internal error for that
+tool call. In debug mode the error includes the exception type and message; in
+normal mode it only says that the audit hook failed.

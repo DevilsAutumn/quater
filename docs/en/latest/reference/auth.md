@@ -16,6 +16,7 @@ from quater import (
     AuthContext,
     AuthRequest,
     HTTPError,
+    ImproperlyConfigured,
     SignedCookieSigner,
 )
 ```
@@ -127,6 +128,19 @@ HTTPError(detail: str | None = None, *, status_code: int | None = None)
 | --- | --- | --- |
 | `detail` | `str \| None` | Error message returned to the client. |
 | `status_code` | `int \| None` | HTTP status code for the error response. |
+
+## ImproperlyConfigured {#symbol-improperlyconfigured}
+
+Public import: `from quater import ImproperlyConfigured`.
+
+Exception raised for invalid framework configuration.
+
+Catch this when app setup should fail loudly before serving traffic.
+`ConfigurationError` remains as a backward-compatible subclass.
+
+```python
+raise ImproperlyConfigured("bad setup")
+```
 
 ## SignedCookieSigner {#symbol-signedcookiesigner}
 

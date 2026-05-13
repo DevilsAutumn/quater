@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from quater.app import Quater
-from quater.cli.errors import CLIUsageError
+from quater.cli.errors import CLIUsageError, format_syntax_error
 
 COMMON_APP_FILES = ("main.py", "app.py", "api.py", "server.py")
 APP_ATTRIBUTE_NAMES = ("app", "application")
@@ -120,8 +120,12 @@ def _module_name_from_path(path: Path, root: Path) -> str:
 def _static_candidates(path: Path, module_name: str) -> list[_Candidate]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except (OSError, SyntaxError) as exc:
-        raise CLIUsageError(f"Could not inspect app file {path.name!r}") from exc
+    except SyntaxError as exc:
+        raise CLIUsageError(
+            format_syntax_error(f"Could not inspect app file {path.name!r}", exc)
+        ) from exc
+    except (OSError, UnicodeError) as exc:
+        raise CLIUsageError(f"Could not read app file {path.name!r}: {exc}") from exc
 
     candidates: list[_Candidate] = []
     for node in tree.body:
@@ -152,6 +156,13 @@ def _dynamic_candidates(module_name: str, root: Path) -> list[_Candidate]:
 
     try:
         module = importlib.import_module(module_name)
+    except SyntaxError as exc:
+        raise CLIUsageError(
+            format_syntax_error(
+                f"Could not import app module {module_name!r}",
+                exc,
+            )
+        ) from exc
     except ImportError as exc:
         raise CLIUsageError(f"Could not import app module {module_name!r}") from exc
 

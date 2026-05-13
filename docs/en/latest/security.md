@@ -189,10 +189,15 @@ from quater import CORSConfig, Quater
 app = Quater(
     cors=CORSConfig(
         allowed_origins=("https://app.example.com",),
+        allowed_headers=("authorization", "content-type"),
         allow_credentials=True,
     )
 )
 ```
+
+CORS `allowed_headers` is enforced during browser preflight responses. If you
+configure it, Quater only advertises those headers. If you leave it empty,
+Quater reflects the browser's requested headers after validating their shape.
 
 MCP origin validation uses `mcp_allowed_origins` first. If that is empty and CORS
 has exact origins, Quater reuses those exact origins for MCP too. A CORS wildcard

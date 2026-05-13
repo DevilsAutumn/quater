@@ -175,6 +175,35 @@ def test_cli_rejects_empty_environment_token(
     assert captured.err == "Auth token must not be empty\n"
 
 
+def test_cli_reports_app_import_syntax_error_with_source_location(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_app(
+        tmp_path,
+        """
+        from quater import Quater
+
+        app = Quater(
+            allowed_hosts=[*],
+        )
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    code = main(["--app", "sample:app", "actions", "list"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    assert "Could not import app module 'sample':" in captured.err
+    assert "line " in captured.err
+    assert "column " in captured.err
+    assert "allowed_hosts=[*]" in captured.err
+    assert "Command failed" not in captured.err
+
+
 def test_cli_searches_local_actions_as_compact_results(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

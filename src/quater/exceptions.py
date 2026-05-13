@@ -7,8 +7,12 @@ class QuaterError(Exception):
     """Base class for Quater framework errors."""
 
 
-class ConfigurationError(QuaterError, ValueError):
-    """Raised when app configuration is invalid."""
+class ImproperlyConfigured(QuaterError, ValueError):
+    """Raised when Quater detects setup that cannot run correctly."""
+
+
+class ConfigurationError(ImproperlyConfigured):
+    """Backward-compatible name for invalid framework configuration."""
 
 
 class LifespanStateError(QuaterError, RuntimeError):
@@ -87,6 +91,7 @@ __all__ = [
     "BadRequestError",
     "ConfigurationError",
     "HTTPError",
+    "ImproperlyConfigured",
     "LifespanStateError",
     "MiddlewareStateError",
     "PayloadTooLargeError",

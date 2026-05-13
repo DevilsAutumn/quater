@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from quater.app import Quater
-from quater.cli.errors import CLIUsageError
+from quater.cli.errors import CLIUsageError, format_syntax_error
 
 
 def load_app(
@@ -27,6 +27,13 @@ def load_app(
 
     try:
         target: object = importlib.import_module(module_name)
+    except SyntaxError as exc:
+        raise CLIUsageError(
+            format_syntax_error(
+                f"Could not import app module {module_name!r}",
+                exc,
+            )
+        ) from exc
     except ImportError as exc:
         raise CLIUsageError(f"Could not import app module {module_name!r}") from exc
 

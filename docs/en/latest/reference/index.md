@@ -18,18 +18,18 @@ For import guarantees, read [Stability](/en/latest/stability).
 | [Application](./application) | App objects, route groups, and configuration. |
 | [Request](./request) | Request data passed to handlers. |
 | [Responses](./responses) | Return values and explicit response classes. |
-| [Auth and Security](./auth) | Auth hooks, approval hooks, HTTP errors, and signed cookies. |
+| [Auth and Security](./auth) | Auth hooks, approval hooks, framework errors, and signed cookies. |
 | [Observability](./observability) | Access-log and MCP audit event types. |
 | [Testing](./testing) | In-process HTTP and MCP test clients. |
 
 ## Public Imports
 
-Use top-level imports for normal app code. These are the public
-symbols covered by Quater's compatibility promise.
+Use top-level imports for normal app code. These are the documented
+symbols Quater expects application code to use.
 
 - **Application:** [`AppConfig`](./application#symbol-appconfig), [`CORSConfig`](./application#symbol-corsconfig), [`Quater`](./application#symbol-quater), [`RouteGroup`](./application#symbol-routegroup), [`__version__`](./application#symbol-version)
 - **Request:** [`Request`](./request#symbol-request)
 - **Responses:** [`BytesResponse`](./responses#symbol-bytesresponse), [`EmptyResponse`](./responses#symbol-emptyresponse), [`HTMLResponse`](./responses#symbol-htmlresponse), [`JSONResponse`](./responses#symbol-jsonresponse), [`RedirectResponse`](./responses#symbol-redirectresponse), [`Response`](./responses#symbol-response), [`StreamResponse`](./responses#symbol-streamresponse), [`TextResponse`](./responses#symbol-textresponse)
-- **Auth and Security:** [`ActionApproval`](./auth#symbol-actionapproval), [`ApprovalRequest`](./auth#symbol-approvalrequest), [`AuthContext`](./auth#symbol-authcontext), [`AuthRequest`](./auth#symbol-authrequest), [`HTTPError`](./auth#symbol-httperror), [`SignedCookieSigner`](./auth#symbol-signedcookiesigner)
+- **Auth and Security:** [`ActionApproval`](./auth#symbol-actionapproval), [`ApprovalRequest`](./auth#symbol-approvalrequest), [`AuthContext`](./auth#symbol-authcontext), [`AuthRequest`](./auth#symbol-authrequest), [`HTTPError`](./auth#symbol-httperror), [`ImproperlyConfigured`](./auth#symbol-improperlyconfigured), [`SignedCookieSigner`](./auth#symbol-signedcookiesigner)
 - **Observability:** [`AccessLogEvent`](./observability#symbol-accesslogevent), [`AccessLogHook`](./observability#symbol-accessloghook), [`ToolAuditEvent`](./observability#symbol-toolauditevent)
 - **Testing:** [`MCPTestClient`](./testing#symbol-mcptestclient), [`TestClient`](./testing#symbol-testclient), [`TestResponse`](./testing#symbol-testresponse)

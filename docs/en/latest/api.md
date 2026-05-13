@@ -22,6 +22,7 @@ from quater import (
     EmptyResponse,
     HTMLResponse,
     HTTPError,
+    ImproperlyConfigured,
     JSONResponse,
     MCPTestClient,
     Quater,
@@ -441,6 +442,11 @@ base = AppConfig(allowed_hosts=("api.example.com",))
 app = Quater(config=base)
 ```
 
+[`ImproperlyConfigured`](/en/latest/reference/auth#symbol-improperlyconfigured)
+is raised when Quater detects invalid framework setup. `ConfigurationError`
+still exists in `quater.exceptions` for compatibility, and it is a subclass of
+`ImproperlyConfigured`.
+
 [`SignedCookieSigner`](/en/latest/reference/auth#symbol-signedcookiesigner)
 signs small cookie values with HMAC:
 
@@ -466,6 +472,8 @@ app = Quater(
 ```
 
 Tool arguments are redacted before they reach the hook.
+If the audit hook raises, the MCP call returns a JSON-RPC internal error instead
+of hiding the failure.
 
 ## Import Boundary
 

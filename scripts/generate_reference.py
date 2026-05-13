@@ -68,13 +68,16 @@ PAGES: tuple[ReferencePage, ...] = (
     ReferencePage(
         slug="auth",
         title="Auth and Security",
-        description="Auth hooks, approval hooks, HTTP errors, and signed cookies.",
+        description=(
+            "Auth hooks, approval hooks, framework errors, and signed cookies."
+        ),
         symbols=(
             "AuthRequest",
             "AuthContext",
             "ApprovalRequest",
             "ActionApproval",
             "HTTPError",
+            "ImproperlyConfigured",
             "SignedCookieSigner",
         ),
     ),
@@ -112,7 +115,10 @@ FIELD_DOCS: Mapping[str, Mapping[str, str]] = {
     "CORSConfig": {
         "allowed_origins": "Origins allowed to read browser responses.",
         "allowed_methods": "Methods allowed during browser preflight checks.",
-        "allowed_headers": "Request headers allowed during preflight.",
+        "allowed_headers": (
+            "Request headers allowed during preflight. Empty reflects sanitized "
+            "requested headers."
+        ),
         "expose_headers": "Response headers browsers may expose to client code.",
         "allow_credentials": "Whether browsers may include credentials.",
         "max_age": "How long browsers may cache a preflight result.",
@@ -568,8 +574,8 @@ def render_index(
             "",
             "## Public Imports",
             "",
-            "Use top-level imports for normal app code. These are the public",
-            "symbols covered by Quater's compatibility promise.",
+            "Use top-level imports for normal app code. These are the documented",
+            "symbols Quater expects application code to use.",
             "",
         ]
     )
@@ -1066,6 +1072,7 @@ def render_auth(package: Any) -> str:
             "    AuthContext,",
             "    AuthRequest,",
             "    HTTPError,",
+            "    ImproperlyConfigured,",
             "    SignedCookieSigner,",
             ")",
             "```",
@@ -1136,6 +1143,17 @@ def render_auth(package: Any) -> str:
             HTTP_ERROR_OPTIONS,
         )
     )
+    symbol_intro(
+        lines,
+        package,
+        "ImproperlyConfigured",
+        "Exception raised for invalid framework configuration.",
+        [
+            "Catch this when app setup should fail loudly before serving traffic.",
+            "`ConfigurationError` remains as a backward-compatible subclass.",
+        ],
+    )
+    lines.extend(code_block('raise ImproperlyConfigured("bad setup")'))
     symbol_intro(
         lines,
         package,

@@ -289,7 +289,7 @@ Fields:
 | --- | --- | --- |
 | `allowed_origins` | `tuple[str, ...]` | Origins allowed to read browser responses. |
 | `allowed_methods` | `tuple[str, ...]` | Methods allowed during browser preflight checks. |
-| `allowed_headers` | `tuple[str, ...]` | Request headers allowed during preflight. |
+| `allowed_headers` | `tuple[str, ...]` | Request headers allowed during preflight. Empty reflects sanitized requested headers. |
 | `expose_headers` | `tuple[str, ...]` | Response headers browsers may expose to client code. |
 | `allow_credentials` | `bool` | Whether browsers may include credentials. |
 | `max_age` | `int \| None` | How long browsers may cache a preflight result. |

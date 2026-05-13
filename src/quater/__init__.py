@@ -4,7 +4,7 @@ from quater.app import Quater
 from quater.config import AppConfig
 from quater.cookies import SignedCookieSigner
 from quater.cors import CORSConfig
-from quater.exceptions import HTTPError
+from quater.exceptions import HTTPError, ImproperlyConfigured
 from quater.groups import RouteGroup
 from quater.observability import AccessLogEvent, AccessLogHook
 from quater.request import Request
@@ -37,6 +37,7 @@ __all__ = [
     "EmptyResponse",
     "HTTPError",
     "HTMLResponse",
+    "ImproperlyConfigured",
     "JSONResponse",
     "Quater",
     "RedirectResponse",
