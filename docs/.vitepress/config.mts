@@ -72,6 +72,7 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
             { text: 'Overview', link: `${version.base}reference/` },
             { text: 'Application', link: `${version.base}reference/application` },
             { text: 'Request', link: `${version.base}reference/request` },
+            { text: 'Parameters', link: `${version.base}reference/parameters` },
             { text: 'Responses', link: `${version.base}reference/responses` },
             { text: 'Auth and Security', link: `${version.base}reference/auth` },
             {

@@ -17,6 +17,7 @@ For import guarantees, read [Stability](/en/latest/stability).
 | --- | --- |
 | [Application](./application) | App objects, route groups, and configuration. |
 | [Request](./request) | Request data passed to handlers. |
+| [Parameters](./parameters) | Handler parameter markers for request data binding. |
 | [Responses](./responses) | Return values and explicit response classes. |
 | [Auth and Security](./auth) | Auth hooks, approval hooks, framework errors, and signed cookies. |
 | [Observability](./observability) | Access-log and MCP audit event types. |
@@ -29,6 +30,7 @@ symbols Quater expects application code to use.
 
 - **Application:** [`AppConfig`](./application#symbol-appconfig), [`CORSConfig`](./application#symbol-corsconfig), [`Quater`](./application#symbol-quater), [`RouteGroup`](./application#symbol-routegroup), [`__version__`](./application#symbol-version)
 - **Request:** [`Request`](./request#symbol-request)
+- **Parameters:** [`Body`](./parameters#symbol-body), [`Cookie`](./parameters#symbol-cookie), [`Header`](./parameters#symbol-header), [`Path`](./parameters#symbol-path), [`Query`](./parameters#symbol-query)
 - **Responses:** [`BytesResponse`](./responses#symbol-bytesresponse), [`EmptyResponse`](./responses#symbol-emptyresponse), [`HTMLResponse`](./responses#symbol-htmlresponse), [`JSONResponse`](./responses#symbol-jsonresponse), [`RedirectResponse`](./responses#symbol-redirectresponse), [`Response`](./responses#symbol-response), [`StreamResponse`](./responses#symbol-streamresponse), [`TextResponse`](./responses#symbol-textresponse)
 - **Auth and Security:** [`ActionApproval`](./auth#symbol-actionapproval), [`ApprovalRequest`](./auth#symbol-approvalrequest), [`AuthContext`](./auth#symbol-authcontext), [`AuthRequest`](./auth#symbol-authrequest), [`HTTPError`](./auth#symbol-httperror), [`ImproperlyConfigured`](./auth#symbol-improperlyconfigured), [`SignedCookieSigner`](./auth#symbol-signedcookiesigner)
 - **Observability:** [`AccessLogEvent`](./observability#symbol-accesslogevent), [`AccessLogHook`](./observability#symbol-accessloghook), [`ToolAuditEvent`](./observability#symbol-toolauditevent)

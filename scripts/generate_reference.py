@@ -51,6 +51,12 @@ PAGES: tuple[ReferencePage, ...] = (
         symbols=("Request",),
     ),
     ReferencePage(
+        slug="parameters",
+        title="Parameters",
+        description="Handler parameter markers for request data binding.",
+        symbols=("Path", "Query", "Body", "Header", "Cookie"),
+    ),
+    ReferencePage(
         slug="responses",
         title="Responses",
         description="Return values and explicit response classes.",
@@ -200,6 +206,82 @@ RESPONSE_DOCS: Mapping[str, str] = {
     "StreamResponse": "Use this for async byte streams.",
     "RedirectResponse": "Use this for redirects.",
     "EmptyResponse": "Use this for responses with no body.",
+}
+
+PARAMETER_DOCS: Mapping[str, tuple[str, tuple[str, ...]]] = {
+    "Path": (
+        "Bind a value from a route path segment.",
+        (
+            "`Path` is useful when the Python parameter name differs from the",
+            "name in the route path, or when you want descriptions in OpenAPI",
+            "and action schemas.",
+        ),
+    ),
+    "Query": (
+        "Bind a value from the query string.",
+        (
+            "`Query` makes query parameters explicit and lets you set aliases,",
+            "defaults, and descriptions without changing handler logic.",
+        ),
+    ),
+    "Body": (
+        "Bind the JSON request body.",
+        (
+            "`Body` documents the body parameter and feeds the same schema into",
+            "OpenAPI, MCP tools, and CLI actions.",
+        ),
+    ),
+    "Header": (
+        "Bind a value from an HTTP request header.",
+        (
+            "`Header` reads case-insensitive HTTP headers. When no alias is",
+            "provided, underscores in the Python parameter name become hyphens.",
+        ),
+    ),
+    "Cookie": (
+        "Bind a value from a request cookie.",
+        (
+            "`Cookie` reads the parsed `Cookie` header and passes the selected",
+            "cookie value to the handler.",
+        ),
+    ),
+}
+
+PARAMETER_OPTIONS: Mapping[str, tuple[tuple[str, str, str], ...]] = {
+    "Path": (
+        ("default", "object", "Path parameters are always required. Leave unset."),
+        ("alias", "str | None", "Route path variable name when it differs."),
+        ("description", "str | None", "Human description used in generated schemas."),
+    ),
+    "Query": (
+        ("default", "object", "Default value. Omit it to make the parameter required."),
+        ("alias", "str | None", "Query-string name when it differs."),
+        ("description", "str | None", "Human description used in generated schemas."),
+    ),
+    "Body": (
+        ("default", "object", "Default body value. Omit it to make the body required."),
+        (
+            "alias",
+            "str | None",
+            "MCP and CLI argument name. HTTP still reads the full body.",
+        ),
+        ("description", "str | None", "Human description used in generated schemas."),
+    ),
+    "Header": (
+        ("default", "object", "Default value. Omit it to make the header required."),
+        ("alias", "str | None", "HTTP header name, such as `X-Request-ID`."),
+        ("description", "str | None", "Human description used in generated schemas."),
+        (
+            "convert_underscores",
+            "bool",
+            "Convert `user_agent` to `user-agent` when no alias is set.",
+        ),
+    ),
+    "Cookie": (
+        ("default", "object", "Default value. Omit it to make the cookie required."),
+        ("alias", "str | None", "Cookie name when it differs."),
+        ("description", "str | None", "Human description used in generated schemas."),
+    ),
 }
 
 QUATER_OPTIONS: tuple[tuple[str, str, str], ...] = (
@@ -537,6 +619,7 @@ def render_reference(
         REFERENCE_DIR / "index.md": render_index(public_api, pages_by_symbol),
         REFERENCE_DIR / "application.md": render_application(package),
         REFERENCE_DIR / "request.md": render_request(package),
+        REFERENCE_DIR / "parameters.md": render_parameters(package),
         REFERENCE_DIR / "responses.md": render_responses(package),
         REFERENCE_DIR / "auth.md": render_auth(package),
         REFERENCE_DIR / "observability.md": render_observability(package),
@@ -996,6 +1079,66 @@ def render_request(package: Any) -> str:
     return finish(lines)
 
 
+def render_parameters(package: Any) -> str:
+    lines = new_page("Parameter Reference")
+    lines.extend(
+        [
+            "Use parameter markers when handler arguments need explicit request",
+            "locations, aliases, defaults, or generated schema descriptions.",
+            "",
+            "For the binding model, read [Public API](/en/latest/api#parameters).",
+            "For raw request access, read [Request](./request).",
+            "",
+            "```python",
+            "from quater import Body, Cookie, Header, Path, Query",
+            "```",
+            "",
+            "Markers can be used as defaults or inside `typing.Annotated`. The",
+            "default form is shorter. `Annotated` keeps the Python default separate.",
+            "`Query`, `Header`, and `Cookie` bind scalar values only: `str`,",
+            "`int`, `float`, or `bool`. Use `Body` for structured JSON input.",
+            "",
+            "```python",
+            "from typing import Annotated",
+            "",
+            "from quater import Query",
+            "",
+            "async def search(",
+            '    q: str = Query(description="Search text"),',
+            '    page: Annotated[int, Query(alias="p")] = 1,',
+            ") -> dict[str, object]:",
+            '    return {"q": q, "page": page}',
+            "```",
+            "",
+        ]
+    )
+    for symbol in PAGES[2].symbols:
+        summary, details = PARAMETER_DOCS[symbol]
+        symbol_intro(lines, package, symbol, summary, details)
+        lines.extend(signature_block(callable_signature(package, symbol)))
+        lines.extend(
+            validated_function_option_table(
+                package,
+                symbol,
+                "Parameters",
+                PARAMETER_OPTIONS[symbol],
+            )
+        )
+    lines.extend(
+        [
+            "## Action and Tool Names",
+            "",
+            "Aliases describe the HTTP wire name. MCP tools and CLI actions keep the",
+            "Python handler parameter name as the action argument name, except for",
+            "`Body(alias=...)`, which renames the body action argument. That keeps",
+            '`Header(alias="X-Request-ID")` readable in OpenAPI without forcing',
+            "agents to send a JSON key named `X-Request-ID`.",
+            "",
+        ]
+    )
+    return finish(lines)
+
+
 def render_responses(package: Any) -> str:
     lines = new_page("Responses Reference")
     lines.extend(
@@ -1022,7 +1165,7 @@ def render_responses(package: Any) -> str:
             "",
         ]
     )
-    for symbol in PAGES[2].symbols:
+    for symbol in PAGES[3].symbols:
         symbol_intro(lines, package, symbol, RESPONSE_DOCS[symbol], [])
         lines.extend(signature_block(class_signature(package, symbol)))
         lines.extend(
@@ -1465,6 +1608,13 @@ def method_signature(package: Any, symbol: str, method: str) -> str:
     return signature
 
 
+def callable_signature(package: Any, symbol: str) -> str:
+    signature = function_signature(resolve(object_for(package, symbol)))
+    if signature is None:
+        raise SystemExit(f"Could not read signature for {symbol}")
+    return signature
+
+
 def parameter_table(
     package: Any,
     symbol: str,
@@ -1485,6 +1635,20 @@ def parameter_table(
     for parameter in parameters:
         name = getattr(parameter, "name", "")
         if not name or name == "self":
+            continue
+        annotation_value = getattr(parameter, "annotation", None)
+        type_name = "object" if annotation_value is None else str(annotation_value)
+        rows.append((name, clean_type(type_name)))
+    return tuple(rows)
+
+
+def function_parameter_table(package: Any, symbol: str) -> tuple[tuple[str, str], ...]:
+    obj = resolve(object_for(package, symbol))
+    parameters = getattr(obj, "parameters", ())
+    rows: list[tuple[str, str]] = []
+    for parameter in parameters:
+        name = getattr(parameter, "name", "")
+        if not name:
             continue
         annotation_value = getattr(parameter, "annotation", None)
         type_name = "object" if annotation_value is None else str(annotation_value)
@@ -1569,6 +1733,21 @@ def validated_option_table(
         target = f"{symbol}.{method}" if method is not None else symbol
         raise SystemExit(
             f"{target} reference table mismatch; actual={actual}, expected={expected}"
+        )
+    return option_table(title, rows)
+
+
+def validated_function_option_table(
+    package: Any,
+    symbol: str,
+    title: str,
+    rows: Sequence[tuple[str, str, str]],
+) -> list[str]:
+    actual = function_parameter_table(package, symbol)
+    expected = tuple((name, type_name) for name, type_name, _ in rows)
+    if actual != expected:
+        raise SystemExit(
+            f"{symbol} reference table mismatch; actual={actual}, expected={expected}"
         )
     return option_table(title, rows)
 

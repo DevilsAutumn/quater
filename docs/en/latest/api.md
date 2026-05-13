@@ -17,15 +17,20 @@ from quater import (
     ApprovalRequest,
     AuthContext,
     AuthRequest,
+    Body,
     BytesResponse,
     CORSConfig,
+    Cookie,
     EmptyResponse,
+    Header,
     HTMLResponse,
     HTTPError,
     ImproperlyConfigured,
     JSONResponse,
     MCPTestClient,
+    Path,
     Quater,
+    Query,
     RedirectResponse,
     Request,
     Response,
@@ -140,6 +145,92 @@ a useful description and the app must be created with `cli_auth`.
 Quater reserves its own protocol paths. User routes cannot be registered under
 `/mcp`, under `/mcp/...`, at `/.well-known/quater-actions.json`, or under
 `/__quater__/...`.
+
+## Parameters
+
+Handler parameters are bound from the route path, query string, headers,
+cookies, or JSON body. For small handlers, Quater can infer the common cases:
+
+```python
+@app.get("/orders/{order_id}")
+async def get_order(order_id: str, include_events: bool = False) -> dict[str, object]:
+    return {"order_id": order_id, "include_events": include_events}
+```
+
+Use parameter markers when the request name needs an alias, when generated docs
+need a description, or when the source would otherwise be unclear:
+
+```python
+import msgspec
+
+from quater import Body, Header, Path, Query
+
+
+class UpdateOrder(msgspec.Struct):
+    status: str
+    notify_customer: bool = False
+
+
+@app.patch("/orders/{id}", description="Update one order.")
+async def update_order(
+    order_id: str = Path(alias="id", description="Order id."),
+    payload: UpdateOrder = Body(description="New order state."),
+    include_events: bool = Query(
+        default=False,
+        alias="include-events",
+        description="Include event history.",
+    ),
+    request_id: str | None = Header(
+        default=None,
+        alias="X-Request-ID",
+        description="Caller request id.",
+    ),
+) -> dict[str, object]:
+    return {
+        "order_id": order_id,
+        "status": payload.status,
+        "include_events": include_events,
+        "request_id": request_id,
+    }
+```
+
+Available markers:
+
+- [`Path`](/en/latest/reference/parameters#symbol-path) binds a route path
+  variable. Path parameters are always required.
+- [`Query`](/en/latest/reference/parameters#symbol-query) binds a query-string
+  value.
+- [`Body`](/en/latest/reference/parameters#symbol-body) binds the JSON request
+  body.
+- [`Header`](/en/latest/reference/parameters#symbol-header) binds a request
+  header. Without `alias=`, `user_agent` reads the `User-Agent` header.
+- [`Cookie`](/en/latest/reference/parameters#symbol-cookie) binds a request
+  cookie.
+
+Markers feed OpenAPI, MCP tool schemas, and CLI action schemas. HTTP aliases are
+the wire names used by OpenAPI. MCP and CLI action arguments keep the Python
+handler parameter name so agents and shell commands stay predictable. The one
+exception is `Body(alias=...)`, which renames the action argument for the body.
+
+```bash
+quater call update_order \
+  --order-id ord_1001 \
+  --payload '{"status":"shipped","notify_customer":true}' \
+  --include-events true
+```
+
+What can go wrong:
+
+- `Path(alias=...)` must match a variable in the route path.
+- A path variable cannot be rebound with `Query`, `Header`, `Cookie`, or `Body`.
+- `Query`, `Header`, and `Cookie` bind scalar values only: `str`, `int`,
+  `float`, or `bool`. Use `Body` for structured JSON input.
+- Quater supports one body parameter per handler.
+- Invalid header or cookie names fail when routes compile, not during a random
+  request later.
+
+For signatures and exact options, see the
+[Parameter Reference](/en/latest/reference/parameters).
 
 ## Route Groups
 

@@ -77,8 +77,14 @@ class Router:
             route_stack=MiddlewareStack(),
             debug=debug,
         )
-        method_shapes: dict[tuple[str, tuple[tuple[str, str], ...]], str] = {}
-        signatures: dict[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]] = {}
+        method_shapes: dict[
+            tuple[str, tuple[tuple[str, str], ...]],
+            tuple[RouteDefinition, RoutePattern],
+        ] = {}
+        signatures: dict[
+            tuple[tuple[str, str], ...],
+            tuple[RouteDefinition, RoutePattern],
+        ] = {}
         allowed_paths: dict[tuple[tuple[str, str], ...], RoutePattern] = {}
         allowed_methods: dict[tuple[tuple[str, str], ...], set[str]] = {}
 
@@ -86,21 +92,34 @@ class Router:
             pattern = parse_route_pattern(route.path)
             route_shape = _route_shape(pattern)
             method_key = (route.method, route_shape)
-            if method_key in method_shapes:
+            existing_method_route = method_shapes.get(method_key)
+            if existing_method_route is not None:
+                existing_route, existing_pattern = existing_method_route
                 raise RouteConflictError(
-                    f"Route {route.method} {route.path!r} conflicts with "
-                    f"{method_shapes[method_key]!r}"
+                    _same_method_conflict_message(
+                        existing_route,
+                        existing_pattern,
+                        route,
+                        pattern,
+                    )
                 )
-            method_shapes[method_key] = route.path
+            method_shapes[method_key] = (route, pattern)
 
             signature = _param_signature(pattern)
-            existing_signature = signatures.get(route_shape)
-            if existing_signature is not None and existing_signature != signature:
-                raise RouteConflictError(
-                    "Dynamic routes at the same position must use the same name "
-                    "and converter"
-                )
-            signatures[route_shape] = signature
+            existing_signature_route = signatures.get(route_shape)
+            if existing_signature_route is not None:
+                existing_route, existing_pattern = existing_signature_route
+                existing_signature = _param_signature(existing_pattern)
+                if existing_signature != signature:
+                    raise RouteConflictError(
+                        _dynamic_signature_conflict_message(
+                            existing_route,
+                            existing_pattern,
+                            route,
+                            pattern,
+                        )
+                    )
+            signatures[route_shape] = (route, pattern)
             allowed_paths.setdefault(route_shape, pattern)
             allowed_methods.setdefault(route_shape, set()).add(route.method)
 
@@ -227,6 +246,81 @@ def _native_path(pattern: RoutePattern) -> str:
 
 def _native_static_segment(value: str) -> str:
     return value.replace("{", "{{").replace("}", "}}")
+
+
+def _same_method_conflict_message(
+    existing_route: RouteDefinition,
+    existing_pattern: RoutePattern,
+    route: RouteDefinition,
+    pattern: RoutePattern,
+) -> str:
+    mismatch = _first_dynamic_mismatch(existing_pattern, pattern)
+    if mismatch is None:
+        return (
+            f"Route {_route_label(route)} conflicts with "
+            f"{_route_label(existing_route)}. Routes with the same method and "
+            "path shape are ambiguous in Quater."
+        )
+    return (
+        f"Route {_route_label(route)} conflicts with {_route_label(existing_route)}. "
+        "Routes with the same method and path shape are ambiguous in Quater. "
+        f"{mismatch}"
+    )
+
+
+def _dynamic_signature_conflict_message(
+    existing_route: RouteDefinition,
+    existing_pattern: RoutePattern,
+    route: RouteDefinition,
+    pattern: RoutePattern,
+) -> str:
+    mismatch = _first_dynamic_mismatch(existing_pattern, pattern)
+    detail = f" {mismatch}" if mismatch is not None else ""
+    return (
+        f"Route {_route_label(route)} conflicts with {_route_label(existing_route)}. "
+        "Dynamic routes at the same position must use the same name and converter."
+        f"{detail}"
+    )
+
+
+def _first_dynamic_mismatch(
+    existing_pattern: RoutePattern,
+    pattern: RoutePattern,
+) -> str | None:
+    for position, (existing, current) in enumerate(
+        zip(existing_pattern.segments, pattern.segments, strict=True),
+        start=1,
+    ):
+        if not isinstance(existing, ParamSegment) or not isinstance(
+            current,
+            ParamSegment,
+        ):
+            continue
+        existing_signature = (existing.name, existing.converter_name)
+        current_signature = (current.name, current.converter_name)
+        if existing_signature == current_signature:
+            continue
+        return (
+            f"Segment {position} uses {_param_label(current)}, but "
+            f"{_route_label_for_path(existing_pattern.path)} uses "
+            f"{_param_label(existing)}. Use the same parameter name and converter "
+            "on both routes."
+        )
+    return None
+
+
+def _route_label(route: RouteDefinition) -> str:
+    return f"{route.method} {route.path!r}"
+
+
+def _route_label_for_path(path: str) -> str:
+    return f"route {path!r}"
+
+
+def _param_label(segment: ParamSegment) -> str:
+    if segment.converter_name == "str":
+        return f"{{{segment.name}}}"
+    return f"{{{segment.name}:{segment.converter_name}}}"
 
 
 def _route_shape(pattern: RoutePattern) -> tuple[tuple[str, str], ...]:

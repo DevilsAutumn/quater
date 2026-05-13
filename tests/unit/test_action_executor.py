@@ -6,17 +6,20 @@ from typing import cast
 import msgspec
 import pytest
 
-from quater import Quater, Request
+from quater import Body, Cookie, Header, Quater, Request
 from quater.actions.approval import action_arguments_hash
 from quater.actions.executor import execute_action, preflight_action
 from quater.actions.registry import ActionDefinition, build_action_registry
-from quater.exceptions import BadRequestError
+from quater.exceptions import BadRequestError, UnauthorizedError
 from quater.typing import ApprovalRequest, AuthContext, AuthRequest
 
 
 class CreateUser(msgspec.Struct):
     name: str
     age: int
+
+
+USER_PAYLOAD = Body(alias="user_payload")
 
 
 async def allow_auth(ctx: AuthRequest) -> AuthContext | None:
@@ -234,6 +237,137 @@ async def test_execute_action_rejects_non_json_body_argument() -> None:
             action_for(app, "create_user"),
             Request(method="POST", path="/__quater__/actions/call"),
             {"user": object()},
+            source="cli",
+            surface_auth=allow_auth,
+        )
+
+
+@pytest.mark.asyncio
+async def test_execute_action_uses_body_alias_for_action_arguments() -> None:
+    app = Quater(cli_auth=allow_auth)
+
+    @app.post("/users", cli=True, description="Create one user.")
+    async def create_user(user: CreateUser = USER_PAYLOAD) -> dict[str, object]:
+        return {"name": user.name, "age": user.age}
+
+    response = await execute_action(
+        action_for(app, "create_user"),
+        Request(method="POST", path="/__quater__/actions/call"),
+        {"user_payload": {"name": "Ada", "age": 37}},
+        source="cli",
+        surface_auth=allow_auth,
+    )
+
+    assert response.body == b'{"name":"Ada","age":37}'
+
+
+@pytest.mark.asyncio
+async def test_action_header_and_cookie_arguments_are_available_to_handler() -> None:
+    app = Quater(cli_auth=allow_auth)
+
+    @app.get("/audit", cli=True, description="Read audit state.")
+    async def audit(
+        request_id: str = Header(alias="X-Request-ID"),
+        session_id: str = Cookie(alias="session"),
+    ) -> dict[str, str]:
+        return {"request_id": request_id, "session_id": session_id}
+
+    response = await execute_action(
+        action_for(app, "audit"),
+        Request(method="POST", path="/__quater__/actions/call"),
+        {"request_id": "req_123", "session_id": "sess_123"},
+        source="cli",
+        surface_auth=allow_auth,
+    )
+
+    assert response.body == b'{"request_id":"req_123","session_id":"sess_123"}'
+
+
+@pytest.mark.asyncio
+async def test_action_optional_header_default_is_not_stringified() -> None:
+    app = Quater(cli_auth=allow_auth)
+
+    @app.get("/audit", cli=True, description="Read audit state.")
+    async def audit(
+        request_id: str | None = Header(default=None, alias="X-Request-ID"),
+    ) -> dict[str, object]:
+        return {"request_id": request_id}
+
+    response = await execute_action(
+        action_for(app, "audit"),
+        Request(method="POST", path="/__quater__/actions/call"),
+        {},
+        source="cli",
+        surface_auth=allow_auth,
+    )
+
+    assert response.body == b'{"request_id":null}'
+
+
+@pytest.mark.asyncio
+async def test_action_optional_header_null_is_not_stringified() -> None:
+    app = Quater(cli_auth=allow_auth)
+
+    @app.get("/audit", cli=True, description="Read audit state.")
+    async def audit(
+        request_id: str | None = Header(default=None, alias="X-Request-ID"),
+    ) -> dict[str, object]:
+        return {"request_id": request_id}
+
+    response = await execute_action(
+        action_for(app, "audit"),
+        Request(method="POST", path="/__quater__/actions/call"),
+        {"request_id": None},
+        source="cli",
+        surface_auth=allow_auth,
+    )
+
+    assert response.body == b'{"request_id":null}'
+
+
+@pytest.mark.asyncio
+async def test_action_required_header_null_is_rejected() -> None:
+    app = Quater(cli_auth=allow_auth)
+
+    @app.get("/audit", cli=True, description="Read audit state.")
+    async def audit(request_id: str = Header(alias="X-Request-ID")) -> dict[str, str]:
+        return {"request_id": request_id}
+
+    with pytest.raises(BadRequestError, match="Invalid action argument: request_id"):
+        await execute_action(
+            action_for(app, "audit"),
+            Request(method="POST", path="/__quater__/actions/call"),
+            {"request_id": None},
+            source="cli",
+            surface_auth=allow_auth,
+        )
+
+
+@pytest.mark.asyncio
+async def test_action_header_arguments_do_not_bypass_route_auth() -> None:
+    async def route_auth(ctx: AuthRequest) -> AuthContext | None:
+        if ctx.headers.get("x-route-secret") == "server-secret":
+            return AuthContext(subject="route")
+        return None
+
+    app = Quater(cli_auth=allow_auth)
+
+    @app.get(
+        "/private",
+        cli=True,
+        auth=route_auth,
+        description="Read private state.",
+    )
+    async def private(
+        route_secret: str = Header(alias="X-Route-Secret"),
+    ) -> dict[str, str]:
+        return {"route_secret": route_secret}
+
+    with pytest.raises(UnauthorizedError, match="Unauthorized"):
+        await execute_action(
+            action_for(app, "private"),
+            Request(method="POST", path="/__quater__/actions/call"),
+            {"route_secret": "server-secret"},
             source="cli",
             surface_auth=allow_auth,
         )

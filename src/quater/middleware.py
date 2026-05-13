@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol, TypeAlias
@@ -19,6 +20,7 @@ ExceptionMiddleware: TypeAlias = Callable[
     [Request, Exception],
     Awaitable[Response | None],
 ]
+_ERROR_LOGGER = logging.getLogger("quater.error")
 
 
 class ExceptionHandler(Protocol):
@@ -193,9 +195,17 @@ async def _resolve_exception(
 def default_exception_response(exc: Exception, *, debug: bool) -> Response:
     if isinstance(exc, HTTPError):
         return TextResponse(exc.detail, status_code=exc.status_code)
+    _log_unhandled_exception(exc)
     if debug:
         return TextResponse(
             f"{type(exc).__name__}: {exc}",
             status_code=500,
         )
     return TextResponse("Internal Server Error", status_code=500)
+
+
+def _log_unhandled_exception(exc: Exception) -> None:
+    _ERROR_LOGGER.error(
+        "Unhandled exception while processing request",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )

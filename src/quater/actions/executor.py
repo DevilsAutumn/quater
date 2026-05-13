@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from http.cookies import SimpleCookie
 from inspect import Signature
 from types import UnionType
 from typing import Literal, Protocol, Union, get_args, get_origin
@@ -65,6 +66,15 @@ class ActionPreflightResult:
     @property
     def approval_required(self) -> bool:
         return self.needs_approval and not self.approval_token_provided
+
+
+@dataclass(slots=True, frozen=True)
+class _ActionRequestParts:
+    path_params: dict[str, object]
+    query_string: str
+    body: bytes
+    headers: tuple[tuple[str, str], ...]
+    cookies: tuple[tuple[str, str], ...]
 
 
 async def execute_action(
@@ -174,23 +184,24 @@ async def prepare_action_call(
     surface_auth: Authenticate | None = None,
     authenticated_by: Authenticate | None = None,
 ) -> PreparedActionCall:
-    path_params, query_string, body = _build_request_parts(action, arguments)
-    action_request = Request(
+    parts = _build_request_parts(action, arguments)
+    context = replace(
+        request.context,
+        source=source,
+        tool_name=action.name if source == "mcp" else None,
+        action_name=action.name,
+    )
+    auth_request = Request(
         method=action.route.method,
-        path=_render_action_path(action.pattern, path_params),
+        path=_render_action_path(action.pattern, parts.path_params),
         scheme=request.scheme,
         headers=request.headers.raw,
-        query_string=query_string,
-        body=body,
+        query_string=parts.query_string,
+        body=parts.body,
         auth=request.auth,
         client=request.client,
         max_body_size=request.max_body_size,
-        context=replace(
-            request.context,
-            source=source,
-            tool_name=action.name if source == "mcp" else None,
-            action_name=action.name,
-        ),
+        context=context,
     )
 
     surface_authenticated = False
@@ -198,20 +209,31 @@ async def prepare_action_call(
         surface_authenticated = authenticated_by is surface_auth
 
     if surface_auth is not None and not surface_authenticated:
-        await authenticate_request(surface_auth, action_request)
-        request.auth = action_request.auth
+        await authenticate_request(surface_auth, auth_request)
+        request.auth = auth_request.auth
 
     route_auth = action.route.auth
     if route_auth is not None:
-        await authenticate_request(route_auth, action_request)
-        request.auth = action_request.auth
+        await authenticate_request(route_auth, auth_request)
+        request.auth = auth_request.auth
 
-    bound_arguments = await action.handler_plan.bind(action_request, path_params)
+    action_request = _request_with_action_headers(
+        auth_request,
+        query_string=parts.query_string,
+        body=parts.body,
+        headers=parts.headers,
+        cookies=parts.cookies,
+    )
+
+    bound_arguments = await action.handler_plan.bind(
+        action_request,
+        parts.path_params,
+    )
     return PreparedActionCall(
         action=action.name,
         source=source,
         request=action_request,
-        path_params=path_params,
+        path_params=parts.path_params,
         bound_arguments=bound_arguments,
         arguments_hash=action_arguments_hash(action.name, arguments),
     )
@@ -220,9 +242,9 @@ async def prepare_action_call(
 def _build_request_parts(
     action: ExecutableAction,
     arguments: Mapping[str, object],
-) -> tuple[dict[str, object], str, bytes]:
+) -> _ActionRequestParts:
     expected_names = {
-        parameter.name
+        parameter.input_name
         for parameter in action.handler_plan.parameters
         if parameter.source != "request"
     }
@@ -232,6 +254,8 @@ def _build_request_parts(
 
     path_params: dict[str, object] = {}
     query_items: list[tuple[str, str]] = []
+    header_items: list[tuple[str, str]] = []
+    cookie_items: list[tuple[str, str]] = []
     body_value: object = None
     body_parameter_name: str | None = None
     has_body = False
@@ -240,31 +264,54 @@ def _build_request_parts(
     for parameter in action.handler_plan.parameters:
         if parameter.source == "request":
             continue
-        if parameter.name not in arguments:
+        if parameter.input_name not in arguments:
             value = _missing_value(parameter)
-            if value is _MISSING and parameter.source != "query":
-                raise BadRequestError(f"Missing action argument: {parameter.name}")
+            if value is _MISSING and parameter.source in {"path", "body"}:
+                raise BadRequestError(
+                    f"Missing action argument: {parameter.input_name}"
+                )
         else:
-            value = arguments[parameter.name]
+            value = arguments[parameter.input_name]
+            value = _normalize_action_argument(parameter, value)
 
         if parameter.source == "path":
-            path_params[parameter.name] = _convert_path_argument(
-                parameter.name,
+            path_params[parameter.request_name] = _convert_path_argument(
+                parameter.request_name,
                 value,
                 converters,
             )
         elif parameter.source == "query":
             if value is not _MISSING:
-                query_items.append((parameter.name, _argument_to_query(value)))
+                query_items.append((parameter.request_name, _argument_to_scalar(value)))
+        elif parameter.source == "header":
+            if value is not _MISSING:
+                header_items.append(
+                    (
+                        parameter.request_name,
+                        _argument_to_header(value, parameter.input_name),
+                    )
+                )
+        elif parameter.source == "cookie":
+            if value is not _MISSING:
+                cookie_items.append(
+                    (
+                        parameter.request_name,
+                        _argument_to_cookie(value, parameter.input_name),
+                    )
+                )
         elif parameter.source == "body":
             body_value = value
-            body_parameter_name = parameter.name
+            body_parameter_name = parameter.input_name
             has_body = True
 
-    return (
-        path_params,
-        urlencode(query_items),
-        _encode_body_argument(body_value, body_parameter_name) if has_body else b"",
+    return _ActionRequestParts(
+        path_params=path_params,
+        query_string=urlencode(query_items),
+        body=_encode_body_argument(body_value, body_parameter_name)
+        if has_body
+        else b"",
+        headers=tuple(header_items),
+        cookies=tuple(cookie_items),
     )
 
 
@@ -273,12 +320,24 @@ _MISSING = object()
 
 def _missing_value(parameter: BoundParameter) -> object:
     if parameter.default is not Signature.empty:
-        return parameter.default
+        return parameter.default if parameter.source == "body" else _MISSING
     if _allows_none(parameter.annotation):
         if parameter.source == "body":
             return None
         return _MISSING
     return _MISSING
+
+
+def _normalize_action_argument(parameter: BoundParameter, value: object) -> object:
+    if value is not None:
+        return value
+    if parameter.source == "body":
+        return value
+    if parameter.source in {"query", "header", "cookie"} and _allows_none(
+        parameter.annotation
+    ):
+        return _MISSING
+    raise BadRequestError(f"Invalid action argument: {parameter.input_name}")
 
 
 def _path_converters(pattern: RoutePattern) -> dict[str, ParamSegment]:
@@ -301,10 +360,24 @@ def _convert_path_argument(
         raise BadRequestError(f"Invalid path argument: {name}") from exc
 
 
-def _argument_to_query(value: object) -> str:
+def _argument_to_scalar(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def _argument_to_header(value: object, name: str) -> str:
+    rendered = _argument_to_scalar(value)
+    if any(_invalid_header_value_character(char) for char in rendered):
+        raise BadRequestError(f"Invalid action argument: {name}")
+    return rendered
+
+
+def _argument_to_cookie(value: object, name: str) -> str:
+    rendered = _argument_to_header(value, name)
+    if ";" in rendered:
+        raise BadRequestError(f"Invalid action argument: {name}")
+    return rendered
 
 
 def _encode_body_argument(value: object, parameter_name: str | None) -> bytes:
@@ -328,6 +401,73 @@ def _render_action_path(
         else:
             parts.append(segment.value)
     return "/" + "/".join(parts)
+
+
+def _request_with_action_headers(
+    request: Request,
+    *,
+    query_string: str,
+    body: bytes,
+    headers: tuple[tuple[str, str], ...],
+    cookies: tuple[tuple[str, str], ...],
+) -> Request:
+    if not headers and not cookies:
+        return request
+
+    return Request(
+        method=request.method,
+        path=request.path,
+        scheme=request.scheme,
+        headers=_merge_action_headers(request, headers=headers, cookies=cookies),
+        query_string=query_string,
+        body=body,
+        auth=request.auth,
+        client=request.client,
+        context=request.context,
+        max_body_size=request.max_body_size,
+    )
+
+
+def _merge_action_headers(
+    request: Request,
+    *,
+    headers: tuple[tuple[str, str], ...],
+    cookies: tuple[tuple[str, str], ...],
+) -> tuple[tuple[str, str], ...]:
+    override_names = {name.lower() for name, _value in headers}
+    if cookies:
+        override_names.add("cookie")
+
+    merged = tuple(
+        (name, value)
+        for name, value in request.headers.raw
+        if name.lower() not in override_names
+    )
+    if not cookies:
+        return (*merged, *headers)
+
+    return (
+        *merged,
+        *headers,
+        ("cookie", _merged_cookie_header(request.headers.get("cookie"), cookies)),
+    )
+
+
+def _merged_cookie_header(
+    existing: str | None,
+    cookies: tuple[tuple[str, str], ...],
+) -> str:
+    jar = SimpleCookie()
+    if existing:
+        jar.load(existing)
+    for name, value in cookies:
+        jar[name] = value
+    return "; ".join(morsel.OutputString() for morsel in jar.values())
+
+
+def _invalid_header_value_character(char: str) -> bool:
+    ordinal = ord(char)
+    return ordinal == 127 or (ordinal < 32 and char != "\t")
 
 
 def _allows_none(annotation: object) -> bool:

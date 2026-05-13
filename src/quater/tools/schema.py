@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from quater.params import BoundParameter
-from quater.schema import annotation_schema, parameter_required
+from quater.schema import annotation_schema, parameter_required, parameter_schema
 
 
 def tool_input_schema(parameters: tuple[BoundParameter, ...]) -> dict[str, object]:
@@ -14,9 +14,9 @@ def tool_input_schema(parameters: tuple[BoundParameter, ...]) -> dict[str, objec
         if parameter.source == "request":
             continue
 
-        properties[parameter.name] = annotation_schema(parameter.annotation)
+        properties[parameter.input_name] = parameter_schema(parameter)
         if parameter_required(parameter):
-            required.append(parameter.name)
+            required.append(parameter.input_name)
 
     schema: dict[str, object] = {
         "type": "object",

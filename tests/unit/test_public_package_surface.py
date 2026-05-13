@@ -19,10 +19,15 @@ from quater import (
     ApprovalRequest,
     AuthContext,
     AuthRequest,
+    Body,
+    Cookie,
     CORSConfig,
+    Header,
     ImproperlyConfigured,
     MCPTestClient,
+    Path,
     Quater,
+    Query,
     RouteGroup,
     SignedCookieSigner,
     TestClient,
@@ -89,6 +94,11 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.ApprovalRequest is ApprovalRequest
     assert quater.AuthContext is AuthContext
     assert quater.AuthRequest is AuthRequest
+    assert quater.Body is Body
+    assert quater.Cookie is Cookie
+    assert quater.Header is Header
+    assert quater.Path is Path
+    assert quater.Query is Query
     assert quater.AppConfig is AppConfig
     assert quater.CORSConfig is CORSConfig
     assert quater.ImproperlyConfigured is ImproperlyConfigured

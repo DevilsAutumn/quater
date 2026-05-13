@@ -186,6 +186,43 @@ def test_dev_reports_app_file_syntax_error_with_source_location(
     assert "^" in captured.err
 
 
+def test_dev_validates_route_conflicts_before_serving(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_module(
+        tmp_path,
+        "main.py",
+        """
+        from quater import Quater
+
+        app = Quater()
+
+        @app.get("/orders/{order_id}")
+        async def get_order(order_id: str) -> dict[str, str]:
+            return {"order_id": order_id}
+
+        @app.patch("/orders/{id}")
+        async def update_order(id: str) -> dict[str, str]:
+            return {"id": id}
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+    served: list[ServerOptions] = []
+    monkeypatch.setattr("quater.cli.server._serve_with_granian", served.append)
+
+    code = main(["dev"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert served == []
+    assert "Application failed to start" in captured.err
+    assert "PATCH '/orders/{id}' conflicts with GET '/orders/{order_id}'" in (
+        captured.err
+    )
+
+
 def test_run_disables_reload_and_keeps_production_checks_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -409,3 +446,40 @@ def test_run_can_explicitly_skip_production_checks(
     assert code == 0
     assert served[0].strict_production is False
     assert served[0].target == "main:app"
+
+
+def test_run_allow_insecure_still_validates_routes_before_serving(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_module(
+        tmp_path,
+        "main.py",
+        """
+        from quater import Quater
+
+        app = Quater(debug=True)
+
+        @app.get("/orders/{order_id}")
+        async def get_order(order_id: str) -> dict[str, str]:
+            return {"order_id": order_id}
+
+        @app.patch("/orders/{id}")
+        async def update_order(id: str) -> dict[str, str]:
+            return {"id": id}
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+    served: list[ServerOptions] = []
+    monkeypatch.setattr("quater.cli.server._serve_with_granian", served.append)
+
+    code = main(["run", "--allow-insecure"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert served == []
+    assert "Application failed to start" in captured.err
+    assert "PATCH '/orders/{id}' conflicts with GET '/orders/{order_id}'" in (
+        captured.err
+    )

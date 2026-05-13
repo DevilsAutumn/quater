@@ -42,13 +42,12 @@ def serve(options: ServerOptions) -> None:
     previous_environment = _set_environment(options.environment)
     try:
         resolved = _resolve_server_options(options)
-        if resolved.environment == "production" and resolved.strict_production:
-            app = _load_quater_app(
-                resolved.target,
-                factory=resolved.factory,
-                working_dir=resolved.working_dir,
-            )
-            _validate_production_app(app)
+        app = _load_quater_app(
+            resolved.target,
+            factory=resolved.factory,
+            working_dir=resolved.working_dir,
+        )
+        _validate_server_app(app, resolved)
 
         _serve_with_granian(resolved)
     finally:
@@ -78,11 +77,14 @@ def _load_quater_app(
     return load_app(target, factory=factory, working_dir=working_dir)
 
 
-def _validate_production_app(app: Quater) -> None:
+def _validate_server_app(app: Quater, options: ServerOptions) -> None:
     try:
-        app.validate_production()
+        if options.environment == "production" and options.strict_production:
+            app.validate_production()
+            return
+        app.compile_routes()
     except QuaterError as exc:
-        raise CLIUsageError(str(exc)) from exc
+        raise CLIUsageError(f"Application failed to start\n\n{exc}") from exc
 
 
 def _set_environment(environment: ServerEnvironment) -> str | None:

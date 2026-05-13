@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
+from inspect import Signature
 from types import UnionType
-from typing import Any, Union, cast, get_args, get_origin
+from typing import Annotated, Any, Union, cast, get_args, get_origin
 
 from quater.params import BoundParameter
 
@@ -12,6 +13,7 @@ _EMPTY = object()
 
 
 def annotation_schema(annotation: object) -> dict[str, object]:
+    annotation = strip_annotated(annotation)
     annotation = strip_optional(annotation)
     if annotation is str:
         return {"type": "string"}
@@ -43,14 +45,35 @@ def annotation_schema(annotation: object) -> dict[str, object]:
 
 
 def parameter_required(parameter: BoundParameter) -> bool:
-    from inspect import Signature
-
     return parameter.default is Signature.empty and not allows_none(
         parameter.annotation
     )
 
 
+def parameter_schema(
+    parameter: BoundParameter,
+    *,
+    include_description: bool = True,
+) -> dict[str, object]:
+    schema = annotation_schema(parameter.annotation)
+    if include_description and parameter.description:
+        schema["description"] = parameter.description
+    if parameter.default is not Signature.empty and _is_json_schema_default(
+        parameter.default
+    ):
+        schema["default"] = parameter.default
+    return schema
+
+
+def strip_annotated(annotation: object) -> object:
+    if get_origin(annotation) is not Annotated:
+        return annotation
+    args = get_args(annotation)
+    return args[0] if args else annotation
+
+
 def strip_optional(annotation: object) -> object:
+    annotation = strip_annotated(annotation)
     origin = get_origin(annotation)
     if origin not in {UnionType, Union}:
         return annotation
@@ -59,6 +82,7 @@ def strip_optional(annotation: object) -> object:
 
 
 def allows_none(annotation: object) -> bool:
+    annotation = strip_annotated(annotation)
     origin = get_origin(annotation)
     if origin not in {UnionType, Union}:
         return False
@@ -109,3 +133,13 @@ def _is_msgspec_struct(annotation: object) -> bool:
     import msgspec
 
     return isinstance(annotation, type) and issubclass(annotation, msgspec.Struct)
+
+
+def _is_json_schema_default(value: object) -> bool:
+    try:
+        from quater.serialization import dumps_json
+
+        dumps_json(value)
+    except (TypeError, ValueError):
+        return False
+    return True

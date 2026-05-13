@@ -6,21 +6,34 @@ import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import UnionType
-from typing import Any, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
+from quater._parameters import ParameterMarker
 from quater.core import Handler
 from quater.exceptions import BadRequestError, RequestJSONError, RouteBindingError
 from quater.request import Request
 
 _EMPTY = inspect.Signature.empty
+ParameterSource = Literal["request", "path", "query", "body", "header", "cookie"]
 
 
 @dataclass(slots=True, frozen=True)
 class BoundParameter:
     name: str
-    source: str
+    source: ParameterSource
+    request_name: str
+    input_name: str
     annotation: object
     default: object
+    description: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -38,9 +51,13 @@ class HandlerPlan:
             if parameter.source == "request":
                 kwargs[parameter.name] = request
             elif parameter.source == "path":
-                kwargs[parameter.name] = path_params[parameter.name]
+                kwargs[parameter.name] = path_params[parameter.request_name]
             elif parameter.source == "query":
                 kwargs[parameter.name] = _bind_query_parameter(request, parameter)
+            elif parameter.source == "header":
+                kwargs[parameter.name] = _bind_header_parameter(request, parameter)
+            elif parameter.source == "cookie":
+                kwargs[parameter.name] = _bind_cookie_parameter(request, parameter)
             elif parameter.source == "body":
                 kwargs[parameter.name] = await _bind_body_parameter(request, parameter)
 
@@ -60,8 +77,8 @@ def build_handler_plan(
 
     signature = inspect.signature(handler)
     try:
-        type_hints = get_type_hints(handler)
-    except NameError:
+        type_hints = get_type_hints(handler, include_extras=True)
+    except (NameError, TypeError):
         type_hints = handler.__annotations__
     body_parameters = 0
     parameters: list[BoundParameter] = []
@@ -75,8 +92,24 @@ def build_handler_plan(
                 f"Unsupported parameter kind for {name!r}: {parameter.kind!s}"
             )
 
-        annotation = type_hints.get(name, parameter.annotation)
-        source = _parameter_source(name, annotation, path_param_names)
+        annotation, annotation_marker = _annotation_and_marker(
+            type_hints.get(name, parameter.annotation)
+        )
+        raw_default, default_marker = _default_and_marker(parameter.default)
+        marker = _resolve_marker(name, annotation_marker, default_marker)
+        default = _resolve_default(name, raw_default, marker)
+        source = _parameter_source(name, annotation, marker, path_param_names)
+        request_name = _parameter_request_name(name, source, marker)
+        input_name = _parameter_input_name(name, source, marker)
+        _validate_bound_parameter(
+            name,
+            source=source,
+            request_name=request_name,
+            input_name=input_name,
+            default=default,
+            annotation=annotation,
+            path_param_names=path_param_names,
+        )
         if source == "body":
             body_parameters += 1
             if body_parameters > 1:
@@ -86,37 +119,107 @@ def build_handler_plan(
             BoundParameter(
                 name=name,
                 source=source,
+                request_name=request_name,
+                input_name=input_name,
                 annotation=annotation,
-                default=parameter.default,
+                default=default,
+                description=marker.description if marker is not None else None,
             )
         )
 
+    _validate_parameter_collisions(parameters)
     return HandlerPlan(handler=handler, parameters=tuple(parameters))
 
 
 def _parameter_source(
     name: str,
     annotation: object,
+    marker: ParameterMarker | None,
     path_param_names: frozenset[str],
-) -> str:
+) -> ParameterSource:
+    if name == "request" or annotation is Request:
+        if marker is not None:
+            raise RouteBindingError(
+                f"Request parameter {name!r} cannot use a parameter marker"
+            )
+        return "request"
+    if marker is not None:
+        if name in path_param_names and marker.source != "path":
+            raise RouteBindingError(
+                f"Path parameter {name!r} cannot use {marker.source} binding"
+            )
+        return marker.source
     if name in path_param_names:
         return "path"
-    if name == "request" or annotation is Request:
-        return "request"
     if _is_query_type(annotation):
         return "query"
     return "body"
 
 
+def _parameter_request_name(
+    name: str,
+    source: ParameterSource,
+    marker: ParameterMarker | None,
+) -> str:
+    if marker is None:
+        return name
+    if source == "header" and marker.alias is None and marker.convert_underscores:
+        return name.replace("_", "-")
+    return marker.alias or name
+
+
+def _parameter_input_name(
+    name: str,
+    source: ParameterSource,
+    marker: ParameterMarker | None,
+) -> str:
+    if source == "body" and marker is not None and marker.alias is not None:
+        return marker.alias
+    return name
+
+
 def _bind_query_parameter(request: Request, parameter: BoundParameter) -> object:
-    value = request.query.get(parameter.name)
+    value = request.query.get(parameter.request_name)
     if value is None:
-        if parameter.default is not _EMPTY:
-            return parameter.default
-        if _allows_none(parameter.annotation):
-            return None
-        raise BadRequestError(f"Missing required query parameter: {parameter.name}")
-    return _convert_scalar(value, parameter.annotation, parameter.name)
+        return _missing_request_value(parameter, label="query parameter")
+    return convert_scalar_value(
+        value,
+        parameter.annotation,
+        parameter.request_name,
+        source="query parameter",
+    )
+
+
+def _bind_header_parameter(request: Request, parameter: BoundParameter) -> object:
+    value = request.headers.get(parameter.request_name)
+    if value is None:
+        return _missing_request_value(parameter, label="header")
+    return convert_scalar_value(
+        value,
+        parameter.annotation,
+        parameter.request_name,
+        source="header",
+    )
+
+
+def _bind_cookie_parameter(request: Request, parameter: BoundParameter) -> object:
+    value = request.cookies.get(parameter.request_name)
+    if value is None:
+        return _missing_request_value(parameter, label="cookie")
+    return convert_scalar_value(
+        value,
+        parameter.annotation,
+        parameter.request_name,
+        source="cookie",
+    )
+
+
+def _missing_request_value(parameter: BoundParameter, *, label: str) -> object:
+    if parameter.default is not _EMPTY:
+        return parameter.default
+    if _allows_none(parameter.annotation):
+        return None
+    raise BadRequestError(f"Missing required {label}: {parameter.request_name}")
 
 
 async def _bind_body_parameter(request: Request, parameter: BoundParameter) -> object:
@@ -124,9 +227,9 @@ async def _bind_body_parameter(request: Request, parameter: BoundParameter) -> o
     if _uses_generic_json(annotation):
         return await request.json()
 
-    try:
-        from quater.serialization import JSONValidationError, loads_json_as
+    from quater.serialization import JSONValidationError, loads_json_as
 
+    try:
         return loads_json_as(await request.body(), annotation)
     except RequestJSONError:
         raise
@@ -147,7 +250,13 @@ def _is_query_type(annotation: object) -> bool:
     return annotation in {str, int, float, bool}
 
 
-def _convert_scalar(value: str, annotation: object, name: str) -> object:
+def convert_scalar_value(
+    value: str,
+    annotation: object,
+    name: str,
+    *,
+    source: str,
+) -> object:
     annotation = _strip_optional(annotation)
     if annotation is _EMPTY or annotation is str:
         return value
@@ -155,24 +264,24 @@ def _convert_scalar(value: str, annotation: object, name: str) -> object:
         try:
             return int(value)
         except ValueError as exc:
-            raise BadRequestError(f"Invalid integer query parameter: {name}") from exc
+            raise BadRequestError(f"Invalid integer {source}: {name}") from exc
     if annotation is float:
         try:
             return float(value)
         except ValueError as exc:
-            raise BadRequestError(f"Invalid float query parameter: {name}") from exc
+            raise BadRequestError(f"Invalid float {source}: {name}") from exc
     if annotation is bool:
-        return _parse_bool(value, name)
+        return _parse_bool(value, name, source=source)
     return value
 
 
-def _parse_bool(value: str, name: str) -> bool:
+def _parse_bool(value: str, name: str, *, source: str) -> bool:
     normalized = value.lower()
     if normalized in {"1", "true", "yes", "on"}:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    raise BadRequestError(f"Invalid boolean query parameter: {name}")
+    raise BadRequestError(f"Invalid boolean {source}: {name}")
 
 
 def _strip_optional(annotation: object) -> object:
@@ -188,3 +297,159 @@ def _allows_none(annotation: object) -> bool:
     if origin not in {UnionType, Union}:
         return False
     return type(None) in get_args(annotation)
+
+
+def _annotation_and_marker(
+    annotation: object,
+) -> tuple[object, ParameterMarker | None]:
+    if get_origin(annotation) is not Annotated:
+        return annotation, None
+
+    args = get_args(annotation)
+    if not args:
+        return annotation, None
+
+    marker: ParameterMarker | None = None
+    for metadata in args[1:]:
+        if not isinstance(metadata, ParameterMarker):
+            continue
+        if marker is not None:
+            raise RouteBindingError("Only one parameter marker is supported")
+        marker = metadata
+    return args[0], marker
+
+
+def _default_and_marker(value: object) -> tuple[object, ParameterMarker | None]:
+    if isinstance(value, ParameterMarker):
+        return _EMPTY, value
+    return value, None
+
+
+def _resolve_marker(
+    name: str,
+    annotation_marker: ParameterMarker | None,
+    default_marker: ParameterMarker | None,
+) -> ParameterMarker | None:
+    if annotation_marker is not None and default_marker is not None:
+        raise RouteBindingError(
+            f"Parameter {name!r} cannot use markers in both Annotated and default"
+        )
+    return annotation_marker or default_marker
+
+
+def _resolve_default(
+    name: str,
+    default: object,
+    marker: ParameterMarker | None,
+) -> object:
+    if marker is None:
+        return default
+    if marker.default is not _EMPTY and default is not _EMPTY:
+        raise RouteBindingError(f"Parameter {name!r} cannot define a default twice")
+    if marker.default is not _EMPTY:
+        return marker.default
+    return default
+
+
+def _validate_bound_parameter(
+    name: str,
+    *,
+    source: ParameterSource,
+    request_name: str,
+    input_name: str,
+    default: object,
+    annotation: object,
+    path_param_names: frozenset[str],
+) -> None:
+    if source == "request":
+        return
+    if source == "path":
+        if request_name not in path_param_names:
+            raise RouteBindingError(
+                f"Path parameter {name!r} does not match route path"
+            )
+        if default is not _EMPTY:
+            raise RouteBindingError(f"Path parameter {name!r} cannot define a default")
+        return
+    if source == "header":
+        _validate_header_name(request_name)
+    elif source == "cookie":
+        _validate_cookie_name(request_name)
+    elif source == "body" and not input_name.isidentifier():
+        raise RouteBindingError(f"Body parameter {name!r} must use an identifier alias")
+
+    if annotation is Request:
+        raise RouteBindingError(
+            f"Request parameter {name!r} cannot be bound from {source}"
+        )
+    if source in {"query", "header", "cookie"}:
+        _validate_scalar_annotation(name, source=source, annotation=annotation)
+
+
+def _validate_header_name(name: str) -> None:
+    if not name or not all(_is_header_name_char(char) for char in name):
+        raise RouteBindingError(f"Invalid header parameter name: {name!r}")
+
+
+def _is_header_name_char(char: str) -> bool:
+    ordinal = ord(char)
+    if ordinal > 127:
+        return False
+    return char.isalnum() or char in "!#$%&'*+-.^_`|~"
+
+
+def _validate_cookie_name(name: str) -> None:
+    if not name or not all(_is_header_name_char(char) for char in name):
+        raise RouteBindingError(f"Invalid cookie parameter name: {name!r}")
+
+
+def _validate_scalar_annotation(
+    name: str,
+    *,
+    source: ParameterSource,
+    annotation: object,
+) -> None:
+    stripped = _strip_optional(annotation)
+    if stripped in {_EMPTY, str, int, float, bool}:
+        return
+    raise RouteBindingError(
+        f"{source.title()} parameter {name!r} must use str, int, float, or bool"
+    )
+
+
+def _validate_parameter_collisions(parameters: list[BoundParameter]) -> None:
+    action_names: dict[str, str] = {}
+    request_names: dict[tuple[ParameterSource, str], str] = {}
+
+    for parameter in parameters:
+        if parameter.source == "request":
+            continue
+
+        existing_action_name = action_names.get(parameter.input_name)
+        if existing_action_name is not None:
+            raise RouteBindingError(
+                "Duplicate action argument name "
+                f"{parameter.input_name!r} for parameters "
+                f"{existing_action_name!r} and {parameter.name!r}"
+            )
+        action_names[parameter.input_name] = parameter.name
+
+        if parameter.source not in {"path", "query", "header", "cookie"}:
+            continue
+        request_key = _request_name_collision_key(parameter)
+        existing_request_name = request_names.get(request_key)
+        if existing_request_name is not None:
+            raise RouteBindingError(
+                "Duplicate request parameter name "
+                f"{parameter.request_name!r} for parameters "
+                f"{existing_request_name!r} and {parameter.name!r}"
+            )
+        request_names[request_key] = parameter.name
+
+
+def _request_name_collision_key(
+    parameter: BoundParameter,
+) -> tuple[ParameterSource, str]:
+    if parameter.source == "header":
+        return parameter.source, parameter.request_name.lower()
+    return parameter.source, parameter.request_name

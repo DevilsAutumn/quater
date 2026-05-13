@@ -16,7 +16,12 @@ from quater.routing import (
     StaticSegment,
     parse_route_pattern,
 )
-from quater.schema import annotation_schema, parameter_required, strip_optional
+from quater.schema import (
+    annotation_schema,
+    parameter_required,
+    parameter_schema,
+    strip_optional,
+)
 
 OPENAPI_VERSION = "3.1.1"
 
@@ -98,18 +103,19 @@ def _operation(
 def _parameters(handler_plan: HandlerPlan) -> list[dict[str, object]]:
     parameters: list[dict[str, object]] = []
     for parameter in handler_plan.parameters:
-        if parameter.source not in {"path", "query"}:
+        if parameter.source not in {"path", "query", "header", "cookie"}:
             continue
 
         required = parameter.source == "path" or parameter_required(parameter)
-        parameters.append(
-            {
-                "name": parameter.name,
-                "in": parameter.source,
-                "required": required,
-                "schema": annotation_schema(parameter.annotation),
-            }
-        )
+        item: dict[str, object] = {
+            "name": parameter.request_name,
+            "in": parameter.source,
+            "required": required,
+            "schema": parameter_schema(parameter, include_description=False),
+        }
+        if parameter.description:
+            item["description"] = parameter.description
+        parameters.append(item)
     return parameters
 
 
@@ -121,10 +127,12 @@ def _request_body(handler_plan: HandlerPlan) -> dict[str, object] | None:
         body: dict[str, object] = {
             "content": {
                 "application/json": {
-                    "schema": annotation_schema(parameter.annotation),
+                    "schema": parameter_schema(parameter),
                 }
             }
         }
+        if parameter.description:
+            body["description"] = parameter.description
         if parameter_required(parameter):
             body["required"] = True
         return body

@@ -20,8 +20,11 @@ def test_ambiguous_dynamic_route_shapes_are_rejected() -> None:
     async def by_name(name: str) -> dict[str, str]:
         return {"name": name}
 
-    with pytest.raises(RouteConflictError):
+    with pytest.raises(RouteConflictError) as exc_info:
         app.compile_routes()
+    message = str(exc_info.value)
+    assert "GET '/users/{name}' conflicts with GET '/users/{id}'" in message
+    assert "same method and path shape are ambiguous" in message
 
 
 def test_duplicate_method_and_path_are_rejected() -> None:
@@ -91,8 +94,12 @@ def test_dynamic_route_names_must_match_across_methods() -> None:
     async def update_user(user_id: int) -> dict[str, int]:
         return {"id": user_id}
 
-    with pytest.raises(RouteConflictError):
+    with pytest.raises(RouteConflictError) as exc_info:
         app.compile_routes()
+    message = str(exc_info.value)
+    assert "POST '/users/{user_id:int}' conflicts with GET '/users/{id:int}'" in message
+    assert "Segment 2 uses {user_id:int}" in message
+    assert "route '/users/{id:int}' uses {id:int}" in message
 
 
 def test_dynamic_route_converters_must_match_for_same_shape() -> None:

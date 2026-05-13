@@ -244,6 +244,36 @@ async def get_order(order_id: str) -> dict[str, str]: ...
 quater call get_order --order-id ord_1001
 ```
 
+If a route uses parameter markers, CLI and MCP argument names usually come from
+the Python handler parameter. HTTP aliases stay on the HTTP side:
+
+```python
+from quater import Header, Query
+
+
+@app.get("/orders/{order_id}", cli=True, description="Fetch one order.")
+async def get_order(
+    order_id: str,
+    include_events: bool = Query(default=False, alias="include-events"),
+    request_id: str | None = Header(default=None, alias="X-Request-ID"),
+) -> dict[str, object]:
+    return {"order_id": order_id, "include_events": include_events}
+```
+
+The HTTP query parameter is `include-events`, and the HTTP header is
+`X-Request-ID`. The CLI action arguments remain `include_events` and
+`request_id`, so the shell command stays predictable:
+
+```bash
+quater call get_order \
+  --order-id ord_1001 \
+  --include-events true \
+  --request-id req_123
+```
+
+`Body(alias=...)` is the exception. It renames the action argument for the JSON
+body because the HTTP body itself has no query or header-style wire name.
+
 Boolean, number, object, and array values are parsed as JSON when possible. If an
 argument is a JSON body object or array, pass it as valid JSON:
 

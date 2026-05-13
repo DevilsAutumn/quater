@@ -5,7 +5,7 @@ import json
 import msgspec
 import pytest
 
-from quater import HTMLResponse, Quater, Request
+from quater import Body, Cookie, Header, HTMLResponse, Path, Quater, Query, Request
 from quater.exceptions import RouteConflictError
 from quater.typing import AuthContext, AuthRequest
 
@@ -13,6 +13,9 @@ from quater.typing import AuthContext, AuthRequest
 class CreateUser(msgspec.Struct):
     name: str
     age: int
+
+
+UPDATE_PAYLOAD = Body(description="Update payload.")
 
 
 @pytest.mark.asyncio
@@ -47,7 +50,7 @@ async def test_openapi_json_is_generated_by_default() -> None:
             "name": "include_pets",
             "in": "query",
             "required": False,
-            "schema": {"type": "boolean"},
+            "schema": {"type": "boolean", "default": False},
         },
     ]
     post_operation = body["paths"]["/users"]["post"]
@@ -67,6 +70,69 @@ async def test_openapi_json_is_generated_by_default() -> None:
         },
         "required": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_openapi_uses_parameter_markers_for_metadata() -> None:
+    app = Quater(name="Orders API")
+
+    @app.post("/orders/{id}", description="Update one order.")
+    async def update_order(
+        order_id: str = Path(alias="id", description="Order id."),
+        include_events: bool = Query(
+            default=False,
+            alias="include-events",
+            description="Include event history.",
+        ),
+        request_id: str | None = Header(
+            default=None,
+            alias="X-Request-ID",
+            description="Caller request id.",
+        ),
+        session_id: str = Cookie(alias="session", description="Session cookie."),
+        payload: CreateUser = UPDATE_PAYLOAD,
+    ) -> dict[str, str]:
+        return {"order_id": order_id, "payload": payload.name}
+
+    response = await app.handle(Request(method="GET", path="/openapi.json"))
+    body = json.loads(response.body)
+    operation = body["paths"]["/orders/{id}"]["post"]
+
+    assert operation["parameters"] == [
+        {
+            "name": "id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Order id.",
+        },
+        {
+            "name": "include-events",
+            "in": "query",
+            "required": False,
+            "schema": {"type": "boolean", "default": False},
+            "description": "Include event history.",
+        },
+        {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string", "default": None},
+            "description": "Caller request id.",
+        },
+        {
+            "name": "session",
+            "in": "cookie",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Session cookie.",
+        },
+    ]
+    assert operation["requestBody"]["description"] == "Update payload."
+    assert (
+        operation["requestBody"]["content"]["application/json"]["schema"]["description"]
+        == "Update payload."
+    )
 
 
 @pytest.mark.asyncio

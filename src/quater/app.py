@@ -647,6 +647,7 @@ class Quater:
     async def startup(self) -> None:
         """Run startup hooks once."""
 
+        self.compile_routes()
         await self._lifespan.startup()
 
     async def shutdown(self) -> None:

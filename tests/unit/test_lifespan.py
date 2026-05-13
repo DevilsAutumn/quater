@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from quater import Quater
-from quater.exceptions import LifespanStateError
+from quater.exceptions import LifespanStateError, RouteConflictError
 
 
 @pytest.mark.asyncio
@@ -94,3 +94,26 @@ async def test_lifespan_hooks_cannot_be_registered_after_startup_begins() -> Non
 
     with pytest.raises(LifespanStateError):
         app.on_shutdown(too_late)
+
+
+@pytest.mark.asyncio
+async def test_startup_compiles_routes_before_running_hooks() -> None:
+    app = Quater()
+    events: list[str] = []
+
+    @app.on_startup
+    async def startup() -> None:
+        events.append("startup")
+
+    @app.get("/orders/{order_id}")
+    async def get_order(order_id: str) -> dict[str, str]:
+        return {"order_id": order_id}
+
+    @app.patch("/orders/{id}")
+    async def update_order(id: str) -> dict[str, str]:
+        return {"id": id}
+
+    with pytest.raises(RouteConflictError):
+        await app.startup()
+
+    assert events == []
