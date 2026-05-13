@@ -39,33 +39,20 @@ class ServerOptions:
 def serve(options: ServerOptions) -> None:
     """Validate the target and hand off to Granian."""
 
-    _set_environment(options.environment)
-    resolved = _resolve_server_options(options)
-    if resolved.environment == "production" and resolved.strict_production:
-        app = _load_quater_app(
-            resolved.target,
-            factory=resolved.factory,
-            working_dir=resolved.working_dir,
-        )
-        _validate_production_app(app)
+    previous_environment = _set_environment(options.environment)
+    try:
+        resolved = _resolve_server_options(options)
+        if resolved.environment == "production" and resolved.strict_production:
+            app = _load_quater_app(
+                resolved.target,
+                factory=resolved.factory,
+                working_dir=resolved.working_dir,
+            )
+            _validate_production_app(app)
 
-    _serve_with_granian(resolved)
-
-
-def production_safety_issues(app: Quater) -> tuple[str, ...]:
-    """Return configuration issues that should block production startup."""
-
-    issues: list[str] = []
-    config = app.config
-    if config.debug:
-        issues.append("debug must be disabled")
-    if config.security != "strict":
-        issues.append("security must be 'strict'")
-    if not config.allowed_hosts:
-        issues.append("allowed_hosts must be configured")
-    elif "*" in config.allowed_hosts:
-        issues.append("allowed_hosts must not contain '*'")
-    return tuple(issues)
+        _serve_with_granian(resolved)
+    finally:
+        _restore_environment(previous_environment)
 
 
 def _resolve_server_options(options: ServerOptions) -> ServerOptions:
@@ -93,18 +80,22 @@ def _load_quater_app(
 
 def _validate_production_app(app: Quater) -> None:
     try:
-        app.compile_routes()
+        app.validate_production()
     except QuaterError as exc:
         raise CLIUsageError(str(exc)) from exc
 
-    issues = production_safety_issues(app)
-    if issues:
-        joined = "\n".join(f"- {issue}" for issue in issues)
-        raise CLIUsageError(f"Production safety check failed:\n{joined}")
 
-
-def _set_environment(environment: ServerEnvironment) -> None:
+def _set_environment(environment: ServerEnvironment) -> str | None:
+    previous = os.environ.get("QUATER_ENV")
     os.environ["QUATER_ENV"] = environment
+    return previous
+
+
+def _restore_environment(previous: str | None) -> None:
+    if previous is None:
+        os.environ.pop("QUATER_ENV", None)
+        return
+    os.environ["QUATER_ENV"] = previous
 
 
 def _serve_with_granian(options: ServerOptions) -> None:

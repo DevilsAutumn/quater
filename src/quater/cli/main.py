@@ -93,7 +93,7 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
         raise CLIUsageError("--app is required unless QUATER_APP is set")
 
     app = load_app(app_path)
-    headers = parse_headers(token=namespace.token, headers=namespace.header)
+    headers = parse_headers(token=_local_cli_token(namespace), headers=namespace.header)
     registry = app._compiled_action_registry()
     if namespace.command == "actions":
         await _authenticate_actions_request(app, headers)
@@ -333,6 +333,12 @@ def _non_empty_token(value: str | None) -> str | None:
     return token
 
 
+def _local_cli_token(namespace: argparse.Namespace) -> str | None:
+    if namespace.token is not None:
+        return cast(str, namespace.token)
+    return os.environ.get("QUATER_TOKEN")
+
+
 def _non_empty_approval(value: str | None) -> str | None:
     if value is None:
         return None
@@ -371,7 +377,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="quater")
     parser.add_argument("--app", help="Application import path, for example app:app")
     parser.add_argument("--json", dest="as_json", action="store_true")
-    parser.add_argument("--token", help="Bearer token for the app's cli_auth hook")
+    parser.add_argument(
+        "--token",
+        help=(
+            "Bearer token for the app's cli_auth hook. "
+            "Local actions also read QUATER_TOKEN."
+        ),
+    )
     parser.add_argument(
         "--header",
         action="append",

@@ -638,6 +638,7 @@ def render_application(package: Any) -> str:
             "| `on_startup(...)` / `on_shutdown(...)` | Register lifespan hooks. |",
             "| `startup()` / `shutdown()` | Run lifespan hooks manually in tests. |",
             "| `handle(request)` | Handle an in-process request. |",
+            "| `validate_production()` | Fail fast on unsafe production config. |",
             "",
         ]
     )

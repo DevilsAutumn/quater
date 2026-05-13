@@ -54,7 +54,7 @@ def base_environ(
         "REQUEST_METHOD": method,
         "PATH_INFO": path,
         "QUERY_STRING": "",
-        "SERVER_NAME": "api.example.com",
+        "SERVER_NAME": "localhost",
         "SERVER_PORT": "80",
         "SERVER_PROTOCOL": "HTTP/1.1",
         "wsgi.input": CountingInput(body),

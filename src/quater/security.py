@@ -10,6 +10,8 @@ from quater.exceptions import BadRequestError, PayloadTooLargeError
 from quater.request import Request
 from quater.response import Response
 
+_LOCAL_ALLOWED_HOSTS = ("localhost", "127.0.0.1", "::1", "testserver")
+
 
 @dataclass(slots=True, frozen=True)
 class RequestSecurityContext:
@@ -30,7 +32,15 @@ def prepare_request_security(
 
     context = resolve_request_security_context(request, config)
     if config.security != "off":
-        _validate_allowed_host(context.host, config.allowed_hosts)
+        _validate_allowed_host(
+            context.host,
+            _effective_allowed_hosts(config),
+            allow_missing=(
+                context.client is None
+                and not config.allowed_hosts
+                and config.security == "strict"
+            ),
+        )
     return context
 
 
@@ -124,10 +134,25 @@ def _validate_singleton_request_headers(request: Request) -> None:
         raise BadRequestError("Invalid Content-Length header")
 
 
-def _validate_allowed_host(host: str | None, allowed_hosts: tuple[str, ...]) -> None:
+def _effective_allowed_hosts(config: AppConfig) -> tuple[str, ...]:
+    if config.allowed_hosts:
+        return config.allowed_hosts
+    if config.security == "strict":
+        return _LOCAL_ALLOWED_HOSTS
+    return ()
+
+
+def _validate_allowed_host(
+    host: str | None,
+    allowed_hosts: tuple[str, ...],
+    *,
+    allow_missing: bool = False,
+) -> None:
     if not allowed_hosts:
         return
     if host is None:
+        if allow_missing:
+            return
         raise BadRequestError("Invalid Host header")
 
     for allowed in allowed_hosts:

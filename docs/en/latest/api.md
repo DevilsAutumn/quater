@@ -87,6 +87,12 @@ an app exposes tools, `mcp_auth` is required.
 If an app exposes `cli=True` routes, `cli_auth` is required. If any exposed
 route uses `needs_approval=True`, `action_approval` is required.
 
+Before deploying through a server command that does not use `quater run`, call
+`app.validate_production()` after routes are declared. It compiles routes and
+fails fast on unsafe production settings such as `debug=True`, disabled
+security, or missing `allowed_hosts`. See [Deployment](/en/latest/deployment)
+for server examples.
+
 ## Routes
 
 Route decorators are the main API:

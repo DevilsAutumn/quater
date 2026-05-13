@@ -31,7 +31,7 @@ class FakeRSGIScope:
     query_string: str = ""
     scheme: str = "http"
     client: str = "127.0.0.1:5000"
-    authority: str | None = "api.example.com"
+    authority: str | None = "localhost"
     proto: str = "http"
     headers: FakeRSGIHeaders = FakeRSGIHeaders()
 

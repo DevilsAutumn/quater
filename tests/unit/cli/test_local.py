@@ -60,6 +60,121 @@ def test_cli_lists_local_actions_as_json(
     }
 
 
+def test_cli_reads_local_app_and_token_from_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_app(
+        tmp_path,
+        """
+        from quater import AuthContext, AuthRequest, Quater
+
+        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+            if ctx.headers.get("authorization") == "Bearer secret":
+                return AuthContext(subject="cli")
+            return None
+
+        app = Quater(cli_auth=cli_auth)
+
+        @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+        async def get_user(id: int) -> dict[str, int]:
+            return {"id": id}
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("QUATER_APP", "sample:app")
+    monkeypatch.setenv("QUATER_TOKEN", "secret")
+
+    code = main(["--json", "actions", "list"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "actions": [
+            {
+                "name": "get_user",
+                "description": "Fetch one user.",
+            }
+        ]
+    }
+
+
+def test_cli_token_argument_overrides_environment_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_app(
+        tmp_path,
+        """
+        from quater import AuthContext, AuthRequest, Quater
+
+        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+            if ctx.headers.get("authorization") == "Bearer explicit":
+                return AuthContext(subject="cli")
+            return None
+
+        app = Quater(cli_auth=cli_auth)
+
+        @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+        async def get_user(id: int) -> dict[str, int]:
+            return {"id": id}
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("QUATER_TOKEN", "wrong")
+
+    code = main(
+        [
+            "--app",
+            "sample:app",
+            "--token",
+            "explicit",
+            "actions",
+            "list",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.err == ""
+    assert "get_user" in captured.out
+
+
+def test_cli_rejects_empty_environment_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_app(
+        tmp_path,
+        """
+        from quater import AuthContext, AuthRequest, Quater
+
+        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+            return AuthContext(subject="cli")
+
+        app = Quater(cli_auth=cli_auth)
+
+        @app.get("/health", cli=True, description="Read health.")
+        async def health() -> dict[str, bool]:
+            return {"ok": True}
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("QUATER_APP", "sample:app")
+    monkeypatch.setenv("QUATER_TOKEN", " ")
+
+    code = main(["actions", "list"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    assert captured.err == "Auth token must not be empty\n"
+
+
 def test_cli_searches_local_actions_as_compact_results(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

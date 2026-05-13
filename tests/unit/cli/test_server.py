@@ -8,9 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from quater import Quater
 from quater.cli.main import main
-from quater.cli.server import ServerOptions, production_safety_issues, serve
+from quater.cli.server import ServerOptions, serve
 
 
 def write_module(tmp_path: Path, filename: str, source: str) -> None:
@@ -216,7 +215,7 @@ def test_server_options_can_be_overridden(
     assert seen[0].working_dir == Path("/tmp")
 
 
-def test_serve_sets_environment_before_loading_production_app(
+def test_serve_sets_environment_while_loading_production_app(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -237,6 +236,7 @@ def test_serve_sets_environment_before_loading_production_app(
         """,
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("QUATER_ENV", raising=False)
     served: list[ServerOptions] = []
     monkeypatch.setattr("quater.cli.server._serve_with_granian", served.append)
 
@@ -259,32 +259,49 @@ def test_serve_sets_environment_before_loading_production_app(
     sample = importlib.import_module("main")
 
     assert sample.seen_env == "production"
-    assert os.environ["QUATER_ENV"] == "production"
+    assert "QUATER_ENV" not in os.environ
     assert served
 
 
-def test_production_safety_rejects_debug_apps() -> None:
-    app = Quater(debug=True, allowed_hosts=["api.example.com"])
+def test_serve_restores_existing_environment_after_server_returns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_module(
+        tmp_path,
+        "main.py",
+        """
+        from quater import Quater
 
-    assert production_safety_issues(app) == ("debug must be disabled",)
+        app = Quater(
+            allowed_hosts=["api.example.com"],
+            docs_path=None,
+            openapi_path=None,
+            mcp_docs_path=None,
+        )
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("QUATER_ENV", "staging")
+    monkeypatch.setattr("quater.cli.server._serve_with_granian", lambda _: None)
 
+    serve(
+        ServerOptions(
+            target=None,
+            environment="production",
+            host="127.0.0.1",
+            port=8000,
+            interface="rsgi",
+            loop="auto",
+            workers=1,
+            reload=False,
+            access_log=True,
+            log_level="info",
+            factory=False,
+        )
+    )
 
-def test_production_safety_rejects_missing_allowed_hosts() -> None:
-    app = Quater()
-
-    assert "allowed_hosts must be configured" in production_safety_issues(app)
-
-
-def test_production_safety_rejects_wildcard_allowed_hosts() -> None:
-    app = Quater(allowed_hosts=["*"])
-
-    assert "allowed_hosts must not contain '*'" in production_safety_issues(app)
-
-
-def test_production_safety_rejects_non_strict_security() -> None:
-    app = Quater(security="off", allowed_hosts=["api.example.com"])
-
-    assert "security must be 'strict'" in production_safety_issues(app)
+    assert os.environ["QUATER_ENV"] == "staging"
 
 
 def test_run_reports_insecure_production_config(

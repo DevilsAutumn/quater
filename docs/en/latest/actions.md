@@ -81,16 +81,52 @@ flowchart TB
     binding --> handler
 ```
 
+## CLI Shape
+
+The same `quater` command is used for local development, remote operations, and
+server startup. The important distinction is whether the command needs to import
+your app or talk to a hosted app.
+
+| Command | What it does |
+| --- | --- |
+| `quater dev [target]` | Run the app locally with reload enabled. |
+| `quater run [target]` | Run the app for production-style serving. |
+| `quater actions list [remote]` | Show action names and descriptions. |
+| `quater actions search [remote] <query>` | Search action names, descriptions, methods, and paths. |
+| `quater actions describe [remote] <action>` | Show flags, schema, dry-run command, and approval command. |
+| `quater call [remote] <action> [--flags]` | Execute one action. |
+| `quater connect <name> <url> --token <token>` | Save a hosted app as a named remote. |
+| `quater login <name> --token <token>` | Replace the stored token for a remote. |
+| `quater remotes list` | Show saved remotes. |
+
+Global options go before the command:
+
+```bash
+quater --json actions list
+quater --app main:app actions list
+quater --token admin-token actions list
+quater --header "X-Operator: admin" actions list
+```
+
+`--json` is useful for scripts and agents. Human output is intentionally compact;
+JSON output keeps the same information machine-readable.
+
 ## Local Actions
 
 Local CLI calls import the app and run in the same Python process. They do not
 need a running server, but they still go through `cli_auth`.
 
-Set the app import path with `--app`:
+Set the app and token once when you are working locally:
 
 ```bash
-quater --app main:app --token admin-token actions list
+export QUATER_APP=main:app
+export QUATER_TOKEN=admin-token
+quater actions list
 ```
+
+`QUATER_APP` tells Quater what app to import. `QUATER_TOKEN` becomes an
+`Authorization: Bearer ...` header for local CLI calls. Use this when you are
+running several local commands in the same terminal.
 
 Sample output:
 
@@ -101,17 +137,26 @@ update_order_status
   Update an order status.
 ```
 
-Or set `QUATER_APP` once:
+If you prefer one-off commands, pass both values inline:
 
 ```bash
-export QUATER_APP=main:app
-quater --token admin-token actions list
+quater --app main:app --token admin-token actions list
 ```
+
+You can also pass custom headers. This is useful when your `cli_auth` hook does
+not use bearer tokens:
+
+```bash
+quater --app main:app --header "X-Operator: admin" actions list
+```
+
+Do not pass `--token` and an `Authorization` header together. Quater rejects
+that because it would be unclear which credential should win.
 
 Use `actions search` when the app has many actions:
 
 ```bash
-quater --token admin-token actions search order
+quater actions search order
 ```
 
 Sample output:
@@ -127,10 +172,27 @@ update_order_status
 and description. That keeps discovery readable for people and small enough for
 AI agents to choose a relevant action without being flooded by schemas.
 
+Use `--json` when another program will read the output:
+
+```bash
+quater --json actions list
+```
+
+```json
+{
+  "actions": [
+    {
+      "name": "get_order",
+      "description": "Fetch one order by id."
+    }
+  ]
+}
+```
+
 Once you know the action you want, describe it:
 
 ```bash
-quater --token admin-token actions describe get_order
+quater actions describe get_order
 ```
 
 Sample output:
@@ -168,15 +230,30 @@ command when the action is protected.
 Call the action with kebab-case flags:
 
 ```bash
-quater --token admin-token call get_order --order-id ord_1001
+quater call get_order --order-id ord_1001
 ```
 
-If an argument is a JSON body object or array, pass it as valid JSON:
+Action argument names come from the generated input schema. Use kebab-case on
+the command line even when the Python parameter is snake_case:
+
+```python
+async def get_order(order_id: str) -> dict[str, str]: ...
+```
 
 ```bash
-quater --token admin-token call create_order \
+quater call get_order --order-id ord_1001
+```
+
+Boolean, number, object, and array values are parsed as JSON when possible. If an
+argument is a JSON body object or array, pass it as valid JSON:
+
+```bash
+quater call create_order \
   --order '{"customer_id":"cust_123","sku":"sku-coffee","quantity":2}'
 ```
+
+Unknown arguments, duplicate arguments, and missing argument values fail before
+the handler runs.
 
 ::: warning Local CLI is trusted local execution
 Local actions import your Python app, so app import side effects run just like
@@ -204,6 +281,19 @@ Quater stores the remote config in the user's Quater config directory with
 restricted file permissions. The token is sent as a bearer token on remote
 manifest and action requests.
 
+By default the file is:
+
+```text
+~/.quater/remotes.json
+```
+
+Set `QUATER_HOME` if you want a separate config directory for CI, tests, or a
+throwaway environment:
+
+```bash
+QUATER_HOME=.quater-ci quater connect store https://api.example.com --token admin-token
+```
+
 List configured remotes:
 
 ```bash
@@ -220,6 +310,13 @@ Refresh or replace a stored token:
 
 ```bash
 quater login store --token new-admin-token
+```
+
+Override the stored token for one command:
+
+```bash
+quater --token temporary-token actions list store
+quater --token temporary-token call store get_order --order-id ord_1001
 ```
 
 Discover remote actions:
@@ -280,6 +377,10 @@ for remote discovery and execution.
 You usually do not call those endpoints by hand. Use `quater actions ...` and
 `quater call ...` so argument encoding, dry-run, approval tokens, and response
 handling stay consistent.
+
+Remote URLs must be absolute `https://` URLs unless they target localhost. Quater
+also rejects remote URLs with embedded credentials, query strings, fragments, or
+whitespace. Keep credentials in `--token`, not in the URL.
 
 ## Request Context
 
@@ -426,10 +527,12 @@ app = Quater(cli_auth=authenticate)
 - remote action manifest discovery
 - remote action calls
 
-Use `--token` for bearer tokens:
+Use `QUATER_TOKEN` or `--token` for local bearer tokens:
 
 ```bash
-quater --token admin-token actions list store
+export QUATER_APP=main:app
+export QUATER_TOKEN=admin-token
+quater actions list
 ```
 
 For local actions, if your `cli_auth` hook expects another header, pass it
@@ -438,6 +541,13 @@ explicitly:
 ```bash
 QUATER_APP=main:app quater --header "X-Operator: admin" actions list
 ```
+
+For remote actions, `quater connect ... --token ...` stores the token for that
+remote. Pass `--token` to a remote command only when you want to override the
+stored token for that one command.
+
+`QUATER_TOKEN` is for local CLI calls. Remote calls use the token saved for that
+remote unless you pass `--token` explicitly.
 
 Route `auth=` still protects the handler. If `cli_auth` and route `auth=` are
 the same function, Quater still runs route auth against the handler route. Use
@@ -480,12 +590,49 @@ quater dev main.py --port 8010
 quater run main:app --interface rsgi --workers 4
 ```
 
+Server targets can be:
+
+- `main:app`
+- `main.py`
+- a module name such as `main`
+- omitted, in which case Quater searches common files such as `main.py` and
+  `app.py`
+
+If your app is created by a factory function, use `--factory`:
+
+```bash
+quater dev main:create_app --factory
+```
+
+Use `--working-dir` when the app should be imported from another directory:
+
+```bash
+quater dev --working-dir ./sample_projects/test_app
+```
+
+Common server options:
+
+| Option | Use |
+| --- | --- |
+| `--host` | Bind address. Development defaults to `127.0.0.1`. |
+| `--port` | Bind port. Defaults to `8000`. |
+| `--interface` | `rsgi`, `asgi`, or `wsgi`; default is `rsgi`. |
+| `--workers` | Number of worker processes. |
+| `--reload` / `--no-reload` | Enable or disable reload. `dev` enables it by default; `run` disables it. |
+| `--access-log` / `--no-access-log` | Enable or disable request access logs. |
+| `--log-level` | `debug`, `info`, `warning`, `error`, or `critical`. |
+| `--loop` | Granian loop choice: `auto`, `asyncio`, `rloop`, `uvloop`, or `winloop`. |
+
 Use `--allow-insecure` only for a controlled environment where you intentionally
 want to skip production safety checks.
+
+For direct Granian, ASGI, WSGI, reverse-proxy, and docs endpoint guidance, read
+[Deployment](/en/latest/deployment).
 
 ## Related Pages
 
 - [Quickstart](/en/latest/quickstart)
+- [Deployment](/en/latest/deployment)
 - [Public API](/en/latest/api)
 - [MCP](/en/latest/mcp)
 - [Security](/en/latest/security)

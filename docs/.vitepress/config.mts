@@ -61,6 +61,7 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
         { text: 'Overview', link: version.index },
         { text: 'Quickstart', link: `${version.base}quickstart` },
         { text: 'Actions and CLI', link: `${version.base}actions` },
+        { text: 'Deployment', link: `${version.base}deployment` },
         { text: 'Testing', link: `${version.base}testing` },
         { text: 'Public API', link: `${version.base}api` },
         { text: 'Stability', link: `${version.base}stability` },
@@ -103,6 +104,7 @@ const latestBase = latestDocs?.base ?? `/${language}/${latestDirectory}/`
 const nav: DefaultTheme.NavItem[] = [
   { text: 'Guide', link: `${latestBase}quickstart` },
   { text: 'CLI', link: `${latestBase}actions` },
+  { text: 'Deploy', link: `${latestBase}deployment` },
   { text: 'API', link: `${latestBase}api` },
   { text: 'Reference', link: `${latestBase}reference/` },
   { text: 'MCP', link: `${latestBase}mcp` },

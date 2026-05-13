@@ -54,6 +54,7 @@ INTERNAL_SUBMODULES: Final[frozenset[str]] = frozenset(
         "core",
         "cors",
         "datastructures",
+        "deployment",
         "docs",
         "groups",
         "lifespan",

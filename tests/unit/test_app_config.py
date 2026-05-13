@@ -6,7 +6,7 @@ import pytest
 
 from quater import Quater
 from quater.config import AppConfig
-from quater.exceptions import ConfigurationError
+from quater.exceptions import ConfigurationError, RouteConflictError
 from quater.request import Request
 from quater.response import Response
 from quater.typing import AuthContext, AuthRequest
@@ -46,7 +46,7 @@ def test_app_config_overrides_do_not_mutate_base_config() -> None:
     assert app.config.max_body_size == 2 * 1024 * 1024
 
 
-def test_secure_defaults_are_represented_before_enforcement_exists() -> None:
+def test_secure_defaults_are_represented_in_config() -> None:
     app = Quater(mcp_auth=allow_mcp_auth)
 
     assert app.config.debug is False
@@ -61,6 +61,54 @@ def test_secure_defaults_are_represented_before_enforcement_exists() -> None:
     assert app.config.mcp_docs_path == "/mcp/docs"
     assert app.config.mcp_allowed_origins == ()
     assert app.config.request_id_header == "x-request-id"
+
+
+def test_validate_production_accepts_safe_app() -> None:
+    app = Quater(allowed_hosts=["api.example.com"])
+
+    @app.get("/health")
+    async def health() -> dict[str, bool]:
+        return {"ok": True}
+
+    app.validate_production()
+
+
+@pytest.mark.parametrize(
+    ("app", "message"),
+    (
+        (
+            Quater(debug=True, allowed_hosts=["api.example.com"]),
+            "debug must be disabled",
+        ),
+        (Quater(), "allowed_hosts must be configured"),
+        (Quater(allowed_hosts=["*"]), "allowed_hosts must not contain '*'"),
+        (
+            Quater(security="off", allowed_hosts=["api.example.com"]),
+            "security must be 'strict'",
+        ),
+    ),
+)
+def test_validate_production_rejects_unsafe_config(
+    app: Quater,
+    message: str,
+) -> None:
+    with pytest.raises(ConfigurationError, match=message):
+        app.validate_production()
+
+
+def test_validate_production_compiles_routes_first() -> None:
+    app = Quater(allowed_hosts=["api.example.com"])
+
+    @app.get("/users/{identifier}")
+    async def by_identifier(identifier: str) -> dict[str, str]:
+        return {"identifier": identifier}
+
+    @app.get("/users/{name}")
+    async def by_name(name: str) -> dict[str, str]:
+        return {"name": name}
+
+    with pytest.raises(RouteConflictError):
+        app.validate_production()
 
 
 @pytest.mark.parametrize("value", ["", "2", "mb", "2tb", "-1mb"])

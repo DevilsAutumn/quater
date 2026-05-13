@@ -215,9 +215,12 @@ async def get_order(order_id: str, request: Request) -> dict[str, object]:
 Run it locally without starting a server:
 
 ```bash
-QUATER_APP=main:app quater --token admin-token actions list
-QUATER_APP=main:app quater --token admin-token actions describe get_order
-QUATER_APP=main:app quater --token admin-token call get_order --order-id ord_1001
+export QUATER_APP=main:app
+export QUATER_TOKEN=admin-token
+
+quater actions list
+quater actions describe get_order
+quater call get_order --order-id ord_1001
 ```
 
 For a hosted app, connect once and call the same action remotely:
@@ -235,8 +238,8 @@ running the handler.
 
 ::: tip More on actions
 The full action guide covers remote discovery, JSON body arguments,
-approval-protected actions, and production `quater run` behavior:
-[Actions and CLI](/en/latest/actions).
+approval-protected actions, and local action testing: [Actions and CLI](/en/latest/actions).
+For production server setup, read [Deployment](/en/latest/deployment).
 :::
 
 ## Responses

@@ -23,6 +23,7 @@ from quater.config import (
 from quater.core import Handler, RouteDefinition
 from quater.cors import CORSConfig, add_cors_headers, is_cors_preflight
 from quater.datastructures import normalize_response_headers
+from quater.deployment import validate_production_config
 from quater.exceptions import (
     BadRequestError,
     ConfigurationError,
@@ -657,6 +658,12 @@ class Quater:
         """Handle a normalized request through the core dispatcher."""
 
         return await self._handle_request(request)
+
+    def validate_production(self) -> None:
+        """Compile routes and fail if production safety checks do not pass."""
+
+        self.compile_routes()
+        validate_production_config(self)
 
     async def _handle_request(self, request: Request) -> Response:
         started_at = time.perf_counter()

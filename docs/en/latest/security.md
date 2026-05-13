@@ -46,6 +46,10 @@ Use `allowed_hosts` to reject unexpected Host headers:
 app = Quater(allowed_hosts=["api.example.com"])
 ```
 
+In strict mode, empty `allowed_hosts` accepts only local development hosts.
+Use explicit hosts before deploying. Use `allowed_hosts=["*"]` only when you
+intentionally want runtime allow-all behavior outside production.
+
 Use `trusted_proxies` only for proxy IPs or CIDR ranges you control:
 
 ```python
@@ -57,6 +61,9 @@ app = Quater(
 
 Forwarded host and scheme headers are ignored unless the client IP matches a
 trusted proxy.
+
+For production server commands, direct server usage, and reverse-proxy setup,
+read [Deployment](/en/latest/deployment).
 
 ## Body Limits
 
@@ -228,17 +235,15 @@ shadow them:
 
 ## Production Server Checks
 
-`quater dev` is for development. It enables reload by default.
-
-`quater run` is for production. Before starting Granian, it checks that:
+`quater run` calls `app.validate_production()` before starting Granian. That
+compiles routes and checks that:
 
 - `debug` is disabled.
 - `security` is `"strict"`.
 - `allowed_hosts` is configured.
 - `allowed_hosts` does not contain `*`.
 
-Use `--allow-insecure` only in a controlled environment where you intentionally
-want to skip those checks.
+The full deployment flow lives in [Deployment](/en/latest/deployment).
 
 ## Request IDs And Access Logs
 

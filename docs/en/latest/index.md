@@ -88,23 +88,27 @@ workflow.
    Write useful in-process tests for HTTP routes, auth boundaries, cookies,
    lifespan hooks, streams, and MCP tools.
 
-4. [MCP](/en/latest/mcp)
+4. [Deployment](/en/latest/deployment)
+   Run Quater safely with `quater run`, direct server commands, allowed hosts,
+   reverse proxies, and production checks.
+
+5. [MCP](/en/latest/mcp)
    Expose selected routes as MCP tools, configure bearer auth, understand the
    MCP request lifecycle, and use approval tokens for sensitive tools.
 
-5. [Security](/en/latest/security)
+6. [Security](/en/latest/security)
    Review host checks, body limits, CORS, MCP origin validation, CLI action
    security, docs endpoint exposure, and production server checks.
 
-6. [Public API](/en/latest/api)
+7. [Public API](/en/latest/api)
    Check the import surface, constructor options, route options, auth types,
    response classes, and advanced modules.
 
-7. [Stability](/en/latest/stability)
+8. [Stability](/en/latest/stability)
    Understand which imports are public, which modules are internal, and how
    Quater handles compatibility while it is still alpha.
 
-8. [Reference](/en/latest/reference/)
+9. [Reference](/en/latest/reference/)
    Look up generated signatures and public objects after you know which part of
    the framework you need.
 
