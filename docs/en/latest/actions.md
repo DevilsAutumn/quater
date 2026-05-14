@@ -1,11 +1,32 @@
-# Actions and CLI
+# Actions And CLI
 
-Quater actions are derived from route metadata and can be called outside normal
-HTTP while still using the same handler. The CLI and MCP surfaces have their own
-transport auth and protocol errors, but the action call reuses handler binding,
-route-level auth, response normalization, and the generated input schema.
+This page explains how Quater exposes selected backend operations as local and
+remote CLI actions.
 
-You opt in one route at a time:
+## Prerequisites
+
+Read the [Quickstart](/en/latest/quickstart) first. You need an app with at
+least one route declared with `cli=True` and a `cli_auth` hook on `Quater(...)`.
+
+## Why Actions Exist
+
+Production work does not always happen through the product UI. During an
+incident, a rollout, or a support case, someone often needs to run a backend
+operation directly.
+
+Teams usually solve that with admin scripts. Over time those scripts become a
+second version of the app: another auth path, another argument parser, and
+another place for business logic to drift.
+
+Quater actions keep the operation on the route. The CLI surface handles
+discovery, argument parsing, dry-run, approval, and remote transport. The route
+handler still performs the work.
+
+Actions are not a replacement for shell scripts that manage your machine. They
+are for app operations that already belong to your backend and should be safe to
+run locally, remotely, or from an agent-controlled workflow.
+
+## A Runnable Action
 
 ```python
 from quater import AuthContext, AuthRequest, Quater, Request
@@ -35,88 +56,7 @@ async def get_order(order_id: str, request: Request) -> dict[str, object]:
     }
 ```
 
-The route is still an HTTP route:
-
-```text
-GET /orders/ord_1001
-```
-
-It also becomes a Quater action that the CLI can discover and call.
-
-Action descriptions are required. Use `description=` or the first line of the
-handler docstring. The description is what people and agents see when they list
-or search actions, so write what the action is for, not just what it is named.
-
-::: tip Why actions exist
-MCP tools solve one kind of agent access, but teams also need a safe operational
-CLI for the same backend workflows. Quater actions give both humans and agents a
-single declared operation instead of forcing you to maintain separate admin
-scripts, HTTP endpoints, and tool handlers for the same business logic.
-:::
-
-## Action Call Flow
-
-Local and remote CLI calls reach the app differently, but after discovery they
-both execute through the action registry and the same route handler.
-
-```mermaid
-flowchart TB
-    local_call["Local CLI"]
-    local_import["import app"]
-    remote_call["Remote CLI"]
-    remote_rpc["action RPC"]
-    registry["action registry"]
-    auth["cli_auth"]
-    route_auth["route auth"]
-    binding["bind args"]
-    handler["handler"]
-
-    local_call --> local_import
-    remote_call --> remote_rpc
-    local_import --> registry
-    remote_rpc --> registry
-    registry --> auth
-    auth --> route_auth
-    route_auth --> binding
-    binding --> handler
-```
-
-## CLI Shape
-
-The same `quater` command is used for local development, remote operations, and
-server startup. The important distinction is whether the command needs to import
-your app or talk to a hosted app.
-
-| Command | What it does |
-| --- | --- |
-| `quater dev [target]` | Run the app locally with reload enabled. |
-| `quater run [target]` | Run the app for production-style serving. |
-| `quater actions list [remote]` | Show action names and descriptions. |
-| `quater actions search [remote] <query>` | Search action names, descriptions, methods, and paths. |
-| `quater actions describe [remote] <action>` | Show flags, schema, dry-run command, and approval command. |
-| `quater call [remote] <action> [--flags]` | Execute one action. |
-| `quater connect <name> <url> --token <token>` | Save a hosted app as a named remote. |
-| `quater login <name> --token <token>` | Replace the stored token for a remote. |
-| `quater remotes list` | Show saved remotes. |
-
-Global options go before the command:
-
-```bash
-quater --json actions list
-quater --app main:app actions list
-quater --token admin-token actions list
-quater --header "X-Operator: admin" actions list
-```
-
-`--json` is useful for scripts and agents. Human output is intentionally compact;
-JSON output keeps the same information machine-readable.
-
-## Local Actions
-
-Local CLI calls import the app and run in the same Python process. They do not
-need a running server, but they still go through `cli_auth`.
-
-Set the app and token once when you are working locally:
+Run local discovery:
 
 ```bash
 export QUATER_APP=main:app
@@ -124,117 +64,155 @@ export QUATER_TOKEN=admin-token
 quater actions list
 ```
 
-`QUATER_APP` tells Quater what app to import. `QUATER_TOKEN` becomes an
-`Authorization: Bearer ...` header for local CLI calls. Use this when you are
-running several local commands in the same terminal.
-
-Sample output:
+Expected output:
 
 ```text
 get_order
   Fetch one order by id.
-update_order_status
-  Update an order status.
 ```
 
-If you prefer one-off commands, pass both values inline:
-
-```bash
-quater --app main:app --token admin-token actions list
-```
-
-You can also pass custom headers. This is useful when your `cli_auth` hook does
-not use bearer tokens:
-
-```bash
-quater --app main:app --header "X-Operator: admin" actions list
-```
-
-Do not pass `--token` and an `Authorization` header together. Quater rejects
-that because it would be unclear which credential should win.
-
-Use `actions search` when the app has many actions:
-
-```bash
-quater actions search order
-```
-
-Sample output:
-
-```text
-get_order
-  Fetch one order by id.
-update_order_status
-  Update an order status.
-```
-
-`actions list` and `actions search` intentionally return only the action name
-and description. That keeps discovery readable for people and small enough for
-AI agents to choose a relevant action without being flooded by schemas.
-
-Use `--json` when another program will read the output:
-
-```bash
-quater --json actions list
-```
-
-```json
-{
-  "actions": [
-    {
-      "name": "get_order",
-      "description": "Fetch one order by id."
-    }
-  ]
-}
-```
-
-Once you know the action you want, describe it:
-
-```bash
-quater actions describe get_order
-```
-
-Sample output:
-
-```text
-get_order
-  GET /orders/{order_id}
-  Fetch one order by id.
-  protected action: no
-  arguments:
-    --order-id <string>  required
-  usage:
-    quater call get_order --order-id example
-  dry run:
-    quater call get_order --dry-run --order-id example
-  input schema:
-{
-  "type": "object",
-  "properties": {
-    "order_id": {
-      "type": "string"
-    }
-  },
-  "additionalProperties": false,
-  "required": [
-    "order_id"
-  ]
-}
-```
-
-`actions describe` is the detailed view. It shows the HTTP method and route,
-required flags, optional flags, input schema, dry-run command, and approval
-command when the action is protected.
-
-Call the action with kebab-case flags:
+Run the action:
 
 ```bash
 quater call get_order --order-id ord_1001
 ```
 
-Action argument names come from the generated input schema. Use kebab-case on
-the command line even when the Python parameter is snake_case:
+Expected output:
+
+```json
+{
+  "order_id": "ord_1001",
+  "subject": "admin",
+  "source": "cli",
+  "entrypoint": "local"
+}
+```
+
+## CLI Command Reference
+
+Global options must appear before the command.
+
+| Command | Flags | What it does |
+| --- | --- | --- |
+| `quater dev [target]` | `--host`, `--port`, `--interface`, `--loop`, `--workers`, `--reload/--no-reload`, `--access-log/--no-access-log`, `--log-level`, `--factory`, `--working-dir` | Runs the app for development with reload enabled by default. |
+| `quater run [target]` | Same as `dev`, plus `--allow-insecure` | Runs the app with production-style defaults and production checks. |
+| `quater actions list [remote]` | `--app`, `--token`, `--header`, `--json` | Lists action names and descriptions. |
+| `quater actions search [remote] <query>` | `--app`, `--token`, `--header`, `--json` | Searches action names, descriptions, methods, and paths. |
+| `quater actions describe [remote] <action>` | `--app`, `--token`, `--header`, `--json` | Shows the selected action schema and usage. |
+| `quater call [remote] <action>` | `--dry-run`, `--approval`, action flags, plus global auth flags | Calls one local or remote action. |
+| `quater connect <name> <url>` | `--token`, `--json` | Saves a remote app. |
+| `quater login <name>` | `--token`, `--json` | Replaces a remote token. |
+| `quater remotes list` | `--json` | Lists saved remotes. |
+
+Local commands use `--app` or `QUATER_APP`. Local bearer tokens use `--token` or
+`QUATER_TOKEN`.
+
+```bash
+quater --app main:app --token admin-token actions list
+```
+
+You can pass custom headers when `cli_auth` does not use bearer tokens:
+
+```bash
+quater --app main:app --header "X-Operator: admin" actions list
+```
+
+Quater rejects `--token` together with an explicit `Authorization` header:
+
+```text
+Use either --token or an Authorization header
+```
+
+## Local Vs Remote Flow
+
+Local actions import the app in process. Remote actions call a hosted Quater app
+over HTTP.
+
+```mermaid
+flowchart TB
+    local["local CLI\nquater call get_order"]
+    import_app["framework: import app\nQUATER_APP or --app"]
+    remote["remote CLI\nquater call store get_order"]
+    manifest["framework: GET /.well-known/quater-actions.json"]
+    rpc["framework: POST /__quater__/actions/call"]
+    cli_auth["your code: cli_auth"]
+    registry["framework: action registry"]
+    route_auth["your code: route auth="]
+    bind["framework: bind action args"]
+    approval["your code: approval hook\nwhen needed"]
+    handler["your code: handler"]
+    output["framework: JSON output"]
+
+    local --> import_app --> cli_auth --> registry
+    remote --> manifest --> cli_auth
+    remote --> rpc --> cli_auth --> registry
+    registry --> route_auth --> bind --> approval --> handler --> output
+```
+
+`cli_auth` protects local action discovery, local calls, remote manifest
+discovery, and remote calls.
+
+## Progressive Discovery
+
+`actions list` and `actions search` return only action names and descriptions.
+That keeps a large app readable for humans and smaller for agents.
+
+```bash
+quater actions search order
+```
+
+```text
+get_order
+  Fetch one order by id.
+update_order_status
+  Update an order status.
+```
+
+Use `describe` after you choose one action:
+
+```bash
+quater actions describe update_order_status
+```
+
+```text
+update_order_status
+  PATCH /orders/{order_id}/status
+  Update an order status.
+  protected action: yes
+  arguments:
+    --order-id <string>  required
+    --status <string>  required
+  usage:
+    quater call update_order_status --order-id example --status example
+  dry run:
+    quater call update_order_status --dry-run --order-id example --status example
+  approval:
+    quater call update_order_status --approval <token> --order-id example --status example
+```
+
+Machine-readable output:
+
+```bash
+quater --json actions describe update_order_status
+```
+
+```json
+{
+  "name": "update_order_status",
+  "method": "PATCH",
+  "path": "/orders/{order_id}/status",
+  "needs_approval": true,
+  "arguments": [
+    {"name": "order_id", "required": true, "type": "string"},
+    {"name": "status", "required": true, "type": "string"}
+  ]
+}
+```
+
+## Argument Binding
+
+CLI argument names come from the action schema. Quater renders Python
+`snake_case` names as kebab-case flags:
 
 ```python
 async def get_order(order_id: str) -> dict[str, str]: ...
@@ -244,229 +222,29 @@ async def get_order(order_id: str) -> dict[str, str]: ...
 quater call get_order --order-id ord_1001
 ```
 
-If a route uses parameter markers, CLI and MCP argument names usually come from
-the Python handler parameter. HTTP aliases stay on the HTTP side:
-
-```python
-from quater import Header, Query
-
-
-@app.get("/orders/{order_id}", cli=True, description="Fetch one order.")
-async def get_order(
-    order_id: str,
-    include_events: bool = Query(default=False, alias="include-events"),
-    request_id: str | None = Header(default=None, alias="X-Request-ID"),
-) -> dict[str, object]:
-    return {"order_id": order_id, "include_events": include_events}
-```
-
-The HTTP query parameter is `include-events`, and the HTTP header is
-`X-Request-ID`. The CLI action arguments remain `include_events` and
-`request_id`, so the shell command stays predictable:
-
-```bash
-quater call get_order \
-  --order-id ord_1001 \
-  --include-events true \
-  --request-id req_123
-```
-
-`Body(alias=...)` is the exception. It renames the action argument for the JSON
-body because the HTTP body itself has no query or header-style wire name.
-
-Boolean, number, object, and array values are parsed as JSON when possible. If an
-argument is a JSON body object or array, pass it as valid JSON:
+Scalars use normal values. Objects and arrays use JSON:
 
 ```bash
 quater call create_order \
   --order '{"customer_id":"cust_123","sku":"sku-coffee","quantity":2}'
 ```
 
-Unknown arguments, duplicate arguments, and missing argument values fail before
-the handler runs.
+HTTP aliases stay on the HTTP side for `Path`, `Query`, `Header`, and `Cookie`.
+`Body(alias=...)` changes the CLI and MCP body argument name because the body has
+no HTTP query or header name.
 
-::: warning Local CLI is trusted local execution
-Local actions import your Python app, so app import side effects run just like
-they do when starting a server. Use local CLI commands from a trusted checkout
-and environment.
-:::
+## Dry Run And Argument Hashes
 
-## Remote Actions
-
-Remote actions call a hosted Quater app through Quater's action protocol.
-
-First connect a remote:
+Dry-run exists on every action. You do not write a separate dry-run handler.
 
 ```bash
-quater connect store https://api.example.com --token admin-token
-```
-
-Sample output:
-
-```text
-Connected remote store: https://api.example.com
-```
-
-Quater stores the remote config in the user's Quater config directory with
-restricted file permissions. The token is sent as a bearer token on remote
-manifest and action requests.
-
-By default the file is:
-
-```text
-~/.quater/remotes.json
-```
-
-Set `QUATER_HOME` if you want a separate config directory for CI, tests, or a
-throwaway environment:
-
-```bash
-QUATER_HOME=.quater-ci quater connect store https://api.example.com --token admin-token
-```
-
-List configured remotes:
-
-```bash
-quater remotes list
-```
-
-Sample output:
-
-```text
-store  https://api.example.com authenticated
-```
-
-Refresh or replace a stored token:
-
-```bash
-quater login store --token new-admin-token
-```
-
-Override the stored token for one command:
-
-```bash
-quater --token temporary-token actions list store
-quater --token temporary-token call store get_order --order-id ord_1001
-```
-
-Discover remote actions:
-
-```bash
-quater actions list store
-quater actions search store order
-quater actions describe store get_order
-```
-
-Call a remote action:
-
-```bash
-quater call store get_order --order-id ord_1001
-```
-
-Sample output:
-
-```json
-{
-  "ok": true,
-  "status_code": 200,
-  "body": {
-    "order_id": "ord_1001",
-    "subject": "admin",
-    "source": "cli",
-    "entrypoint": "server"
-  }
-}
-```
-
-Remote calls use the same argument style as local calls. Scalars are passed as
-plain flag values. JSON body arguments are passed as JSON strings.
-
-Machine-readable output is available with `--json`:
-
-```bash
-quater --json actions describe store get_order
-```
-
-::: tip Progressive discovery
-For agents, a good flow is: list or search first, describe only the selected
-action, then call it. This avoids giving the model every schema in a large
-application when it only needs one action.
-:::
-
-## Remote Protocol
-
-When an app has at least one `cli=True` route, Quater adds two internal
-endpoints:
-
-- `GET /.well-known/quater-actions.json`
-- `POST /__quater__/actions/call`
-
-Both are protected by `cli_auth`. These endpoints are what the Quater CLI uses
-for remote discovery and execution.
-
-You usually do not call those endpoints by hand. Use `quater actions ...` and
-`quater call ...` so argument encoding, dry-run, approval tokens, and response
-handling stay consistent.
-
-Remote URLs must be absolute `https://` URLs unless they target localhost. Quater
-also rejects remote URLs with embedded credentials, query strings, fragments, or
-whitespace. Keep credentials in `--token`, not in the URL.
-
-## Request Context
-
-Handlers and auth hooks can tell how the route was called:
-
-```python
-@app.get("/orders/{order_id}", cli=True, description="Fetch one order by id.")
-async def get_order(order_id: str, request: Request) -> dict[str, object]:
-    return {
-        "order_id": order_id,
-        "source": request.context.source,
-        "entrypoint": request.context.entrypoint,
-        "action": request.context.action_name,
-    }
-```
-
-Normal HTTP calls use:
-
-```python
-request.context.source == "api"
-request.context.action_name is None
-```
-
-Local CLI action calls use:
-
-```python
-request.context.source == "cli"
-request.context.entrypoint == "local"
-request.context.action_name == "get_order"
-```
-
-Remote CLI action calls use:
-
-```python
-request.context.source == "cli"
-request.context.entrypoint == "server"
-request.context.action_name == "get_order"
-```
-
-`AuthRequest.context` receives the same source and entrypoint before the handler
-runs. That lets one auth hook accept different credentials for normal API
-calls, local operator calls, and hosted remote CLI calls.
-
-## Dry Run
-
-Every action supports dry-run automatically. You do not add a separate dry-run
-handler.
-
-```bash
-quater call store update_order_status \
+quater call update_order_status \
   --dry-run \
   --order-id ord_1001 \
   --status shipped
 ```
 
-Sample output:
+Expected output:
 
 ```text
 Dry run OK: update_order_status
@@ -476,39 +254,31 @@ Dry run OK: update_order_status
   approval token: missing
 ```
 
-Dry-run does the safety-critical work before execution:
+Quater computes the argument hash from the action name and canonical JSON
+arguments. JSON object key order does not change it. Use the hash when an
+approval system grants permission for one exact call, not for every call with
+the same action name.
 
-- runs the relevant auth hooks
-- validates and binds path, query, and body arguments
-- renders the HTTP method and path that would be called
-- computes the action argument hash
-- reports whether an approval token is needed
+## Approval
 
-It does not call the handler, and it does not call the approval hook.
-
-::: info Argument hashes
-The argument hash is based on the action name and canonical JSON arguments. It
-is stable for reordered JSON object keys, which makes it useful when approval is
-granted out of band for one exact action call.
-:::
-
-## Approval-Protected Actions
-
-Use `needs_approval=True` for actions that should not run just because a caller
-is authenticated.
+Auth identifies the caller. Approval confirms that a sensitive operation should
+run for that caller and those exact arguments.
 
 ```python
-from quater import ApprovalRequest, Quater
+from quater import ApprovalRequest, AuthContext, AuthRequest, Quater
+
+
+async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    if ctx.headers.get("authorization") != "Bearer admin-token":
+        return None
+    return AuthContext(subject="admin")
 
 
 async def approve_action(ctx: ApprovalRequest) -> bool:
-    return ctx.token == "approve-local"
+    return ctx.token == "approve-ord_1001"
 
 
-app = Quater(
-    cli_auth=authenticate,
-    action_approval=approve_action,
-)
+app = Quater(cli_auth=authenticate, action_approval=approve_action)
 
 
 @app.patch(
@@ -521,148 +291,92 @@ async def update_order_status(order_id: str, status: str) -> dict[str, str]:
     return {"order_id": order_id, "status": status}
 ```
 
-Run a dry-run first:
+Call with approval:
 
 ```bash
-quater call store update_order_status \
-  --dry-run \
+quater call update_order_status \
+  --approval approve-ord_1001 \
   --order-id ord_1001 \
   --status shipped
 ```
 
-Then call with an approval token:
+Expected output:
+
+```json
+{
+  "order_id": "ord_1001",
+  "status": "shipped"
+}
+```
+
+If the token is missing, Quater returns:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "approval_required",
+    "message": "Approval required",
+    "action": "update_order_status",
+    "arguments_hash": "sha256:..."
+  }
+}
+```
+
+## Remote Actions
+
+Connect once:
 
 ```bash
-quater call store update_order_status \
-  --approval approve-local \
-  --order-id ord_1001 \
-  --status shipped
+quater connect store https://api.example.com --token admin-token
 ```
 
-Quater does not issue approval tokens. Your `action_approval` hook decides
-whether the submitted token is valid for the action, argument hash, authenticated
-subject, and request context.
+Expected output:
 
-## CLI Auth
-
-Any app with a `cli=True` route must be created with `cli_auth`.
-
-```python
-app = Quater(cli_auth=authenticate)
+```text
+Connected remote store: https://api.example.com
 ```
 
-`cli_auth` protects:
-
-- local action listing and local action calls
-- remote action manifest discovery
-- remote action calls
-
-Use `QUATER_TOKEN` or `--token` for local bearer tokens:
+Then call the remote:
 
 ```bash
-export QUATER_APP=main:app
-export QUATER_TOKEN=admin-token
-quater actions list
+quater actions list store
+quater actions describe store get_order
+quater call store get_order --order-id ord_1001
 ```
 
-For local actions, if your `cli_auth` hook expects another header, pass it
-explicitly:
+Remote URLs must use HTTPS unless they target localhost. Quater rejects
+credentials, query strings, fragments, whitespace, and malformed URLs.
 
-```bash
-QUATER_APP=main:app quater --header "X-Operator: admin" actions list
-```
+Quater stores remote config at `~/.quater/remotes.json` by default with `0600`
+file permissions. Set `QUATER_HOME` to use another directory.
 
-For remote actions, `quater connect ... --token ...` stores the token for that
-remote. Pass `--token` to a remote command only when you want to override the
-stored token for that one command.
+## What Can Go Wrong
 
-`QUATER_TOKEN` is for local CLI calls. Remote calls use the token saved for that
-remote unless you pass `--token` explicitly.
+`--app is required unless QUATER_APP is set`
+: Local commands need an app import path.
 
-Route `auth=` still protects the handler. If `cli_auth` and route `auth=` are
-the same function, Quater still runs route auth against the handler route. Use
-two functions when the CLI token and route-level user or scope check should be
-separate.
+`Unknown CLI action`
+: The action name does not exist or the route does not have `cli=True`.
 
-::: warning Do not treat action discovery as public metadata
-Action names, descriptions, paths, and schemas can reveal operational
-capabilities. Quater requires `cli_auth` as soon as one route is exposed with
-`cli=True` so that discovery is protected too.
-:::
+`Missing value for action argument --order-id`
+: Pass a value after the flag.
 
-## Running The App
+`Invalid JSON value for --order`
+: Object and array arguments must be valid JSON.
 
-Quater includes a small server CLI around Granian.
+`Approval token must not be empty`
+: Pass a non-empty `--approval` value or omit the flag.
 
-During development:
+`Remote URL must use HTTPS unless it targets localhost`
+: Use an HTTPS URL for deployed apps.
 
-```bash
-quater dev
-```
+`Quater remote config is invalid`
+: Delete or repair the file under `QUATER_HOME` or `~/.quater/remotes.json`.
 
-`quater dev` auto-discovers common app files, uses RSGI by default, enables
-reload by default, and enables access logs.
+## Also See
 
-In production:
-
-```bash
-quater run --host 0.0.0.0 --port 8000
-```
-
-`quater run` keeps reload off by default and runs production safety checks before
-handing off to Granian. Production startup fails if debug is enabled, strict
-security is off, or `allowed_hosts` is missing or contains `*`.
-
-You can still be explicit:
-
-```bash
-quater dev main.py --port 8010
-quater run main:app --interface rsgi --workers 4
-```
-
-Server targets can be:
-
-- `main:app`
-- `main.py`
-- a module name such as `main`
-- omitted, in which case Quater searches common files such as `main.py` and
-  `app.py`
-
-If your app is created by a factory function, use `--factory`:
-
-```bash
-quater dev main:create_app --factory
-```
-
-Use `--working-dir` when the app should be imported from another directory:
-
-```bash
-quater dev --working-dir ./sample_projects/test_app
-```
-
-Common server options:
-
-| Option | Use |
-| --- | --- |
-| `--host` | Bind address. Development defaults to `127.0.0.1`. |
-| `--port` | Bind port. Defaults to `8000`. |
-| `--interface` | `rsgi`, `asgi`, or `wsgi`; default is `rsgi`. |
-| `--workers` | Number of worker processes. |
-| `--reload` / `--no-reload` | Enable or disable reload. `dev` enables it by default; `run` disables it. |
-| `--access-log` / `--no-access-log` | Enable or disable request access logs. |
-| `--log-level` | `debug`, `info`, `warning`, `error`, or `critical`. |
-| `--loop` | Granian loop choice: `auto`, `asyncio`, `rloop`, `uvloop`, or `winloop`. |
-
-Use `--allow-insecure` only for a controlled environment where you intentionally
-want to skip production safety checks.
-
-For direct Granian, ASGI, WSGI, reverse-proxy, and docs endpoint guidance, read
-[Deployment](/en/latest/deployment).
-
-## Related Pages
-
-- [Quickstart](/en/latest/quickstart)
-- [Deployment](/en/latest/deployment)
-- [Public API](/en/latest/api)
-- [MCP](/en/latest/mcp)
-- [Security](/en/latest/security)
+- [MCP](/en/latest/mcp): expose the same route to AI tools.
+- [Security](/en/latest/security): review auth ordering and action discovery.
+- [Deployment](/en/latest/deployment): understand hosted action endpoints.
+- [Testing](/en/latest/testing): test actions through the in-process client.

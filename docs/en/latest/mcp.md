@@ -1,228 +1,178 @@
-# MCP
+# MCP Tools
 
-Quater can expose selected HTTP routes as MCP tools.
+This page explains how Quater exposes selected backend operations as MCP tools
+for AI agents.
 
-The route definition is the source metadata for the tool. MCP is a separate
-runtime surface from HTTP dispatch, but it is not a second copy of your business
-logic. The generated tool calls the same handler and reuses the route's argument
-binding, route-level auth, response normalization, description, and input
-schema.
+## Prerequisites
 
-If you also expose a route with `cli=True`, the same route can be called by HTTP,
-MCP, and the Quater CLI. See [Actions and CLI](/en/latest/actions) for the CLI
-side of that model.
+Read the [Quickstart](/en/latest/quickstart) and create an app with `mcp_auth`.
+You should understand route `auth=` before exposing sensitive tools.
 
-There is one extra rule: if the app exposes tools, it must define `mcp_auth`.
-Tools are executable capabilities. Even `tools/list` reveals names, descriptions,
-and schemas, so Quater does not expose a tool registry without an auth boundary.
+## What MCP Means Here
 
-## MCP Request Flow
+MCP (Model Context Protocol) is a protocol that lets AI clients discover tools
+and call them with structured arguments. Quater exposes route-backed tools over
+HTTP so an agent can call backend operations without a separate tool server.
+Read the protocol background at [modelcontextprotocol.io](https://modelcontextprotocol.io/).
 
-Every MCP request is still an HTTP request, so auth is checked on each request.
-`initialize` does not create a server-side session.
+The important idea is directness with boundaries. An agent should not need to
+click through a frontend to fetch an order, update a workflow, or run an
+approved backend action. It should call a described tool with typed inputs, and
+your app should decide whether that call is allowed.
 
-```mermaid
-flowchart TB
-    request["POST /mcp"]
-    origin["origin check"]
-    auth["mcp_auth"]
-    dispatch["JSON-RPC dispatch"]
-    route["route auth"]
-    binding["bind args"]
-    approval["approval"]
-    handler["handler"]
-    list["tools/list"]
+Quater does not make every route a tool. You opt in with `tool=True`, write a
+description, and protect the MCP transport with `mcp_auth`.
 
-    request --> origin --> auth --> dispatch
-    dispatch --> route --> binding --> approval --> handler
-    dispatch --> list
-```
-
-## The Auth Model
-
-MCP auth has two layers.
-
-- `mcp_auth` protects the MCP transport: `initialize`, `tools/list`,
-  `tools/call`, and `/mcp/docs`.
-- Route `auth=` protects a specific handler, the same way it does for normal
-  HTTP.
-
-Most apps use the same function for both:
+## A Runnable Tool
 
 ```python
 from quater import AuthContext, AuthRequest, Quater, Request
 
 
 async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer demo-token":
+    if ctx.headers.get("authorization") != "Bearer mcp-token":
         return None
-    return AuthContext(subject="demo-user")
+    return AuthContext(subject="agent_123")
 
 
 app = Quater(
-    mcp_allowed_origins=["http://localhost:3000"],
     mcp_auth=authenticate,
+    mcp_allowed_origins=["https://client.example"],
 )
 
 
 @app.get(
-    "/users/{id:int}",
+    "/orders/{order_id}",
     tool=True,
     auth=authenticate,
-    description="Fetch one protected user by id.",
+    description="Fetch one order by id.",
 )
-async def get_user(id: int, request: Request) -> dict[str, object]:
+async def get_order(order_id: str, request: Request) -> dict[str, object]:
     assert request.auth is not None
-    return {"id": id, "subject": request.auth.subject}
+    return {"order_id": order_id, "subject": request.auth.subject}
 ```
 
-When `mcp_auth` and route `auth=` are the same function, Quater still runs route
-auth against the handler route. That keeps path-based policies intact. Use two
-functions when you want a clean split between MCP client auth and route-level
-user or scope checks.
+The route still works as HTTP:
 
-A route without `auth=` is still public over normal HTTP. Over MCP, it is behind
-`mcp_auth` because the tool registry itself is protected.
+```text
+GET /orders/ord_1001
+```
 
-## Configure MCP
+It also appears in MCP `tools/list`.
 
-The JSON-RPC endpoint is fixed:
+## Auth Layering
+
+MCP auth has two independent gates:
+
+- `mcp_auth` protects `initialize`, `tools/list`, `tools/call`, and `/mcp/docs`.
+- Route `auth=` protects the handler after the tool call resolves to a route.
+
+```mermaid
+sequenceDiagram
+    participant Client as MCP client
+    participant Quater as Quater MCP transport
+    participant MCPAuth as your mcp_auth
+    participant RouteAuth as your route auth=
+    participant Handler as your handler
+
+    Client->>Quater: POST /mcp tools/call
+    Quater->>MCPAuth: AuthRequest(source="mcp")
+    MCPAuth-->>Quater: AuthContext or None
+    Quater->>RouteAuth: AuthRequest(path="/orders/{order_id}")
+    RouteAuth-->>Quater: AuthContext or None
+    Quater->>Handler: get_order(order_id, request)
+    Handler-->>Client: JSON-RPC result
+```
+
+If either hook returns `None`, the call fails. When both use the same function,
+Quater still calls the function twice because the transport and route are
+different boundaries.
+
+## Endpoint And Client Config
+
+The MCP endpoint is fixed:
 
 ```text
 POST /mcp
 ```
 
-There is no `mcp_path` option. If you host the app at
-`https://api.example.com`, the MCP URL is:
+For a hosted app at `https://api.example.com`, configure the MCP URL as:
 
 ```text
 https://api.example.com/mcp
 ```
 
-The human docs page defaults to:
-
-```text
-GET /mcp/docs
-```
-
-Set `mcp_docs_path=None` to turn off the page. The JSON-RPC endpoint stays
-available.
-
-For browser-based MCP clients, use `mcp_allowed_origins`:
-
-```python
-app = Quater(
-    mcp_allowed_origins=["https://app.example.com"],
-    mcp_auth=authenticate,
-)
-```
-
-If `mcp_allowed_origins` is empty and CORS is configured with exact origins,
-Quater uses those exact origins for MCP origin validation too. A CORS wildcard
-does not allow browser-based MCP calls.
-
-## Expose A Tool
-
-Routes are not tools unless they opt in:
-
-```python
-@app.get("/users/{id:int}", tool=True, description="Fetch one user by id.")
-async def get_user(id: int) -> dict[str, int]:
-    return {"id": id}
-```
-
-Descriptions are required. Use `description=` or a handler docstring. This text
-is what an agent sees in `tools/list`, so write it like you are explaining when
-to use the tool. `get_user` is a name. `Fetch one user by id.` is intent.
-
-The route still works as HTTP:
-
-```text
-GET /users/123
-```
-
-It also appears in MCP discovery:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/list"
-}
-```
-
-## Client Requests
-
-Authorization is normal HTTP authorization. If your client uses a bearer token,
-send it on every MCP HTTP request:
-
-```http
-Authorization: Bearer <token>
-```
-
-`initialize` is not a login. Quater does not remember the token from
-`initialize`, and an expired token on a later `tools/call` fails with
-`401 Unauthorized`.
-
-Many MCP clients use a config shaped roughly like this:
+Bearer auth must go on every HTTP request:
 
 ```json
 {
   "mcpServers": {
-    "quater": {
+    "store": {
       "url": "https://api.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer <token>"
+        "Authorization": "Bearer mcp-token"
       }
     }
   }
 }
 ```
 
-Client config field names vary. The important parts are the `/mcp` URL and the
-`Authorization` header on every request.
+`initialize` is not a login. Quater does not create a server-side session from
+it. If the token expires, the next request fails with `401 Unauthorized`.
 
-## Client Lifecycle
+## Request Flow
 
-Clients start with `initialize`:
+```mermaid
+flowchart TB
+    request["framework: POST /mcp"]
+    origin["framework: origin check"]
+    auth["your code: mcp_auth"]
+    dispatch["framework: JSON-RPC dispatch"]
+    list["framework: tools/list"]
+    call["framework: tools/call"]
+    route_auth["your code: route auth="]
+    bind["framework: bind arguments"]
+    approval["your code: approval hook when needed"]
+    handler["your code: handler"]
+    result["framework: JSON-RPC response"]
+
+    request --> origin --> auth --> dispatch
+    dispatch --> list --> result
+    dispatch --> call --> route_auth --> bind --> approval --> handler --> result
+```
+
+Browser MCP clients also need `mcp_allowed_origins`. If you omit it and CORS has
+exact origins, Quater reuses those exact origins. A CORS wildcard does not allow
+browser-based MCP calls.
+
+## Tool Schemas
+
+Quater generates `inputSchema` from the route's path, query, header, cookie, and
+body parameters. It excludes injected `Resource` parameters because those values
+belong to the app, not the caller.
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "initialize",
-  "params": {
-    "protocolVersion": "2025-06-18",
-    "capabilities": {},
-    "clientInfo": {"name": "my-client", "version": "1.0.0"}
+  "name": "get_order",
+  "description": "Fetch one order by id.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "order_id": {"type": "string"}
+    },
+    "required": ["order_id"],
+    "additionalProperties": false
   }
 }
 ```
 
-Quater responds with the negotiated protocol version, server metadata, and tool
-capability. After that, clients may send `notifications/initialized`.
-
-For later requests, clients may include `MCP-Protocol-Version`. Unsupported
-versions are rejected with `400 Bad Request`.
-
-Tool calls look like this:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "tools/call",
-  "params": {
-    "name": "get_user",
-    "arguments": {"id": 123}
-  }
-}
-```
+Descriptions are required for `tool=True` routes. Use `description=` or the
+first line of the handler docstring. Tool descriptions are visible to agents, so
+write them as instructions about when the tool should be used.
 
 ## Approval-Protected Tools
 
-Use `needs_approval=True` when a tool can change state or trigger work that
-should require a second check.
+Use `needs_approval=True` when auth alone should not run an operation.
 
 ```python
 from quater import ApprovalRequest, AuthContext, AuthRequest, Quater
@@ -231,17 +181,14 @@ from quater import ApprovalRequest, AuthContext, AuthRequest, Quater
 async def authenticate(ctx: AuthRequest) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer mcp-token":
         return None
-    return AuthContext(subject="agent")
+    return AuthContext(subject="agent_123")
 
 
 async def approve_action(ctx: ApprovalRequest) -> bool:
-    return ctx.token == "approve-local"
+    return ctx.token == "approve-ord_1001"
 
 
-app = Quater(
-    mcp_auth=authenticate,
-    action_approval=approve_action,
-)
+app = Quater(mcp_auth=authenticate, action_approval=approve_action)
 
 
 @app.patch(
@@ -254,7 +201,7 @@ async def update_order_status(order_id: str, status: str) -> dict[str, str]:
     return {"order_id": order_id, "status": status}
 ```
 
-The approval token is sent in `_meta`:
+Send the approval token in MCP `_meta`:
 
 ```json
 {
@@ -268,88 +215,36 @@ The approval token is sent in `_meta`:
       "status": "shipped"
     },
     "_meta": {
-      "approvalToken": "approve-local"
+      "approvalToken": "approve-ord_1001"
     }
   }
 }
 ```
 
 If the token is missing, Quater returns a JSON-RPC error with
-`data.code == "approval_required"` and includes the `arguments_hash`. Your
-`action_approval` hook decides whether a token is valid for that action,
-argument hash, authenticated subject, and request context.
+`data.code == "approval_required"` and includes `arguments_hash`.
 
-::: tip Same approval hook as CLI actions
-MCP tools and CLI actions share `needs_approval=True` and `action_approval`.
-That keeps sensitive workflows consistent no matter how the route is called.
-:::
+## MCP Docs
 
-## Request Context
-
-The same handler can tell how it was called.
-
-```python
-from quater import Request
-
-
-@app.get("/users/{id:int}", tool=True, description="Fetch one user by id.")
-async def get_user(id: int, request: Request) -> dict[str, object]:
-    return {
-        "id": id,
-        "source": request.context.source,
-        "entrypoint": request.context.entrypoint,
-        "tool": request.context.tool_name,
-    }
-```
-
-Normal HTTP calls use:
-
-```python
-request.context.source == "api"
-request.context.entrypoint == "server"
-request.context.tool_name is None
-```
-
-MCP protocol requests that are not tool calls use:
-
-```python
-request.context.source == "mcp"
-request.context.entrypoint == "server"
-request.context.tool_name is None
-```
-
-MCP tool calls use:
-
-```python
-request.context.source == "mcp"
-request.context.entrypoint == "server"
-request.context.tool_name == "get_user"
-request.context.action_name == "get_user"
-```
-
-Auth hooks receive the same context through `AuthRequest.context`. That is useful
-when one hook accepts different tokens for browser API calls and MCP clients.
-
-## Input And Output Docs
-
-Quater generates `inputSchema` from path parameters, query parameters, and one
-JSON body parameter. Required fields follow the handler signature and body model.
-
-`GET /mcp/docs` shows the same tool data in a human page:
+`GET /mcp/docs` renders a human-readable page with:
 
 - tool name
 - description
-- auth marker
-- HTTP route
-- pretty JSON input schema
-- pretty JSON output schema when the return annotation is useful
-- example `tools/call` request
+- route method and path
+- pretty JSON input and output schema
+- example `tools/call` payload
 
-That page is for developers. MCP clients should use `tools/list`.
+MCP clients should use `tools/list`. Humans should use `/mcp/docs`.
+
+Disable the page while keeping `/mcp` available:
+
+```python
+app = Quater(mcp_auth=authenticate, mcp_docs_path=None)
+```
 
 ## Auditing
 
-Pass `mcp_audit` to receive sanitized tool-call events:
+Pass `mcp_audit` to receive redacted tool-call events:
 
 ```python
 from quater import ToolAuditEvent
@@ -359,13 +254,35 @@ async def audit(event: ToolAuditEvent) -> None:
     print(event.tool_name, event.subject, event.success)
 
 
-app = Quater(
-    mcp_auth=authenticate,
-    mcp_audit=audit,
-)
+app = Quater(mcp_auth=authenticate, mcp_audit=audit)
 ```
 
-Arguments are redacted before they reach the hook.
-If the audit hook raises, Quater returns a JSON-RPC internal error for that
-tool call. In debug mode the error includes the exception type and message; in
-normal mode it only says that the audit hook failed.
+Quater redacts argument values before the hook sees them. If the audit hook
+raises, Quater returns a JSON-RPC internal error for that tool call. It does not
+silently hide audit failures.
+
+## What Can Go Wrong
+
+`MCP tools require mcp_auth`
+: Add `mcp_auth=...` before registering any `tool=True` route.
+
+`Invalid MCP Origin`
+: Add the browser origin to `mcp_allowed_origins`.
+
+`Unsupported protocol version`
+: Send a supported `MCP-Protocol-Version` header or omit it and let Quater use
+  its default.
+
+`Tool not found`
+: Check the route has `tool=True` and a description.
+
+`approval_required`
+: Send `_meta.approvalToken` or remove `needs_approval=True` from that route.
+
+## Also See
+
+- [Actions and CLI](/en/latest/actions): use the same approval hook for CLI.
+- [Security](/en/latest/security): review MCP origin validation and token rules.
+- [Testing](/en/latest/testing): test tools with `client.mcp`.
+- [Reference: Auth](/en/latest/reference/auth): inspect `AuthRequest` and
+  `ApprovalRequest`.

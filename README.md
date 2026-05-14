@@ -1,45 +1,59 @@
 # Quater
 
-Quater is a typed Python backend framework for building APIs that humans use
-directly and AI agents can operate safely.
+Most backend frameworks were designed for one main job: serve data to a
+frontend, then let humans click through that frontend to get work done.
 
-As AI systems become another real caller of backend systems, backends are no longer
-called from one place. The same business operation may be used by a browser, an
-internal service, an MCP client, or an operator running a CLI command. In
-existing frameworks, those access paths become separate code paths: an HTTP
-endpoint, an AI tool wrapper, an admin script, and extra glue code between them.
+That model still matters, but it is no longer enough. Moving ahead, more work is going to be
+done by AI agents. Asking those agents to use a product through screens, buttons,
+and forms is slow, fragile, and often the wrong level of access. Agents need a
+safe way to work with the backend directly.
 
-Quater is built around one rule: declare the operation once, then choose which
-surfaces may call it.
+That does not mean giving agents unlimited access. It means exposing the right
+operations, with clear inputs, clear descriptions, real auth, audit trails, and
+approval gates where the action is sensitive.
 
-You write one handler. It can remain a normal HTTP endpoint, and when you opt
-in, Quater derives an MCP tool or CLI action from that route metadata. HTTP,
-MCP, and CLI still have separate runtime surfaces, but they call the same
-handler instead of asking you to maintain separate tool code or admin scripts.
-Parameter binding, route-level auth, response normalization, and generated
-schemas stay tied to the route.
+Quater is a Python backend framework built for this shift. You build a normal
+backend for people and services, and you can expose selected operations directly
+to MCP Clients through MCP or to AI agents through the CLI. The same operation can
+serve the app, power an agent, and support production workflows without becoming
+three different pieces of code.
 
-Request flow:
+The goal is simple: make the backend usable by humans and operable by AI agents,
+without losing safety, structure, or ownership of the application logic.
 
-<img width="1400" height="1524" alt="diagram" src="https://github.com/user-attachments/assets/e229e10d-6883-4601-ba4e-100a24e6ed19" />
+Quater is not trying to replace Django/FastAPI/Flask, ship an ORM, or hide your architecture
+behind a large dependency graph. It focuses on the parts this new backend model
+needs: typed handlers, explicit auth boundaries, AI-readable metadata,
+operator-friendly actions, generated docs, and a small request path.
 
+```mermaid
+flowchart TB
+    caller["Caller\nperson, service, or AI agent"]
+    http["HTTP request\nGET /orders/ord_1001"]
+    mcp["MCP tool call\ntools/call get_order"]
+    remote_cli["Remote CLI action\nquater call store get_order"]
+    adapter["Server adapter\nRSGI / ASGI / WSGI"]
+    checks["Framework checks\nhost, body limit, CORS, request id"]
+    router["Route metadata\nmethod, path, auth, resources"]
+    surface_auth["Surface auth\nmcp_auth or cli_auth"]
+    route_auth["Route auth\nauth="]
+    handler["Your handler\nget_order(...)"]
+    response["Serialized response\nJSON, text, bytes, stream"]
 
-## What Quater Focuses On
-
-- **One declared operation:** HTTP, MCP tools, and CLI actions can share the same
-  handler.
-- **AI-readable operations:** descriptions and generated schemas tell agents
-  what an exposed operation does and how to call it.
-- **Explicit auth boundaries:** normal routes use `auth=...`, MCP uses
-  `mcp_auth`, and CLI actions use `cli_auth`.
-- **Request resources:** database sessions and similar app-owned values can be
-  injected explicitly without becoming client-controlled inputs.
-- **Operational safety:** CLI actions support dry-run and approval hooks for
-  sensitive workflows.
-- **Generated docs:** OpenAPI, Swagger UI, and MCP tool docs are generated from
-  route metadata.
-- **Fast defaults:** Quater uses Granian/RSGI, msgspec JSON, and a native route
-  matcher.
+    caller --> http
+    caller --> mcp
+    caller --> remote_cli
+    http --> adapter
+    mcp --> adapter
+    remote_cli --> adapter
+    adapter --> checks
+    checks --> router
+    router --> surface_auth
+    router --> route_auth
+    surface_auth --> route_auth
+    route_auth --> handler
+    handler --> response
+```
 
 ## A Small App
 
@@ -53,11 +67,9 @@ async def authenticate(ctx: AuthRequest) -> AuthContext | None:
     return AuthContext(subject="admin")
 
 
-app = Quater(
-    mcp_auth=authenticate,
-    cli_auth=authenticate,
-)
-ORDER_STORE: dict[str, dict[str, object]] = {
+app = Quater(mcp_auth=authenticate, cli_auth=authenticate)
+
+ORDERS: dict[str, dict[str, object]] = {
     "ord_1001": {"id": "ord_1001", "status": "paid", "total": 42.5}
 }
 
@@ -75,13 +87,13 @@ async def health() -> dict[str, bool]:
     description="Fetch one order by id.",
 )
 async def get_order(order_id: str, request: Request) -> dict[str, object]:
-    assert request.auth is not None
-    order = ORDER_STORE.get(order_id)
+    order = ORDERS.get(order_id)
     if order is None:
         raise HTTPError("Order not found", status_code=404)
+    assert request.auth is not None
     return {
         **order,
-        "requested_by": request.auth.subject,
+        "subject": request.auth.subject,
         "source": request.context.source,
         "entrypoint": request.context.entrypoint,
     }
@@ -90,105 +102,105 @@ async def get_order(order_id: str, request: Request) -> dict[str, object]:
 Run it:
 
 ```bash
+uv add quater
 quater dev main.py
 ```
 
-This is one small app, but it already shows the main idea:
+Expected server output:
 
-- `GET /health` is a plain HTTP route.
-- `GET /orders/ord_1001` is still a normal HTTP route.
-- Because `get_order` has `tool=True`, it is also available through MCP.
-- Because `get_order` has `cli=True`, it is also available as a CLI action.
-- The same `auth=authenticate` hook protects the handler no matter which
-  surface calls it.
+```text
+[INFO] Starting granian
+[INFO] Listening at: http://127.0.0.1:8000
+```
 
-Quater serves docs by default:
+Call HTTP:
 
-- `GET /docs` for Swagger UI.
-- `GET /openapi.json` for OpenAPI.
-- `GET /mcp/docs` for exposed MCP tools.
+```bash
+curl -H "Authorization: Bearer admin-token" \
+  http://127.0.0.1:8000/orders/ord_1001
+```
 
-For AI clients, the useful part is not just that `get_order` becomes a tool. The
-operation has a human-written description and a generated input schema, so the
-model can understand when to call it and what arguments are valid.
+```json
+{
+  "id": "ord_1001",
+  "status": "paid",
+  "total": 42.5,
+  "subject": "admin",
+  "source": "api",
+  "entrypoint": "server"
+}
+```
 
-CLI discovery is intentionally compact:
+Call the same handler from the local CLI without a server round trip:
 
 ```bash
 export QUATER_APP=main:app
 export QUATER_TOKEN=admin-token
 quater actions list
-```
-
-```text
-get_order
-  Fetch one order by id.
-```
-
-The detailed command help lives behind `describe`:
-
-```bash
-quater actions describe get_order
-```
-
-And execution stays straightforward:
-
-```bash
 quater call get_order --order-id ord_1001
 ```
 
-If you do not want to set environment variables, pass them inline:
-
-```bash
-quater --app main:app --token admin-token actions list
+```json
+{
+  "id": "ord_1001",
+  "status": "paid",
+  "total": 42.5,
+  "subject": "admin",
+  "source": "cli",
+  "entrypoint": "local"
+}
 ```
 
-For a hosted app, connect once and call the named remote after that:
+For a hosted app, connect once and call the named remote:
 
 ```bash
 quater connect store https://api.example.com --token admin-token
-quater actions list store
+quater actions describe store get_order
 quater call store get_order --order-id ord_1001
 ```
 
-Dry-run shows how Quater will call the route before the handler runs:
+## Why This Shape
 
-```text
-Dry run OK: get_order
-  GET /orders/{order_id}
-  arguments hash: sha256:...
-  protected action: no
-  approval token: not required
-```
+Quater treats HTTP, MCP, and CLI as different ways to reach the same backend
+capability, not as three products you have to maintain.
+
+- **For people and services:** Quater gives you normal HTTP APIs with route
+  decorators, OpenAPI, Swagger UI, request binding, response classes, route
+  groups, middleware, and tests.
+- **For MCP Clients:** `tool=True` exposes selected routes through MCP with
+  required descriptions, generated input schemas, transport auth, MCP docs, and
+  audit hooks.
+- **For AI agents:** `cli=True` exposes selected routes as local or remote CLI
+  actions with discovery, dry-run, approval hooks, and JSON output for scripts.
+- **For the app itself:** route auth, resources, `app.state`, lifespan hooks,
+  and serialization stay attached to the handler instead of drifting into
+  wrappers.
+- **For performance:** the request path stays deliberately small with
+  Granian/RSGI, msgspec JSON, and a native route matcher.
 
 ## Current Status
 
-Quater is pre-release. The core is intentionally small: typed handlers,
-RSGI-first serving, generated docs, MCP tools, CLI actions, explicit auth, and
-security defaults. The public import boundary is documented, but some names may
-still change while the API settles.
+Quater is pre-release. The documented top-level imports are the public surface,
+but names and defaults can still change before the first stable release. Pin the
+version you test with.
 
-## Read Next
+## Documentation
 
-- [Quickstart](docs/en/latest/quickstart.md)
-- [Actions and CLI](docs/en/latest/actions.md)
-- [Resources and Injection](docs/en/latest/resources.md)
-- [Deployment](docs/en/latest/deployment.md)
-- [MCP](docs/en/latest/mcp.md)
-- [Security](docs/en/latest/security.md)
-- [Public API](docs/en/latest/api.md)
-- [Stability](docs/en/latest/stability.md)
-- [Reference](docs/en/latest/reference/index.md)
+- [Quickstart](docs/en/latest/quickstart.md): build the first app.
+- [Why Quater Exists](docs/en/latest/why-quater.md): understand the problem
+  Quater is built around.
+- [Manual](docs/en/latest/index.md): read the full guide and reference.
 
 ## Working On Quater
 
-This repo uses `uv`.
+This repo uses [uv](https://docs.astral.sh/uv/) for local development:
 
 ```bash
 uv sync --group dev
 uv run pytest
-uv run mypy src examples tests
-uv run ruff check .
+uv run mypy
+uv run ruff format --check src tests scripts
+uv run ruff check src tests scripts
 uv build
 ```
 

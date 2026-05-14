@@ -1,114 +1,165 @@
-# Resources and Injection
+# Resources And Injection
 
-Most real apps need objects that are not part of the HTTP request:
-database sessions, cache clients, tenant loaders, feature flags, SDK clients,
-or small request-scoped services.
+This page explains `app.state` and request-scoped `Resource` injection.
 
-In Quater, those values are injected with [`Resource`](./reference/resources#symbol-resource).
-The route stays explicit: you name the handler parameter that should receive
-the resource, and Quater resolves it for that handler call.
+## Prerequisites
+
+Read [Quickstart](/en/latest/quickstart) and [Public API](/en/latest/api). You
+should know async context managers if you plan to inject database sessions.
+
+## Why This Exists
+
+Real handlers need values that should never come from the client: database
+sessions, cache clients, tenant objects, feature flags, and API clients.
+
+Quater keeps those values explicit:
+
+- Long-lived objects live on `app.state`.
+- Per-request values use `Resource`.
+- Routes opt in with `inject={...}`.
+
+Quater does not build a hidden dependency graph. A reader can inspect the route
+decorator and know which handler parameters come from the app.
+
+## Resource Lifecycle
+
+```mermaid
+flowchart TB
+    startup["your code: on_startup\ncreate long-lived pool"]
+    state["framework: app.state\nholds pool/client/config"]
+    request["framework: request starts"]
+    provider["your code: Resource provider\ncreates request value"]
+    handler["your code: handler\nreceives injected value"]
+    response["framework: response created"]
+    cleanup["framework: cleanup after response\nalso on errors"]
+    shutdown["your code: on_shutdown\nclose long-lived pool"]
+
+    startup --> state
+    state --> request --> provider --> handler --> response --> cleanup
+    state --> shutdown
+```
+
+Cleanup runs after response creation. For streaming responses, Quater keeps the
+resource alive until the response body has been consumed by the adapter.
+
+## A Runnable Example
 
 ```python
 from collections.abc import AsyncIterator
 
 from quater import Quater, Request, Resource
 
+
+class OrderStore:
+    async def get_order(self, order_id: str) -> dict[str, object]:
+        return {"id": order_id, "status": "paid"}
+
+    async def close(self) -> None:
+        pass
+
+
 app = Quater()
 
 
-async def session_resource(request: Request) -> AsyncIterator[DatabaseSession]:
-    async with request.app.state.database.session() as session:
-        yield session
+@app.on_startup
+async def startup() -> None:
+    app.state.store = OrderStore()
 
 
-db_session = Resource(session_resource, name="db_session")
+@app.on_shutdown
+async def shutdown() -> None:
+    await app.state.store.close()
 
 
-@app.get("/orders/{order_id}", inject={"session": db_session})
-async def get_order(order_id: str, session: DatabaseSession) -> dict[str, object]:
-    order = await session.fetch_order(order_id)
-    return {"id": order.id, "status": order.status}
+async def store_resource(request: Request) -> AsyncIterator[OrderStore]:
+    yield request.app.state.store
+
+
+store = Resource(store_resource, name="store")
+
+
+@app.get("/orders/{order_id}", inject={"store": store})
+async def get_order(order_id: str, store: OrderStore) -> dict[str, object]:
+    return await store.get_order(order_id)
 ```
 
-The handler signature is still normal Python. `session` is not read from the
-path, query string, body, headers, cookies, MCP arguments, or CLI arguments.
-It is created inside the framework for the current call.
+Expected response:
 
-## Why Quater Uses Resource
+```json
+{
+  "id": "ord_1001",
+  "status": "paid"
+}
+```
 
-Quater does not try to build a large hidden dependency graph. That can become
-hard to debug once an app grows.
-
-Instead, injection has three simple rules:
-
-- Long-lived objects belong on [`app.state`](./reference/request#symbol-state).
-- Per-request objects are declared as [`Resource`](./reference/resources#symbol-resource).
-- A route opts into resources with `inject={...}`.
-
-This keeps lifetimes visible. A developer reading the route can see which
-parameters come from the client and which ones come from the app.
-
-## Provider Shapes
+## Provider Forms
 
 A provider can accept no arguments:
 
 ```python
-async def settings_resource() -> Settings:
-    return Settings.from_env()
+async def settings_resource() -> dict[str, str]:
+    return {"region": "us-east-1"}
 ```
 
-Or it can accept the current [`Request`](./reference/request#symbol-request):
+Or it can accept the current `Request`:
 
 ```python
-async def tenant_resource(request: Request) -> Tenant:
-    tenant_id = request.headers.get("x-tenant-id")
-    return await request.app.state.tenants.load(tenant_id)
+async def tenant_resource(request: Request) -> str:
+    return request.headers.get("x-tenant-id", "public")
 ```
 
-Providers can return a value directly, return an awaitable, return a context
-manager, return an async context manager, or yield one value:
+It can return:
+
+- a plain value
+- an awaitable value
+- a sync context manager
+- an async context manager
+- a sync generator that yields once
+- an async generator that yields once
+
+Database sessions usually use an async generator:
 
 ```python
+from collections.abc import AsyncIterator
+
+from quater import Request
+
+
 async def session_resource(request: Request) -> AsyncIterator[DatabaseSession]:
     async with request.app.state.database.session() as session:
         yield session
 ```
 
-When a provider yields or returns a context manager, Quater closes it after the
-handler finishes. Cleanup also runs when the handler raises.
-
-::: tip
-Use `app.state` for the database pool or engine, and use a request
-`Resource` for the database session. That gives you one shared pool and one
-short-lived session per request.
-:::
-
 ## Route Usage
 
-Use `inject` on the route decorator:
-
 ```python
+db_session = Resource(session_resource, name="db_session")
+
+
 @app.post("/orders", inject={"session": db_session})
 async def create_order(order: CreateOrder, session: DatabaseSession) -> dict[str, str]:
     created = await session.create_order(order)
     return {"id": created.id}
 ```
 
-The key in `inject` must match a handler parameter name. If it does not, Quater
-fails while routes compile.
+The injected `session` does not appear in:
 
-Injected parameters cannot also be path, query, header, cookie, or body
-parameters. This is intentional: client input and app-owned resources should
-not compete for the same name.
+- OpenAPI request parameters
+- MCP input schemas
+- CLI action schemas
+- HTTP path, query, header, cookie, or body binding
+
+That keeps app-owned objects away from untrusted caller input.
 
 ## Groups
 
-[`RouteGroup`](./reference/application#symbol-routegroup) can share resources
-across a feature area:
+Use a [`RouteGroup`](/en/latest/reference/application#symbol-routegroup) when
+several routes in one feature need the same resource:
 
 ```python
-from quater import RouteGroup
+from quater import Quater, Resource, RouteGroup
 
+app = Quater()
 orders = RouteGroup(prefix="/orders", inject={"session": db_session})
 
 
@@ -121,13 +172,12 @@ async def get_order(order_id: str, session: DatabaseSession) -> dict[str, object
 app.include(orders)
 ```
 
-If a parent group and a child route define the same injected parameter with
-different resources, Quater raises a configuration error. That avoids a quiet
-override that only shows up in production.
+Quater flattens group resources into the final route when the group is included.
+It does not resolve resources during route matching.
 
-## MCP and CLI
+## MCP And CLI
 
-Resources work the same way for HTTP, MCP tools, and CLI actions.
+Resources work the same through HTTP, MCP, local CLI, and remote CLI:
 
 ```python
 @app.get(
@@ -142,18 +192,37 @@ async def get_order(order_id: str, session: DatabaseSession) -> dict[str, object
     return {"id": order.id, "status": order.status}
 ```
 
-The generated MCP input schema and CLI action schema include `order_id`, but
-not `session`. A remote caller cannot pass a fake session value.
+The generated MCP and CLI schemas include `order_id`, not `session`.
 
-## Validation
+## What Can Go Wrong
 
-Quater fails route compilation when:
+`Injected parameter 'session' does not exist on the handler`
+: The `inject` key must match a handler parameter name.
 
-- `inject` points to a parameter that does not exist.
-- An injected parameter uses `Path`, `Query`, `Body`, `Header`, or `Cookie`.
-- An injected parameter also appears in the route path.
-- A provider accepts more than one argument.
-- A provider argument is not named `request` and is not typed as `Request`.
+`Injected parameter 'session' cannot use a parameter marker`
+: Do not combine `Resource` injection with `Path`, `Query`, `Body`, `Header`, or
+  `Cookie`.
 
-These errors are raised early because a resource bug usually means the app was
-configured incorrectly.
+`Resource provider parameter must be named 'request' or typed as Request`
+: Rename the provider argument to `request` or annotate it as `Request`.
+
+`Resource providers cannot use *args or **kwargs`
+: Give the provider either zero parameters or one request parameter.
+
+`Resource provider 'db_session' did not yield a value`
+: A generator provider must yield exactly one value.
+
+`Resource provider 'db_session' yielded more than once`
+: Use one `yield`, then cleanup after it.
+
+`Duplicate injected parameter: session`
+: A group and a route both define `session` with different `Resource` objects.
+  Use the same object or rename one parameter.
+
+## Also See
+
+- [Public API](/en/latest/api): see `app.state`, lifespan hooks, and `inject`.
+- [Testing](/en/latest/testing): test resource cleanup through `TestClient`.
+- [Reference: Resources](/en/latest/reference/resources): inspect the exact
+  `Resource` signature.
+- [Deployment](/en/latest/deployment): understand how workers affect app state.

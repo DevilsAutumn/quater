@@ -1,12 +1,16 @@
 # Public API
 
-This is the surface Quater expects application code to use during the current
-pre-release. Everything else can still move while the framework settles.
+This page explains the public Quater API in human terms before you use the
+reference pages for exact signatures.
 
-This page explains the public surface in human terms. For generated signatures
-and class members, use the [Reference](/en/latest/reference/).
+## Prerequisites
 
-Use top-level imports for normal app code:
+Read [Quickstart](/en/latest/quickstart). This page assumes you know what a
+Quater route is and how handlers return responses.
+
+## Public Imports
+
+Application code should import from `quater`:
 
 ```python
 from quater import (
@@ -46,74 +50,53 @@ from quater import (
 )
 ```
 
-## App
+Everything else under `quater.*` can move unless a reference page documents it.
 
-`Quater()` is the application object.
+## Application
+
+`Quater()` owns routes, config, middleware, lifespan hooks, and server adapters.
 
 ```python
+from quater import Quater
+
 app = Quater(
+    name="Store API",
     allowed_hosts=["api.example.com"],
     max_body_size="2mb",
     docs_path="/docs",
     openapi_path="/openapi.json",
     mcp_docs_path="/mcp/docs",
-    mcp_auth=authenticate,
-    cli_auth=authenticate,
-    access_logger=log_access,
 )
 ```
 
-The snippet assumes you already defined `authenticate` and `log_access`. For an
-app with no MCP tools, omit `mcp_auth`. For an app with no CLI actions, omit
-`cli_auth`.
+Important constructor options:
 
-Documented constructor options:
+- `debug`: include error details in framework errors.
+- `security`: `"strict"`, `"relaxed"`, or `"off"`.
+- `allowed_hosts`: accepted Host headers.
+- `trusted_proxies`: proxy IPs or CIDR ranges trusted for forwarded headers.
+- `cors`: browser CORS policy.
+- `mcp_auth`: required when any route has `tool=True`.
+- `cli_auth`: required when any route has `cli=True`.
+- `action_approval`: required when any exposed route has `needs_approval=True`.
+- `access_logger`: receives structured access events.
 
-- `name`
-- `config`
-- `debug`
-- `security`
-- `allowed_hosts`
-- `trusted_proxies`
-- `max_body_size`
-- `cors`
-- `content_security_policy`
-- `docs_path`
-- `openapi_path`
-- `mcp_docs_path`
-- `mcp_allowed_origins`
-- `mcp_auth`
-- `mcp_audit`
-- `cli_auth`
-- `action_approval`
-- `access_logger`
-- `request_id_header`
-
-The MCP JSON-RPC endpoint is always `/mcp`. There is no `mcp_path` option. If
-an app exposes tools, `mcp_auth` is required.
-
-If an app exposes `cli=True` routes, `cli_auth` is required. If any exposed
-route uses `needs_approval=True`, `action_approval` is required.
-
-Before deploying through a server command that does not use `quater run`, call
-`app.validate_production()` after routes are declared. It compiles routes and
-fails fast on unsafe production settings such as `debug=True`, disabled
-security, or missing `allowed_hosts`. See [Deployment](/en/latest/deployment)
-for server examples.
-
-Use [`app.state`](/en/latest/reference/request#symbol-state) for application
-resources that should live as long as the app instance, such as database pools,
-cache clients, or SDK clients created in startup hooks. Do not put per-request
-values there; use `request.state` for that.
+See [Application Reference](/en/latest/reference/application) for every option,
+type, default, and exception.
 
 ## Routes
 
-Route decorators are the main API:
+Route decorators register HTTP routes. The same route can opt into MCP and CLI.
 
 ```python
-@app.get("/items/{id:int}")
-async def get_item(id: int) -> dict[str, int]:
-    return {"id": id}
+from quater import Quater
+
+app = Quater()
+
+
+@app.get("/orders/{order_id}", description="Fetch one order.")
+async def get_order(order_id: str) -> dict[str, str]:
+    return {"order_id": order_id}
 ```
 
 Available decorators:
@@ -125,7 +108,7 @@ Available decorators:
 - `app.delete`
 - `app.route`
 
-Documented decorator options:
+Route options:
 
 - `name`
 - `description`
@@ -140,42 +123,27 @@ Documented decorator options:
 - `around`
 - `exception_handlers`
 
-`tool=True` exposes the route through MCP. Tool routes must have a useful
-description, either through `description=` or the handler docstring. The app
-must also be created with `mcp_auth`.
+Quater reserves these paths:
 
-`cli=True` exposes the route through Quater actions. CLI action routes also need
-a useful description and the app must be created with `cli_auth`.
+- `/mcp` and `/mcp/...`
+- `/.well-known/quater-actions.json`
+- `/__quater__` and `/__quater__/...`
 
-`needs_approval=True` can be used with `tool=True` or `cli=True`. It requires an
-`action_approval` hook on the app.
+## Binding
 
-Use [`inject`](/en/latest/resources) when a handler needs app-owned values such
-as a database session. Injected values are created by Quater and are not exposed
-as HTTP, MCP, or CLI inputs.
+Quater decides a handler parameter source in this order:
 
-Quater reserves its own protocol paths. User routes cannot be registered under
-`/mcp`, under `/mcp/...`, at `/.well-known/quater-actions.json`, or under
-`/__quater__/...`.
-
-## Parameters
-
-Handler parameters are bound from the route path, query string, headers,
-cookies, or JSON body. For small handlers, Quater can infer the common cases:
-
-```python
-@app.get("/orders/{order_id}")
-async def get_order(order_id: str, include_events: bool = False) -> dict[str, object]:
-    return {"order_id": order_id, "include_events": include_events}
-```
-
-Use parameter markers when the request name needs an alias, when generated docs
-need a description, or when the source would otherwise be unclear:
+1. `inject={...}` resources
+2. `Request`
+3. parameter markers: `Path`, `Query`, `Body`, `Header`, `Cookie`
+4. route path names
+5. scalar query parameters
+6. JSON body parameters
 
 ```python
 import msgspec
 
-from quater import Body, Header, Path, Query
+from quater import Body, Header, Path, Query, Quater
 
 
 class UpdateOrder(msgspec.Struct):
@@ -183,20 +151,15 @@ class UpdateOrder(msgspec.Struct):
     notify_customer: bool = False
 
 
-@app.patch("/orders/{id}", description="Update one order.")
+app = Quater()
+
+
+@app.patch("/orders/{id}")
 async def update_order(
     order_id: str = Path(alias="id", description="Order id."),
     payload: UpdateOrder = Body(description="New order state."),
-    include_events: bool = Query(
-        default=False,
-        alias="include-events",
-        description="Include event history.",
-    ),
-    request_id: str | None = Header(
-        default=None,
-        alias="X-Request-ID",
-        description="Caller request id.",
-    ),
+    include_events: bool = Query(default=False, alias="include-events"),
+    request_id: str | None = Header(default=None, alias="X-Request-ID"),
 ) -> dict[str, object]:
     return {
         "order_id": order_id,
@@ -206,409 +169,196 @@ async def update_order(
     }
 ```
 
-Available markers:
+`msgspec.Struct` gives typed JSON validation and fast serialization through
+[msgspec](https://jcristharif.com/msgspec/). Plain `dict` is fine for dynamic
+responses.
 
-- [`Path`](/en/latest/reference/parameters#symbol-path) binds a route path
-  variable. Path parameters are always required.
-- [`Query`](/en/latest/reference/parameters#symbol-query) binds a query-string
-  value.
-- [`Body`](/en/latest/reference/parameters#symbol-body) binds the JSON request
-  body.
-- [`Header`](/en/latest/reference/parameters#symbol-header) binds a request
-  header. Without `alias=`, `user_agent` reads the `User-Agent` header.
-- [`Cookie`](/en/latest/reference/parameters#symbol-cookie) binds a request
-  cookie.
+## Middleware
 
-Markers feed OpenAPI, MCP tool schemas, and CLI action schemas. HTTP aliases are
-the wire names used by OpenAPI. MCP and CLI action arguments keep the Python
-handler parameter name so agents and shell commands stay predictable. The one
-exception is `Body(alias=...)`, which renames the action argument for the body.
+Use middleware when you need cross-cutting behavior around routes.
 
-```bash
-quater call update_order \
-  --order-id ord_1001 \
-  --payload '{"status":"shipped","notify_customer":true}' \
-  --include-events true
+`before` runs before route auth and binding. It can return a response to
+short-circuit:
+
+```python
+from quater import Request, Response, TextResponse
+
+
+async def require_request_id(request: Request) -> Response | None:
+    if request.headers.get("x-request-id") is None:
+        return TextResponse("Missing request id", status_code=400)
+    request.state.request_id = request.headers["x-request-id"]
+    return None
 ```
 
-What can go wrong:
+`after` runs after the handler response exists:
 
-- `Path(alias=...)` must match a variable in the route path.
-- A path variable cannot be rebound with `Query`, `Header`, `Cookie`, or `Body`.
-- `Query`, `Header`, and `Cookie` bind scalar values only: `str`, `int`,
-  `float`, or `bool`. Use `Body` for structured JSON input.
-- Quater supports one body parameter per handler.
-- Invalid header or cookie names fail when routes compile, not during a random
-  request later.
+```python
+async def add_timing_header(request: Request, response: Response) -> Response:
+    response.headers = (*response.headers, ("x-handler", "orders"))
+    return response
+```
 
-For signatures and exact options, see the
-[Parameter Reference](/en/latest/reference/parameters).
+`around` wraps the handler pipeline:
+
+```python
+from collections.abc import Awaitable, Callable
+
+
+async def audit_call(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    response = await call_next(request)
+    print(request.path, response.status_code)
+    return response
+```
+
+Attach middleware globally or on a route:
+
+```python
+app.before_request(require_request_id)
+
+
+@app.get("/orders/{order_id}", after=[add_timing_header], around=[audit_call])
+async def get_order(order_id: str) -> dict[str, str]:
+    return {"order_id": order_id}
+```
+
+## Exception Handlers
+
+Exception handlers map exception classes to responses without wrapping every
+handler in `try`/`except`.
+
+```python
+from quater import JSONResponse, Quater, Request
+
+
+class OrderNotFound(Exception):
+    pass
+
+
+app = Quater()
+
+
+@app.exception_handler(OrderNotFound)
+async def handle_order_not_found(
+    request: Request,
+    exc: OrderNotFound,
+) -> JSONResponse:
+    return JSONResponse({"error": "order_not_found"}, status_code=404)
+```
+
+Route-level handlers take precedence over group handlers, and group handlers
+take precedence over global handlers.
 
 ## Route Groups
 
-[`RouteGroup`](/en/latest/reference/application#symbol-routegroup) keeps feature
-routes together while still compiling down to normal Quater routes.
+Route groups organize feature routes. Quater flattens them at startup.
 
-```python
-from quater import Quater, RouteGroup
+```mermaid
+flowchart TB
+    group["your code: RouteGroup(prefix='/api')"]
+    child["your code: child RouteGroup(prefix='/orders')"]
+    route["your code: @orders.get('/{order_id}')"]
+    compile["framework: app.include(api)"]
+    flatten["framework: flatten prefix, auth, middleware, resources"]
+    native["framework: native router sees /api/orders/{order_id}"]
 
-app = Quater()
-orders = RouteGroup(prefix="/orders", tags=["orders"])
-
-
-@orders.get("/{order_id}", description="Fetch one order.")
-async def get_order(order_id: str) -> dict[str, str]:
-    return {"order_id": order_id}
-
-
-app.include(orders)
+    group --> child --> route --> compile --> flatten --> native
 ```
 
-Documented group constructor options:
+Startup catches configuration errors such as duplicate routes, bad inject keys,
+reserved paths, missing auth for tools, and invalid parameter markers.
 
-- `prefix`
-- `tags`
-- `auth`
-- `metadata`
-- `before`
-- `after`
-- `around`
-- `exception_handlers`
+## State And Lifespan
 
-Groups expose the same route decorators as the app: `get`, `post`, `put`,
-`patch`, `delete`, and `route`.
-
-You can nest groups:
-
-```python
-api = RouteGroup(prefix="/api", tags=["api"])
-orders = RouteGroup(prefix="/orders", tags=["orders"])
-
-api.include(orders)
-app.include(api)
-```
-
-The route `orders.get("/{order_id}")` becomes `/api/orders/{order_id}`.
-
-Define routes before including a group in the app. `app.include(group)` validates
-the flattened routes for exposure settings and reserved framework paths before
-registering anything, then locks the group. A group cannot be included twice,
-reused under two parents, or modified after it has been included.
-
-Merge rules are intentionally simple:
-
-- Parent prefixes are joined before child prefixes and route paths.
-- Parent metadata is copied first, then child metadata, then route metadata.
-- Tags are appended in order and de-duplicated.
-- Group auth runs before route auth. If either returns `None`, the request is
-  denied.
-- Group `before` and `around` middleware run before route middleware.
-- Route `after` middleware runs before group `after` middleware.
-- Route exception handlers are tried before group exception handlers.
-
-Group auth and middleware apply to normal HTTP requests and to the same route
-when it is exposed with `tool=True` or `cli=True`. This is important for
-AI-facing and operator-facing routes: a tool or action should not quietly bypass
-the feature-level policy that protects the HTTP endpoint.
-
-## Request And Context
-
-Use [`Request`](/en/latest/reference/request#symbol-request) when the handler
-needs headers, body access, auth, app state, or the call source.
-
-```python
-@app.get("/whoami")
-async def whoami(request: Request) -> dict[str, object]:
-    return {
-        "source": request.context.source,
-        "entrypoint": request.context.entrypoint,
-        "tool": request.context.tool_name,
-    }
-```
-
-`request.app` is the [`Quater`](/en/latest/reference/application#symbol-quater)
-instance handling the request. It is set by Quater before auth, middleware, and
-the handler run, including MCP tool calls and CLI actions.
-
-Use [`request.state`](/en/latest/reference/request#symbol-state) for values that
-belong to one request:
-
-```python
-@app.before_request
-async def attach_trace(request: Request) -> Response | None:
-    request.state.trace_id = request.context.request_id
-    return None
-
-
-@app.get("/trace")
-async def trace(request: Request) -> dict[str, object]:
-    return {"trace_id": request.state.trace_id}
-```
-
-`request.context.source` is:
-
-- `"api"` for normal HTTP calls.
-- `"mcp"` for MCP protocol requests such as `initialize` and `tools/list`.
-- `"cli"` for Quater CLI action calls.
-
-`request.context.entrypoint` is:
-
-- `"server"` for calls handled by the running server, including normal API
-  calls, MCP calls, and remote CLI calls.
-- `"local"` for in-process local CLI calls that import the app directly.
-
-`request.context.tool_name` is set for MCP tool calls.
-`request.context.action_name` is set for MCP tool calls and CLI action calls.
-`request.context.request_id` is set for every handled request.
-
-## Request IDs And Access Logs
-
-Quater reads `x-request-id` by default, validates that it is safe to echo, and
-adds the final id to the response. If the incoming value is missing or unsafe,
-Quater generates a new id. Set `request_id_header=None` to stop writing a
-request-id response header.
-
-Use `access_logger` with
-[`AccessLogEvent`](/en/latest/reference/observability#symbol-accesslogevent)
-when you want one structured event after each handled server request:
-
-```python
-from quater import AccessLogEvent, Quater
-
-
-async def log_access(event: AccessLogEvent) -> None:
-    print(event.to_dict())
-
-
-app = Quater(access_logger=log_access)
-```
-
-The event includes method, path, status code, duration, source, entrypoint,
-client, request id, and the current tool/action name when there is one. It does
-not include request headers, body, or query-string values.
-
-## Auth
-
-Auth hooks receive
-[`AuthRequest`](/en/latest/reference/auth#symbol-authrequest) and return
-[`AuthContext`](/en/latest/reference/auth#symbol-authcontext) or `None`.
-
-```python
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer demo-token":
-        return None
-    return AuthContext(subject="demo-user")
-```
-
-Attach the hook per route:
-
-```python
-@app.get("/me", auth=authenticate)
-async def me(request: Request) -> dict[str, str]:
-    assert request.auth is not None
-    return {"subject": request.auth.subject}
-```
-
-For MCP tools, the same hook can also be passed as `mcp_auth`:
-
-```python
-app = Quater(mcp_auth=authenticate)
-```
-
-`mcp_auth` protects MCP protocol requests and `/mcp/docs`. Route `auth=` still
-protects individual handlers. If both point to the same function, Quater still
-runs route auth against the handler route so path-based policies cannot be
-accidentally skipped.
-
-For CLI actions, pass an auth hook as `cli_auth`:
-
-```python
-app = Quater(cli_auth=authenticate)
-```
-
-`cli_auth` protects local action discovery, local action execution, remote
-action discovery, and remote action execution. Route `auth=` still protects
-individual handlers.
-
-## Actions and Approval
-
-Use `cli=True` for routes that should be callable from the Quater CLI:
-
-```python
-app = Quater(cli_auth=authenticate)
-
-
-@app.get("/orders/{order_id}", cli=True, description="Fetch one order by id.")
-async def get_order(order_id: str) -> dict[str, str]:
-    return {"order_id": order_id}
-```
-
-Use `needs_approval=True` for exposed actions that require a second check before
-execution:
-
-```python
-from quater import ApprovalRequest, Quater
-
-
-async def approve_action(ctx: ApprovalRequest) -> bool:
-    return ctx.token == "approve-local"
-
-
-app = Quater(
-    cli_auth=authenticate,
-    action_approval=approve_action,
-)
-
-
-@app.patch(
-    "/orders/{order_id}/status",
-    cli=True,
-    needs_approval=True,
-    description="Update an order status.",
-)
-async def update_order_status(order_id: str, status: str) -> dict[str, str]:
-    return {"order_id": order_id, "status": status}
-```
-
-[`ApprovalRequest`](/en/latest/reference/auth#symbol-approvalrequest) includes:
-
-- `action`
-- `arguments_hash`
-- `token`
-- `auth`
-- `context`
-
-Quater validates action arguments before calling the approval hook. Dry-run
-returns the same argument hash without calling the handler or approval hook.
-
-## Responses
-
-Use [response objects](/en/latest/reference/responses) when you need explicit
-status, headers, content type, or streaming:
-
-```python
-from quater import JSONResponse, StreamResponse, TextResponse
-```
-
-Plain return values still cover the common case:
-
-- `dict`, `list`, `tuple`, `bool`, `int`, and `float` become JSON.
-- dataclass instances and `msgspec.Struct` instances become JSON.
-- `str` becomes [`TextResponse`](/en/latest/reference/responses#symbol-textresponse).
-- `bytes` becomes [`BytesResponse`](/en/latest/reference/responses#symbol-bytesresponse).
-- `None` becomes `204 No Content`.
-
-## Testing
-
-Use [`TestClient`](/en/latest/reference/testing#symbol-testclient) to test a
-Quater app in process. It calls `app.handle()` directly, so tests do not need
-Granian, ASGI, WSGI, or a listening port.
-
-```python
-from quater import Quater, TestClient
-
-app = Quater()
-
-
-@app.get("/health")
-async def health() -> dict[str, bool]:
-    return {"ok": True}
-
-
-async def test_health() -> None:
-    async with TestClient(app) as client:
-        response = await client.get("/health")
-
-    assert response.status_code == 200
-    assert response.json() == {"ok": True}
-```
-
-The async context manager runs startup and shutdown hooks. The client keeps a
-small cookie jar, supports `params=`, `headers=`, `cookies=`, `json=`, and
-`content=`, and collects streaming responses into `response.body`.
-
-MCP helpers are available under `client.mcp`. The attribute is an
-[`MCPTestClient`](/en/latest/reference/testing#symbol-mcptestclient); most tests
-should use it through
-[`TestClient`](/en/latest/reference/testing#symbol-testclient) instead of
-constructing it directly.
-
-```python
-response = await client.mcp.tools_call(
-    "get_user",
-    {"id": 7},
-    token="demo-token",
-    origin="https://client.example",
-)
-```
-
-For testing patterns across auth, cookies, streams, and MCP tools, read the
-[Testing guide](/en/latest/testing).
-
-## Config Helpers
-
-[`CORSConfig`](/en/latest/reference/application#symbol-corsconfig) is the public
-CORS helper:
-
-```python
-app = Quater(
-    cors=CORSConfig(allowed_origins=("https://app.example.com",)),
-)
-```
-
-[`AppConfig`](/en/latest/reference/application#symbol-appconfig) is useful when
-several app instances should share one base config:
-
-```python
-base = AppConfig(allowed_hosts=("api.example.com",))
-app = Quater(config=base)
-```
-
-[`ImproperlyConfigured`](/en/latest/reference/auth#symbol-improperlyconfigured)
-is raised when Quater detects invalid framework setup. `ConfigurationError`
-still exists in `quater.exceptions` for compatibility, and it is a subclass of
-`ImproperlyConfigured`.
-
-[`SignedCookieSigner`](/en/latest/reference/auth#symbol-signedcookiesigner)
-signs small cookie values with HMAC:
-
-```python
-signer = SignedCookieSigner("new-secret", fallback_secrets=["old-secret"])
-cookie_value = signer.sign("user_123")
-```
-
-## MCP Audit
-
-Use [`ToolAuditEvent`](/en/latest/reference/observability#symbol-toolauditevent)
-to type an audit hook:
-
-```python
-async def audit(event: ToolAuditEvent) -> None:
-    print(event.tool_name, event.subject, event.success)
-
-
-app = Quater(
-    mcp_auth=authenticate,
-    mcp_audit=audit,
-)
-```
-
-Tool arguments are redacted before they reach the hook.
-If the audit hook raises, the MCP call returns a JSON-RPC internal error instead
-of hiding the failure.
-
-## Import Boundary
-
-Application code should normally import from `quater`:
+Use `app.state` for long-lived objects:
 
 ```python
 from quater import Quater, Request
+
+app = Quater()
+
+
+@app.on_startup
+async def startup() -> None:
+    app.state.cache = {}
+
+
+@app.on_shutdown
+async def shutdown() -> None:
+    app.state.cache.clear()
+
+
+@app.get("/cache-size")
+async def cache_size(request: Request) -> dict[str, int]:
+    return {"size": len(request.app.state.cache)}
 ```
 
-The public import rules are documented in [Stability](/en/latest/stability).
-In short: top-level `quater` exports are the normal app API, a few advanced
-compatibility modules are supported, and the rest of `quater.*` is internal.
+Use `request.state` for one-request values set by middleware.
 
-Avoid imports such as `quater.app`, `quater.router`, `quater.docs.*`, and
-`quater.tools.registry` in application code. Those modules are framework
-implementation details, even when their names look useful.
+## Responses
+
+Handlers can return plain values:
+
+- `dict`, `list`, `tuple`, dataclasses, and `msgspec.Struct` become JSON.
+- `str` becomes text.
+- `bytes`, `bytearray`, and `memoryview` become bytes.
+- `None` becomes `204 No Content`.
+- `Response` subclasses pass through directly.
+
+Use explicit responses when you need status, headers, HTML, redirects, or
+streams.
+
+```python
+from quater import JSONResponse, RedirectResponse
+
+
+@app.post("/orders")
+async def create_order() -> JSONResponse:
+    return JSONResponse({"id": "ord_1001"}, status_code=201)
+
+
+@app.get("/old-orders")
+async def old_orders() -> RedirectResponse:
+    return RedirectResponse("/orders")
+```
+
+## OpenAPI And Docs
+
+Quater serves Swagger UI and [OpenAPI](https://swagger.io/specification/) by
+default:
+
+- `/docs`
+- `/openapi.json`
+
+Set either path to `None` to disable it. If `docs_path` exists, `openapi_path`
+must exist.
+
+## What Can Go Wrong
+
+`Route handlers must be async functions`
+: Declare route handlers with `async def`.
+
+`Only one body parameter is supported`
+: Move body fields into one `msgspec.Struct`.
+
+`Path parameter 'order_id' does not match route path`
+: Rename the handler parameter or use `Path(alias=...)`.
+
+`Cannot register middleware after routes are compiled`
+: Register middleware before startup, tests, or the first request compiles routes.
+
+`docs_path requires openapi_path`
+: Disable both paths or keep both enabled.
+
+## Also See
+
+- [Routes and Handlers](/en/latest/routes-handlers): route and binding concepts.
+- [Middleware and Errors](/en/latest/middleware-errors): middleware and exception
+  handlers in real use.
+- [Reference](/en/latest/reference/): exact signatures and defaults.
+- [Resources and Injection](/en/latest/resources): resource lifetimes.
+- [Security](/en/latest/security): auth and production defaults.
+- [Testing](/en/latest/testing): test the public API through `TestClient`.

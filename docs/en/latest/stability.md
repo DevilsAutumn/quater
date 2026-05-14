@@ -1,81 +1,104 @@
 # Stability
 
-Quater is in pre-release phase. That does not mean every piece is experimental,
-but it does mean the project is still young enough to fix names, defaults, and
-contracts before they become hard to change.
+This page explains which Quater APIs you can rely on during the pre-release
+period.
 
-This page explains what to rely on today, and what to avoid building against.
+## Prerequisites
 
-## What To Import
+Read [Public API](/en/latest/api). This page matters when you decide what to
+import, wrap, or extend in application code.
 
-For normal application code, import from `quater`:
+## Current Promise
 
-```python
-from quater import AuthContext, AuthRequest, Quater, Request
-```
-
-The [Public API](/en/latest/api) page is the source of truth for the documented
-import surface. If a guide imports a name from `quater`, that is the path you
-should copy into your app.
-
-Some compatibility modules are also documented for specific cases:
-
-- `quater.adapters` for explicit ASGI, RSGI, or WSGI adapter classes.
-- `quater.exceptions` when you need to catch a framework exception.
-- `quater.testing` if you prefer importing test clients from the testing module.
-- `quater.typing` for hook aliases and request context types.
-
-Those modules are okay to use when the docs point you there. For everyday app
-code, the top-level package should be enough.
-
-## What Is Internal
-
-Most modules under `quater.*` are framework internals. Examples include
-`quater.app`, `quater.router`, `quater.actions`, `quater.protocol`,
-`quater.docs`, and `quater.tools.registry`.
-
-They exist because Quater needs structure internally, not because they are meant
-to be extension points. They may move or change while the framework settles.
-
-Use this:
+Quater is pre-release. The project can still fix names, defaults, and contracts
+before they become stable. The documented top-level imports are the API you
+should try first.
 
 ```python
-from quater import Quater, Request
+from quater import Quater, Request, Resource, RouteGroup
 ```
 
-Not this:
+Prefer that style over importing implementation modules:
 
 ```python
 from quater.app import Quater
-from quater.request import Request
 ```
 
-## Versioning
+The second form may work today, but it is not the path the docs promise for
+application code.
 
-For now, pin the Quater version you are using and read the release notes before
-upgrading. Breaking changes should be rare and intentional, but they are still
-possible while the API is being shaped.
+## Public Import Boundary
 
-After `1.0`, version numbers should mean the usual thing: patch releases fix
-bugs, minor releases add compatible features, and major releases carry breaking
-changes.
+Use names exported from `quater` and documented in the
+[Reference](/en/latest/reference/):
 
-## CLI And Remote Protocol
+- application objects: `Quater`, `RouteGroup`, `AppConfig`, `CORSConfig`
+- request and state: `Request`, `State`
+- binding markers: `Path`, `Query`, `Body`, `Header`, `Cookie`
+- responses: `Response`, `JSONResponse`, `TextResponse`, `HTMLResponse`,
+  `BytesResponse`, `StreamResponse`, `RedirectResponse`, `EmptyResponse`
+- auth and security: `AuthRequest`, `AuthContext`, `ApprovalRequest`,
+  `ActionApproval`, `HTTPError`, `ImproperlyConfigured`, `SignedCookieSigner`
+- resources: `Resource`
+- observability: `AccessLogEvent`, `AccessLogHook`, `ToolAuditEvent`
+- testing: `TestClient`, `MCPTestClient`, `TestResponse`
 
-The `quater` command is user-facing. Documented commands should stay familiar,
-even if new options are added over time.
+Some compatibility modules exist for advanced cases, but the top-level import
+should be enough for normal apps.
 
-The remote action endpoints are different:
+## Internal Modules
+
+Treat these as internal unless a guide points you there:
+
+- `quater.app`
+- `quater.router`
+- `quater.actions`
+- `quater.protocol`
+- `quater.docs`
+- `quater.tools.registry`
+- `quater.params`
+- `quater.datastructures`
+
+They exist so Quater can keep its implementation structured. They are not stable
+extension points yet.
+
+## Remote Action Protocol
+
+The CLI uses:
 
 - `/.well-known/quater-actions.json`
 - `/__quater__/actions/call`
 
-They are used by the Quater CLI, but they are not yet a standalone public
-protocol for third-party clients. Use `quater actions ...` and `quater call ...`
-instead of writing directly against those URLs.
+Those endpoints exist for the Quater CLI. Do not build third-party clients
+directly on them yet. Use `quater actions ...` and `quater call ...`.
 
-## Practical Rule
+## Changelog And Migration
 
-If it appears in a guide, the public API page, or the reference, it is something
-you can try in application code today. If you had to discover it by opening an
-internal module, treat it as private.
+Quater release notes live in [Changelog / Release Notes](/en/latest/changelog).
+While the project is pre-release, pin the exact version you test:
+
+```bash
+uv add "quater==0.1.0a1"
+```
+
+When a release contains a breaking change, the release note should include a
+before-and-after snippet.
+
+## What Can Go Wrong
+
+`Loaded object is not a Quater application`
+: You pointed the CLI at an object that is not a `Quater` instance.
+
+`App factory target is not callable`
+: You passed `--factory`, but the import target is not a function.
+
+`ConfigurationError still exists in quater.exceptions`
+: Use `ImproperlyConfigured` in new app code. `ConfigurationError` remains for
+  compatibility with older internal names.
+
+## Also See
+
+- [Public API](/en/latest/api): what application code should import.
+- [Reference](/en/latest/reference/): exact signatures.
+- [Known Limitations](/en/latest/known-limitations): current pre-release gaps.
+- [Deployment](/en/latest/deployment): direct server risks and production checks.

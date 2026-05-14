@@ -1,11 +1,45 @@
 # Quickstart
 
-Start with one object.
+This page gets you from a clean Python project to a running Quater app. You will
+build one backend operation and call it as a normal API, an AI-agent tool, and
+an operator command.
+
+## Prerequisites
+
+You need Python 3.11 or newer and [uv](https://docs.astral.sh/uv/) installed.
+The examples use `main.py` in an empty directory.
+
+The example is intentionally small, but it shows the reason Quater exists: the
+same backend work should not need one implementation for the app, another for
+agents, and another for internal operations.
+
+## Install
+
+```bash
+uv init quater-demo
+cd quater-demo
+uv add quater
+```
+
+## A Working App
+
+Create `main.py`:
 
 ```python
-from quater import Quater, Request
+from quater import AuthContext, AuthRequest, HTTPError, Quater, Request
 
-app = Quater()
+
+async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    if ctx.headers.get("authorization") != "Bearer demo-token":
+        return None
+    return AuthContext(subject="cust_123")
+
+
+app = Quater(mcp_auth=authenticate, cli_auth=authenticate)
+
+ORDERS: dict[str, dict[str, object]] = {
+    "ord_1001": {"id": "ord_1001", "status": "paid", "total": 42.5}
+}
 
 
 @app.get("/health")
@@ -13,45 +47,187 @@ async def health() -> dict[str, bool]:
     return {"ok": True}
 
 
-@app.post("/echo")
-async def echo(request: Request) -> dict[str, object]:
-    return {"received": await request.json()}
+@app.get(
+    "/orders/{order_id}",
+    tool=True,
+    cli=True,
+    auth=authenticate,
+    description="Fetch one order by id.",
+)
+async def get_order(order_id: str, request: Request) -> dict[str, object]:
+    order = ORDERS.get(order_id)
+    if order is None:
+        raise HTTPError("Order not found", status_code=404)
+    assert request.auth is not None
+    return {**order, "subject": request.auth.subject, "source": request.context.source}
 ```
 
 Run it:
 
 ```bash
-quater dev main.py
+uv run quater dev main.py
 ```
 
-Reload is already enabled in development. You can be explicit if you want:
+Expected output:
+
+```text
+[INFO] Starting granian
+[INFO] Listening at: http://127.0.0.1:8000
+```
+
+`quater dev` uses [Granian](https://github.com/emmett-framework/granian) with
+RSGI by default, enables reload, and enables access logs.
+
+## Call HTTP
 
 ```bash
-quater dev main.py --reload
+curl -H "Authorization: Bearer demo-token" \
+  http://127.0.0.1:8000/orders/ord_1001
 ```
 
-Access logs also come from Granian and are enabled by default. Disable them with
-`--no-access-log` when you want quieter local output:
+Expected response:
+
+```json
+{
+  "id": "ord_1001",
+  "status": "paid",
+  "total": 42.5,
+  "subject": "cust_123",
+  "source": "api"
+}
+```
+
+Try the missing-token path:
 
 ```bash
-quater dev main.py --no-access-log
+curl -i http://127.0.0.1:8000/orders/ord_1001
 ```
 
-`quater dev` uses RSGI and reload by default. If you start it without a target,
-Quater looks for common app files such as `main.py` and `app.py`.
+Expected response:
+
+```text
+HTTP/1.1 401 Unauthorized
+
+Unauthorized
+```
+
+## Call The Local CLI
+
+Local CLI calls import the app in process. They do not need a running server.
+
+```bash
+export QUATER_APP=main:app
+export QUATER_TOKEN=demo-token
+uv run quater actions list
+uv run quater actions describe get_order
+uv run quater call get_order --order-id ord_1001
+```
+
+Expected action list:
+
+```text
+get_order
+  Fetch one order by id.
+```
+
+Expected call output:
+
+```json
+{
+  "id": "ord_1001",
+  "status": "paid",
+  "total": 42.5,
+  "subject": "cust_123",
+  "source": "cli"
+}
+```
+
+## Call The MCP Tool
+
+MCP (Model Context Protocol) lets AI agents discover and call tools over HTTP.
+Quater uses the route metadata to expose selected routes as MCP tools. Read the
+protocol background at [modelcontextprotocol.io](https://modelcontextprotocol.io/).
+
+The MCP endpoint is:
+
+```text
+POST /mcp
+```
+
+Tool calls must send auth on every request:
+
+```json
+{
+  "mcpServers": {
+    "quater-demo": {
+      "url": "http://127.0.0.1:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer demo-token"
+      }
+    }
+  }
+}
+```
+
+`initialize` does not create a Quater session. If the token expires later, the
+next `tools/list` or `tools/call` fails with `401 Unauthorized`.
+
+## Binding Rules
+
+Quater binds handler parameters by type and marker:
+
+- `Request` receives the normalized request object.
+- `Resource` values come from `inject={...}`.
+- `Path`, `Query`, `Body`, `Header`, and `Cookie` markers choose a source.
+- Route path names bind path parameters.
+- Scalar values bind query parameters.
+- Structured values bind JSON bodies.
+
+Use [`msgspec.Struct`](https://jcristharif.com/msgspec/) when you want typed,
+validated JSON input with Quater's fast JSON path. Plain `dict` works for
+dynamic responses or data that does not need validation.
+
+```python
+import msgspec
+from quater import Body, Quater
+
+
+class UpdateOrder(msgspec.Struct):
+    status: str
+    notify_customer: bool = False
+
+
+app = Quater()
+
+
+@app.patch("/orders/{order_id}")
+async def update_order(
+    order_id: str,
+    payload: UpdateOrder = Body(description="New order state."),
+) -> dict[str, object]:
+    return {"order_id": order_id, "status": payload.status}
+```
+
+Expected JSON body:
+
+```json
+{
+  "payload": {
+    "status": "shipped",
+    "notify_customer": true
+  }
+}
+```
 
 ## Generated Docs
 
-Quater serves docs by default:
+Quater enables docs by default:
 
-- `/docs` for Swagger UI.
-- `/openapi.json` for OpenAPI.
-- `/mcp/docs` for exposed MCP tools. It is empty until you expose a tool.
+- `/docs` renders Swagger UI.
+- `/openapi.json` returns an [OpenAPI](https://swagger.io/specification/) document.
+- `/mcp/docs` shows human-readable MCP tool docs.
 
-If you expose tools, pass `mcp_auth` when creating the app. Quater uses that
-hook for MCP protocol requests and the MCP docs page.
-
-Set a path to `None` to turn that page off:
+Disable docs by setting paths to `None`:
 
 ```python
 app = Quater(
@@ -61,220 +237,52 @@ app = Quater(
 )
 ```
 
-If `docs_path` is enabled, `openapi_path` must also be enabled. Swagger UI needs
-the JSON document to render anything useful.
+If `docs_path` is enabled, `openapi_path` must also be enabled.
 
-## Binding
+## Choosing RSGI, ASGI, Or WSGI
 
-Path parameters come from route patterns:
+RSGI is Granian's native interface and Quater's primary path. Choose it unless
+your deployment platform requires something else.
 
-```python
-@app.get("/users/{id:int}")
-async def get_user(id: int) -> dict[str, int]:
-    return {"id": id}
-```
-
-Simple scalar parameters come from the query string:
-
-```python
-@app.get("/search")
-async def search(q: str, page: int = 1) -> dict[str, object]:
-    return {"q": q, "page": page}
-```
-
-Complex parameters come from the JSON body. `msgspec.Struct` is the best fit when
-you care about speed and typed input.
-
-```python
-import msgspec
-
-
-class UserIn(msgspec.Struct):
-    name: str
-    age: int
-
-
-@app.post("/users")
-async def create_user(user: UserIn) -> dict[str, object]:
-    return {"name": user.name, "age": user.age}
-```
-
-## Route Groups
-
-Once an app grows past a few routes, move related routes into a
-[`RouteGroup`](/en/latest/reference/application#symbol-routegroup).
-Groups are a compile-time structure: Quater flattens the prefix, tags, auth,
-metadata, and middleware into normal route definitions when you include the
-group.
-
-```python
-from quater import Quater, RouteGroup
-
-app = Quater()
-orders = RouteGroup(prefix="/orders", tags=["orders"])
-
-
-@orders.get("/{order_id}")
-async def get_order(order_id: str) -> dict[str, str]:
-    return {"order_id": order_id}
-
-
-@orders.post("/")
-async def create_order() -> dict[str, bool]:
-    return {"created": True}
-
-
-app.include(orders)
-```
-
-The final HTTP paths are `/orders/{order_id}` and `/orders`. The native route
-matcher sees those final paths directly, so grouping does not add another
-matching layer on every request.
-
-Define routes before calling `app.include(group)`. Included groups are locked,
-so adding routes later raises an error instead of silently leaving them out of
-the app.
-
-Group `auth=`, `before`, `after`, `around`, and `exception_handlers` apply to
-HTTP routes and to the same routes when they are exposed as MCP tools or CLI
-actions. Route-level auth still runs after group auth.
-
-::: tip Feature modules
-Create a group in a feature module, register routes on it, then call
-`app.include(group)` from your app entrypoint. That keeps the app shape clear
-without turning every endpoint into a separate wrapper.
-:::
-
-## First MCP Tool
-
-Expose a route as a tool with `tool=True`. Tool descriptions are required because
-agents read them during `tools/list`.
-
-```python
-from quater import AuthContext, AuthRequest, Quater, Request
-
-
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer demo-token":
-        return None
-    return AuthContext(subject="demo-user")
-
-
-app = Quater(mcp_auth=authenticate)
-
-
-@app.get(
-    "/users/{id:int}",
-    tool=True,
-    auth=authenticate,
-    description="Fetch one user.",
-)
-async def get_user(id: int, request: Request) -> dict[str, object]:
-    assert request.auth is not None
-    return {"id": id, "subject": request.auth.subject}
-```
-
-`mcp_auth` protects the MCP endpoint itself. Route `auth=` protects the handler.
-When both use the same function, Quater still runs route auth against the
-handler route.
-
-## First CLI Action
-
-Expose a route to the Quater CLI with `cli=True`. CLI actions are useful for
-operator workflows, local scripts, and remote administration. They use the same
-handler as HTTP, but they are protected by `cli_auth`.
-
-```python
-from quater import AuthContext, AuthRequest, Quater, Request
-
-
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer admin-token":
-        return None
-    return AuthContext(subject="admin")
-
-
-app = Quater(cli_auth=authenticate)
-
-
-@app.get(
-    "/orders/{order_id}",
-    cli=True,
-    description="Fetch one order by id.",
-)
-async def get_order(order_id: str, request: Request) -> dict[str, object]:
-    assert request.auth is not None
-    return {
-        "order_id": order_id,
-        "source": request.context.source,
-        "entrypoint": request.context.entrypoint,
-        "subject": request.auth.subject,
-    }
-```
-
-Run it locally without starting a server:
+ASGI and WSGI call the same `Quater.handle()` core through adapter layers. Use
+ASGI when a platform expects an ASGI callable. Use WSGI only for compatibility
+with older hosting stacks.
 
 ```bash
-export QUATER_APP=main:app
-export QUATER_TOKEN=admin-token
-
-quater actions list
-quater actions describe get_order
-quater call get_order --order-id ord_1001
+uv run quater dev main.py --interface rsgi
+uv run quater dev main.py --interface asgi
+uv run quater dev main.py --interface wsgi
 ```
 
-For a hosted app, connect once and call the same action remotely:
+Quater rejects WebSocket scopes today. It has no framework-level WebSocket API
+in this release.
 
-```bash
-quater connect store https://api.example.com --token admin-token
-quater actions search store order
-quater actions describe store get_order
-quater call store get_order --order-id ord_1001
-```
+## What Can Go Wrong
 
-Use `--dry-run` before sensitive calls. Dry-run validates the inputs, shows the
-method and path that would be called, and returns an argument hash without
-running the handler.
+`--app is required unless QUATER_APP is set`
+: Set `QUATER_APP=main:app`, pass `--app main:app`, or use `quater dev main.py`
+  for server startup.
 
-::: tip More on actions
-The full action guide covers remote discovery, JSON body arguments,
-approval-protected actions, and local action testing: [Actions and CLI](/en/latest/actions).
-For production server setup, read [Deployment](/en/latest/deployment).
-:::
+`MCP tools require mcp_auth`
+: Add `mcp_auth=authenticate` before declaring a route with `tool=True`.
 
-## Responses
+`CLI actions require cli_auth`
+: Add `cli_auth=authenticate` before declaring a route with `cli=True`.
 
-Handlers can return plain values or response objects:
+`Missing required query parameter: page`
+: Send the query parameter or give the handler parameter a default.
 
-- `dict`, `list`, `tuple`, non-string scalar values, dataclasses, and
-  `msgspec.Struct` values become JSON.
-- `str` becomes text.
-- `bytes` becomes bytes.
-- `None` becomes `204 No Content`.
-- [`Response`](/en/latest/reference/responses#symbol-response) subclasses are
-  returned directly.
+`Malformed JSON body`
+: Send valid JSON and set `content-type: application/json` when you call the
+  route manually.
 
-## Adapters
+## Also See
 
-RSGI is the primary path because it maps directly to Granian's fast Python
-interface.
-
-```bash
-quater dev main.py --interface rsgi
-```
-
-ASGI and WSGI use the same `Quater.handle()` core:
-
-```bash
-quater dev asgi_compat.py --interface asgi
-quater dev wsgi_compat.py --interface wsgi
-```
-
-You can also pass the explicit adapter if a server wants it:
-
-- `app.rsgi`
-- `app.asgi`
-- `app.wsgi`
-
-WebSocket scopes are rejected for now. Quater does not expose a framework-level
-WebSocket API in the MVP.
+- [Why Quater Exists](/en/latest/why-quater): understand the backend model behind
+  this example.
+- [Routes and Handlers](/en/latest/routes-handlers): learn route binding and
+  handler rules.
+- [Actions and CLI](/en/latest/actions): use dry-run, approval, remotes, and
+  machine-readable output.
+- [MCP](/en/latest/mcp): understand `mcp_auth`, tool schemas, and MCP errors.
+- [Testing](/en/latest/testing): test this app without opening a port.

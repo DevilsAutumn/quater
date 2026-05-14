@@ -1,18 +1,41 @@
 # Deployment
 
-This page is the deployment home for Quater apps. The short version is:
+This page explains how to run a Quater app safely in development and production.
+
+## Prerequisites
+
+Read [Security](/en/latest/security) before deploying. You need a Quater app
+with routes declared and production hostnames ready.
+
+## Development
+
+Use `quater dev` while building locally:
 
 ```bash
-quater run main:app --host 0.0.0.0 --port 8000
+quater dev main.py
 ```
 
-`quater run` uses Granian, keeps reload off, enables access logs, and runs
-production safety checks before it starts serving traffic.
+Defaults:
 
-## Recommended Server
+- host: `127.0.0.1`
+- port: `8000`
+- interface: `rsgi`
+- reload: enabled
+- access log: enabled
+- log level: `debug`
 
-Use `quater run` unless you have a specific reason to manage the server process
-yourself.
+Expected output:
+
+```text
+[INFO] Starting granian
+[INFO] Listening at: http://127.0.0.1:8000
+```
+
+`quater dev` sets `QUATER_ENV=development` while the app starts.
+
+## Production
+
+Use `quater run` unless your platform forces another server entrypoint:
 
 ```bash
 quater run main:app \
@@ -21,39 +44,63 @@ quater run main:app \
   --workers 4
 ```
 
-The default interface is RSGI, which is Quater's primary path through Granian.
-You can still choose another interface when your deployment needs it:
+Defaults:
 
-```bash
-quater run main:app --interface asgi
-quater run main:app --interface wsgi
-```
+- interface: `rsgi`
+- reload: disabled
+- access log: enabled
+- log level: `info`
+- production safety checks: enabled
 
-Use `quater dev` only for local development. It enables reload by default and
-binds to `127.0.0.1`.
+`quater run` uses [Granian](https://github.com/emmett-framework/granian).
+RSGI is Granian's native interface and Quater's primary serving path.
+
+## Production Checklist
+
+Before going live:
+
+- Set `allowed_hosts` to your real hostnames.
+- Keep `debug=False`.
+- Keep `security="strict"`.
+- Keep reload off.
+- Choose a worker count for your CPU and database pool.
+- Decide whether `/docs` and `/openapi.json` should stay public.
+- Configure `mcp_auth` before exposing MCP tools.
+- Configure `cli_auth` before exposing CLI actions.
+- Configure `trusted_proxies` only for proxies you control.
+- Use HTTPS at the edge.
 
 ## Production Checks
 
-Before `quater run` starts Granian, it calls:
+`quater run` calls:
 
 ```python
 app.validate_production()
 ```
 
-That does two things:
+That compiles routes and fails when:
 
-- compiles routes, so route conflicts fail before serving.
-- checks production settings that are easy to get wrong.
+- `debug=True`
+- `security` is not `"strict"`
+- `allowed_hosts` is empty
+- `allowed_hosts` contains `"*"`
 
-The current production checks require:
+Example failure:
 
-- `debug=False`
-- `security="strict"`
-- `allowed_hosts` is configured
-- `allowed_hosts` does not contain `*`
+```text
+Application failed to start
 
-Use `--allow-insecure` only in a controlled environment where you intentionally
-want to skip these checks:
+Production safety check failed:
+- allowed_hosts must be configured
+```
+
+Fix:
+
+```python
+app = Quater(allowed_hosts=["api.example.com"])
+```
+
+Use `--allow-insecure` only in controlled preview or local environments:
 
 ```bash
 quater run main:app --allow-insecure
@@ -61,9 +108,8 @@ quater run main:app --allow-insecure
 
 ## Direct Server Usage
 
-You can run Quater through Granian, Uvicorn, Gunicorn, or another server
-directly. When you do that, call `app.validate_production()` in your app module
-after all routes are declared:
+If you run Granian, Uvicorn, Gunicorn, or another server directly, call
+`app.validate_production()` after all routes are declared:
 
 ```python
 from quater import Quater
@@ -79,132 +125,92 @@ async def health() -> dict[str, bool]:
 app.validate_production()
 ```
 
-This makes unsafe config fail during import, before the server accepts traffic.
-Do not put this call before route declarations, because route conflicts can only
-be found after routes exist.
+Direct server commands do not run `quater run` checks for you.
 
-For Granian directly:
+Granian direct command:
 
 ```bash
 granian main:app --interface rsgi --host 0.0.0.0 --port 8000
 ```
 
-For ASGI-compatible servers, expose `app.asgi` if the server wants an explicit
-ASGI callable:
+ASGI explicit callable:
 
 ```python
-from quater import Quater
-
-app = Quater(allowed_hosts=["api.example.com"])
-
-# routes...
-
-app.validate_production()
 asgi_app = app.asgi
 ```
 
-For WSGI-compatible servers, expose `app.wsgi`:
+WSGI explicit callable:
 
 ```python
 wsgi_app = app.wsgi
 ```
 
-## Hosts
+## Server Options
 
-`allowed_hosts` protects your app from unexpected Host headers:
+| Option | Default in `dev` | Default in `run` | Meaning |
+| --- | --- | --- | --- |
+| `target` | auto-discovery | auto-discovery | App file, module, or `module:attribute`. |
+| `--host` | `127.0.0.1` | `127.0.0.1` | Bind address. |
+| `--port` | `8000` | `8000` | Bind port. |
+| `--interface` | `rsgi` | `rsgi` | `rsgi`, `asgi`, or `wsgi`. |
+| `--loop` | `auto` | `auto` | Granian loop: `auto`, `asyncio`, `rloop`, `uvloop`, or `winloop`. |
+| `--workers` | `1` | `1` | Worker process count. |
+| `--reload` | enabled | disabled | Reload on file changes. |
+| `--access-log` | enabled | enabled | Granian access logging. |
+| `--log-level` | `debug` | `info` | Server log level. |
+| `--factory` | disabled | disabled | Treat the target as an app factory. |
+| `--working-dir` | current directory | current directory | Import app from another directory. |
 
-```python
-app = Quater(allowed_hosts=["api.example.com"])
+Target examples:
+
+```bash
+quater dev main.py
+quater dev main:app
+quater dev main:create_app --factory
+quater dev --working-dir ./apps/store main:app
 ```
 
-In strict mode, the development default `allowed_hosts=()` no longer means
-"allow every host". It accepts local hosts only:
+## Environment Variables
 
-- `localhost`
-- `127.0.0.1`
-- `::1`
-- `testserver`
+| Variable | Used by | Default | Effect |
+| --- | --- | --- | --- |
+| `QUATER_APP` | local CLI and server commands | unset | App import path when `--app` or target is omitted. |
+| `QUATER_TOKEN` | local CLI actions | unset | Bearer token for local `cli_auth`. |
+| `QUATER_HOME` | remote CLI config | `~/.quater` | Directory for `remotes.json`. |
+| `QUATER_ENV` | server startup | set by `quater dev` or `quater run` | `development` or `production` during server startup. |
 
-That keeps local development and the in-process test client easy, while making a
-deployed app reject unexpected external hosts unless you configure them.
+## Hosted MCP And Remote CLI
 
-If you truly want runtime allow-all behavior, make it explicit:
+Hosted MCP and remote CLI are HTTP traffic:
 
-```python
-app = Quater(allowed_hosts=["*"])
-```
+- MCP: `POST /mcp`
+- remote manifest: `GET /.well-known/quater-actions.json`
+- remote calls: `POST /__quater__/actions/call`
 
-`app.validate_production()` rejects `allowed_hosts=["*"]`, so this is for
-controlled local, preview, or embedded use only.
+These endpoints still use host checks, body limits, request ids, security
+headers, and their surface auth hooks.
 
-## Reverse Proxies
+## What Can Go Wrong
 
-Only configure `trusted_proxies` for proxy IPs or CIDR ranges you control:
+`Could not find a Quater app file`
+: Pass a target such as `main.py` or set `QUATER_APP=main:app`.
 
-```python
-app = Quater(
-    allowed_hosts=["api.example.com"],
-    trusted_proxies=["10.0.0.0/8"],
-)
-```
+`App must be specified as module:attribute`
+: Local action commands require import syntax like `main:app`.
 
-Quater ignores forwarded host and scheme headers unless the request comes from a
-trusted proxy. That prevents random clients from spoofing
-`X-Forwarded-Host` or `X-Forwarded-Proto`.
+`Granian is required to run Quater applications`
+: Install Quater with server dependencies or install Granian in the environment.
 
-## Docs Endpoints
+`Application failed to start`
+: Read the nested framework error. Quater wraps startup configuration failures
+  so they appear before the server accepts traffic.
 
-Quater enables these docs endpoints by default:
+`Could not import app module 'main'`
+: Fix syntax errors, import errors, or the working directory.
 
-- `/docs`
-- `/openapi.json`
-- `/mcp/docs`
+## Also See
 
-That is useful for development. In production, decide intentionally.
-
-Disable public HTTP docs when route metadata should not be exposed:
-
-```python
-app = Quater(
-    allowed_hosts=["api.example.com"],
-    docs_path=None,
-    openapi_path=None,
-)
-```
-
-`/mcp/docs` is protected by `mcp_auth` when tools are exposed, because Quater
-requires `mcp_auth` as soon as any route has `tool=True`.
-
-## MCP And Remote CLI
-
-Hosted MCP and remote CLI calls are normal HTTP requests to your app:
-
-- MCP uses `POST /mcp`
-- remote action discovery uses `GET /.well-known/quater-actions.json`
-- remote action calls use `POST /__quater__/actions/call`
-
-If you expose MCP tools, configure `mcp_auth`. If you expose CLI actions,
-configure `cli_auth`.
-
-```python
-app = Quater(
-    allowed_hosts=["api.example.com"],
-    mcp_auth=authenticate,
-    cli_auth=authenticate,
-)
-```
-
-These protocol endpoints still go through request checks, body limits, Host
-validation, and their own auth boundary.
-
-## Common Mistakes
-
-- Running production traffic with `debug=True`.
-- Forgetting `allowed_hosts` before deploying behind a real domain.
-- Using `allowed_hosts=["*"]` in production.
-- Trusting every proxy instead of only your proxy IPs.
-- Leaving `/docs` and `/openapi.json` public when route metadata is sensitive.
-- Assuming direct Granian/Uvicorn/Gunicorn startup runs `quater run` checks.
-
-When in doubt, use `quater run`. If you do not use it, call
-`app.validate_production()` yourself.
+- [Security](/en/latest/security): host checks, proxies, and production safety.
+- [Actions and CLI](/en/latest/actions): local and remote action setup.
+- [MCP](/en/latest/mcp): hosted MCP configuration.
+- [Reference: Application](/en/latest/reference/application): exact app options.

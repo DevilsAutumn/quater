@@ -1,14 +1,16 @@
-# Quater 0.1.0a1
+# Changelog / Release Notes
 
-This release note records the first alpha package and the API shape developers
-can evaluate.
+This page records public release notes for Quater.
 
 ## Prerequisites
 
-Read the [manual](/en/latest/) and [stability note](/en/latest/stability) before
-using this release in a real project. This is an alpha release.
+Read [Stability](/en/latest/stability) before depending on the pre-release API.
 
-## Added
+## 0.1.0a1
+
+This is the first alpha release shape for evaluation.
+
+### Added
 
 - `Quater` application object with RSGI, ASGI, and WSGI adapters.
 - Typed route decorators for `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and custom
@@ -24,31 +26,29 @@ using this release in a real project. This is an alpha release.
 - `Resource` injection and `app.state`.
 - Route groups that flatten at startup.
 - In-process `TestClient` and `MCPTestClient`.
-- CORS, allowed-host checks, body limits, security headers, request ids, signed
+- CORS, allowed-host checks, body limits, security headers, request IDs, signed
   cookies, and production safety checks.
 
-## Breaking
+### Breaking
 
 No previous public release exists, so there are no migration steps.
 
-## Fixed
+### Fixed
 
 No previous public release exists.
 
-## Deprecated
+### Deprecated
 
 No public API is deprecated in this alpha.
 
-## Known Limitations
+## What Can Go Wrong
 
-- No framework-level WebSocket API.
-- No built-in ORM, migration layer, background task runner, or rate limiter.
-- MCP support does not include streaming progress notifications.
-- The remote action protocol belongs to the Quater CLI and may change before a
-  stable release.
+`No matching distribution found for quater==0.1.0a1`
+: Check whether you are installing from the intended package index. Early alpha
+  testing may use TestPyPI before the package is published to PyPI.
 
 ## Also See
 
-- [Quickstart](/en/latest/quickstart)
-- [Public API](/en/latest/api)
-- [Known limitations](/en/latest/#known-limitations)
+- [Known Limitations](/en/latest/known-limitations): current gaps.
+- [Stability](/en/latest/stability): public API expectations before 1.0.
+- [Quickstart](/en/latest/quickstart): first working app.

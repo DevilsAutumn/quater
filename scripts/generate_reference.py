@@ -649,6 +649,10 @@ def render_reference(
     public_api: tuple[str, ...],
     pages_by_symbol: Mapping[str, ReferencePage],
 ) -> dict[Path, str]:
+    manual_outputs = read_manual_reference(public_api, pages_by_symbol)
+    if manual_outputs is not None:
+        return manual_outputs
+
     return {
         REFERENCE_DIR / "index.md": render_index(public_api, pages_by_symbol),
         REFERENCE_DIR / "application.md": render_application(package),
@@ -660,6 +664,31 @@ def render_reference(
         REFERENCE_DIR / "observability.md": render_observability(package),
         REFERENCE_DIR / "testing.md": render_testing(package),
     }
+
+
+def read_manual_reference(
+    public_api: tuple[str, ...],
+    pages_by_symbol: Mapping[str, ReferencePage],
+) -> dict[Path, str] | None:
+    paths = {REFERENCE_DIR / "index.md", *(page.path for page in PAGES)}
+    outputs: dict[Path, str] = {}
+    for path in paths:
+        if not path.exists():
+            return None
+        content = path.read_text(encoding="utf-8")
+        if content.startswith(GENERATED_HEADER):
+            return None
+        outputs[path] = content
+
+    for name in public_api:
+        page = pages_by_symbol[name]
+        content = outputs[page.path]
+        anchor = symbol_anchor(name)
+        if anchor not in content:
+            raise SystemExit(
+                f"Manual reference page {page.path} does not document {name!r}"
+            )
+    return outputs
 
 
 def render_index(
@@ -1592,7 +1621,7 @@ def render_testing(package: Any) -> str:
         [
             "Use the in-process clients to test Quater apps without starting Granian",
             "or opening a socket. This keeps tests fast and makes auth, cookies,",
-            "lifespan hooks, MCP tools, and response bodies easy to assert.",
+            "lifespan hooks, MCP tools, and response bodies straightforward to assert.",
             "",
             "For examples, read the [Testing guide](/en/latest/testing).",
             "",
@@ -2182,6 +2211,8 @@ def slug(value: str) -> str:
 
 
 def symbol_anchor(value: str) -> str:
+    if value == "__version__":
+        return "symbol-version"
     return f"symbol-{slug(value)}"
 
 

@@ -56,36 +56,57 @@ function readDocsVersions(): DocsVersion[] {
 function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
   return [
     {
-      text: version.label,
+      text: 'Start Here',
       items: [
         { text: 'Overview', link: version.index },
         { text: 'Quickstart', link: `${version.base}quickstart` },
+        { text: 'Why Quater Exists', link: `${version.base}why-quater` },
+      ],
+    },
+    {
+      text: 'Core Concepts',
+      items: [
+        { text: 'Routes and Handlers', link: `${version.base}routes-handlers` },
+        { text: 'HTTP, MCP, and CLI Surfaces', link: `${version.base}surfaces` },
+        { text: 'Auth Model', link: `${version.base}auth-model` },
+        { text: 'Resources and State', link: `${version.base}resources` },
+        { text: 'Middleware and Errors', link: `${version.base}middleware-errors` },
+      ],
+    },
+    {
+      text: 'Guides',
+      items: [
+        { text: 'MCP Tools', link: `${version.base}mcp` },
         { text: 'Actions and CLI', link: `${version.base}actions` },
-        { text: 'Resources', link: `${version.base}resources` },
-        { text: 'Deployment', link: `${version.base}deployment` },
         { text: 'Testing', link: `${version.base}testing` },
-        { text: 'Public API', link: `${version.base}api` },
-        { text: 'Stability', link: `${version.base}stability` },
-        {
-          text: 'Reference',
-          collapsed: true,
-          items: [
-            { text: 'Overview', link: `${version.base}reference/` },
-            { text: 'Application', link: `${version.base}reference/application` },
-            { text: 'Resources', link: `${version.base}reference/resources` },
-            { text: 'Request', link: `${version.base}reference/request` },
-            { text: 'Parameters', link: `${version.base}reference/parameters` },
-            { text: 'Responses', link: `${version.base}reference/responses` },
-            { text: 'Auth and Security', link: `${version.base}reference/auth` },
-            {
-              text: 'Observability',
-              link: `${version.base}reference/observability`,
-            },
-            { text: 'Testing', link: `${version.base}reference/testing` },
-          ],
-        },
-        { text: 'MCP', link: `${version.base}mcp` },
+        { text: 'Deployment', link: `${version.base}deployment` },
         { text: 'Security', link: `${version.base}security` },
+      ],
+    },
+    {
+      text: 'Reference',
+      collapsed: true,
+      items: [
+        { text: 'Overview', link: `${version.base}reference/` },
+        { text: 'Application', link: `${version.base}reference/application` },
+        { text: 'Request', link: `${version.base}reference/request` },
+        { text: 'Parameters', link: `${version.base}reference/parameters` },
+        { text: 'Responses', link: `${version.base}reference/responses` },
+        { text: 'Resources', link: `${version.base}reference/resources` },
+        { text: 'Auth and Security', link: `${version.base}reference/auth` },
+        {
+          text: 'Observability',
+          link: `${version.base}reference/observability`,
+        },
+        { text: 'Testing', link: `${version.base}reference/testing` },
+      ],
+    },
+    {
+      text: 'Project',
+      items: [
+        { text: 'Stability', link: `${version.base}stability` },
+        { text: 'Changelog / Release Notes', link: `${version.base}changelog` },
+        { text: 'Known Limitations', link: `${version.base}known-limitations` },
       ],
     },
   ]
@@ -105,11 +126,11 @@ const versionItems = docsVersions.map((version) => ({
 const latestBase = latestDocs?.base ?? `/${language}/${latestDirectory}/`
 
 const nav: DefaultTheme.NavItem[] = [
-  { text: 'Reference', link: `${latestBase}reference/` },
   { text: 'Guide', link: `${latestBase}quickstart` },
+  { text: 'Concepts', link: `${latestBase}surfaces` },
   { text: 'CLI', link: `${latestBase}actions` },
-  { text: 'API', link: `${latestBase}api` },
   { text: 'MCP', link: `${latestBase}mcp` },
+  { text: 'Reference', link: `${latestBase}reference/` },
   {
     text: 'Version',
     items: versionItems,
