@@ -8,6 +8,11 @@ from contextlib import suppress
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
+from quater._finalize import (
+    move_request_finalizers_to_response,
+    move_response_finalizers,
+    run_response_finalizers,
+)
 from quater._state import State
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
 from quater.actions.descriptions import resolve_action_description
@@ -985,11 +990,18 @@ class Quater:
                 approval_token=approval_token,
                 debug=self.config.debug,
             )
-            payload = await response_payload(response)
+            try:
+                payload = await response_payload(response)
+            except Exception:
+                await run_response_finalizers(response)
+                raise
             status_code = response.status_code if response.status_code >= 400 else 200
-            return JSONResponse(
-                payload,
-                status_code=status_code,
+            return move_response_finalizers(
+                response,
+                JSONResponse(
+                    payload,
+                    status_code=status_code,
+                ),
             )
         except ApprovalRequiredError as exc:
             return _action_error_response(
@@ -1141,6 +1153,7 @@ class Quater:
         started_at: float,
     ) -> Response:
         finalized = self._finalize_response(response, request, context)
+        finalized = move_request_finalizers_to_response(request, finalized)
         if self.access_logger is not None:
             event = access_log_event(
                 request,

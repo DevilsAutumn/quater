@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterable, Mapping
+from collections.abc import AsyncIterable, Awaitable, Callable, Mapping
 from dataclasses import is_dataclass
 from typing import TypeAlias
 
@@ -19,7 +19,7 @@ class Response:
     can return plain Python values and let Quater convert them automatically.
     """
 
-    __slots__ = ("body", "headers", "status_code")
+    __slots__ = ("body", "headers", "status_code", "_finalizers")
 
     def __init__(
         self,
@@ -38,6 +38,7 @@ class Response:
         self.body = body
         self.status_code = status_code
         self.headers = normalized_headers
+        self._finalizers: list[Callable[[], Awaitable[None]]] | None = None
 
     @property
     def is_streaming(self) -> bool:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, MutableMapping
 from typing import Any, Literal, TypeAlias, cast
 
+from quater._finalize import run_response_finalizers
 from quater.adapters._shared import (
     QuaterApplication,
     as_latin1_header_bytes,
@@ -79,43 +80,46 @@ class ASGIAdapter:
             client=first_client_address(scope.get("client")),
         )
         response = await self._app.handle(request)
-        headers = as_latin1_header_bytes(response.headers)
+        try:
+            headers = as_latin1_header_bytes(response.headers)
 
-        await send(
-            {
-                "type": "http.response.start",
-                "status": response.status_code,
-                "headers": headers,
-            }
-        )
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": response.status_code,
+                    "headers": headers,
+                }
+            )
 
-        if not response.is_streaming:
+            if not response.is_streaming:
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": response.body,
+                        "more_body": False,
+                    }
+                )
+                return
+
+            chunks_sent = False
+            async for chunk in iter_response_body(response):
+                chunks_sent = True
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": chunk,
+                        "more_body": True,
+                    }
+                )
             await send(
                 {
                     "type": "http.response.body",
-                    "body": response.body,
+                    "body": b"" if chunks_sent else response.body,
                     "more_body": False,
                 }
             )
-            return
-
-        chunks_sent = False
-        async for chunk in iter_response_body(response):
-            chunks_sent = True
-            await send(
-                {
-                    "type": "http.response.body",
-                    "body": chunk,
-                    "more_body": True,
-                }
-            )
-        await send(
-            {
-                "type": "http.response.body",
-                "body": b"" if chunks_sent else response.body,
-                "more_body": False,
-            }
-        )
+        finally:
+            await run_response_finalizers(response)
 
     async def _handle_lifespan(
         self,

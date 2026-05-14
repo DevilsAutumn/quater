@@ -7,6 +7,7 @@ from http.cookies import SimpleCookie
 from typing import Any, ClassVar, Literal, TypeAlias
 from urllib.parse import urlencode
 
+from quater._finalize import run_response_finalizers
 from quater.datastructures import HeaderItems, Headers
 from quater.request import Request
 from quater.response import Response, StreamResponse
@@ -488,13 +489,16 @@ def _cookie_header(cookies: Mapping[str, str]) -> str:
 
 
 async def _collect_response(response: Response) -> TestResponse:
-    if isinstance(response, StreamResponse):
-        chunks = [chunk async for chunk in response.body_iterator if chunk]
-        body = b"".join(chunks)
-    else:
-        body = response.body
-    return TestResponse(
-        status_code=response.status_code,
-        headers=response.headers,
-        body=body,
-    )
+    try:
+        if isinstance(response, StreamResponse):
+            chunks = [chunk async for chunk in response.body_iterator if chunk]
+            body = b"".join(chunks)
+        else:
+            body = response.body
+        return TestResponse(
+            status_code=response.status_code,
+            headers=response.headers,
+            body=body,
+        )
+    finally:
+        await run_response_finalizers(response)

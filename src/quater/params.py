@@ -17,11 +17,13 @@ from typing import (
     get_type_hints,
 )
 
+from quater._finalize import add_request_finalizer
 from quater._parameters import ParameterMarker
 from quater.core import Handler
 from quater.dependencies import Resource, ResourceMap
 from quater.exceptions import BadRequestError, RequestJSONError, RouteBindingError
 from quater.request import Request
+from quater.response import Response
 
 _EMPTY = inspect.Signature.empty
 ParameterSource = Literal[
@@ -103,6 +105,34 @@ class HandlerPlan:
                 resource_cache={},
             )
             return await self.handler(**kwargs)
+
+    async def call_response(
+        self,
+        request: Request,
+        path_params: Mapping[str, object],
+    ) -> Response:
+        from quater.response import normalize_response
+
+        if not any(parameter.source == "resource" for parameter in self.parameters):
+            return normalize_response(
+                await self.handler(**await self.bind(request, path_params))
+            )
+
+        stack = AsyncExitStack()
+        try:
+            kwargs = await self.bind(
+                request,
+                path_params,
+                resource_stack=stack,
+                resource_cache={},
+            )
+            response = normalize_response(await self.handler(**kwargs))
+        except BaseException:
+            await stack.aclose()
+            raise
+
+        add_request_finalizer(request, stack.aclose)
+        return response
 
 
 def build_handler_plan(

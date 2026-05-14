@@ -105,12 +105,10 @@ const versionItems = docsVersions.map((version) => ({
 const latestBase = latestDocs?.base ?? `/${language}/${latestDirectory}/`
 
 const nav: DefaultTheme.NavItem[] = [
+  { text: 'Reference', link: `${latestBase}reference/` },
   { text: 'Guide', link: `${latestBase}quickstart` },
   { text: 'CLI', link: `${latestBase}actions` },
-  { text: 'Resources', link: `${latestBase}resources` },
-  { text: 'Deploy', link: `${latestBase}deployment` },
   { text: 'API', link: `${latestBase}api` },
-  { text: 'Reference', link: `${latestBase}reference/` },
   { text: 'MCP', link: `${latestBase}mcp` },
   {
     text: 'Version',

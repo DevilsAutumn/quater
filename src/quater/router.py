@@ -11,7 +11,7 @@ from quater.exceptions import RouteConflictError
 from quater.middleware import MiddlewareStack, RouteHandler, compile_middleware_pipeline
 from quater.params import HandlerPlan, build_handler_plan
 from quater.request import Request
-from quater.response import Response, TextResponse, normalize_response
+from quater.response import Response, TextResponse
 from quater.routing import (
     ParamSegment,
     RoutePattern,
@@ -210,8 +210,7 @@ class Router:
             request: Request,
             path_params: Mapping[str, object],
         ) -> Response:
-            result = await handler_plan.call(request, path_params)
-            return normalize_response(result)
+            return await handler_plan.call_response(request, path_params)
 
         return CompiledRoute(
             definition=route,

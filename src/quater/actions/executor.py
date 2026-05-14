@@ -10,6 +10,10 @@ from types import UnionType
 from typing import Literal, Protocol, Union, get_args, get_origin
 from urllib.parse import quote, urlencode
 
+from quater._finalize import (
+    close_request_finalizers,
+    move_request_finalizers_to_response,
+)
 from quater.actions.approval import (
     action_arguments_hash,
     require_action_approval,
@@ -20,7 +24,7 @@ from quater.exceptions import BadRequestError
 from quater.middleware import MiddlewareStack, compile_middleware_pipeline
 from quater.params import BoundParameter, HandlerPlan
 from quater.request import Request
-from quater.response import Response, normalize_response
+from quater.response import Response
 from quater.routing import ParamSegment, RoutePattern
 from quater.typing import ActionApproval, Authenticate, RequestEntrypoint
 
@@ -111,8 +115,7 @@ async def execute_action(
         action_request: Request,
         path_params: Mapping[str, object],
     ) -> Response:
-        result = await action.handler_plan.call(action_request, path_params)
-        return normalize_response(result)
+        return await action.handler_plan.call_response(action_request, path_params)
 
     pipeline = compile_middleware_pipeline(
         endpoint,
@@ -121,7 +124,12 @@ async def execute_action(
         debug=debug,
         handle_unhandled_exceptions=False,
     )
-    return await pipeline(prepared.request, prepared.path_params)
+    try:
+        response = await pipeline(prepared.request, prepared.path_params)
+    except BaseException:
+        await close_request_finalizers(prepared.request)
+        raise
+    return move_request_finalizers_to_response(prepared.request, response)
 
 
 async def preflight_action(

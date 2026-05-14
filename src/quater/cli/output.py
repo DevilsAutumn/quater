@@ -7,6 +7,7 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TextIO
 
+from quater._finalize import run_response_finalizers
 from quater.actions.executor import ActionPreflightResult
 from quater.actions.registry import ActionDefinition
 from quater.protocol.actions import (
@@ -134,7 +135,10 @@ def print_preflight(result: ActionPreflightResult, *, as_json: bool) -> None:
 
 
 async def print_response(response: Response, *, as_json: bool) -> int:
-    payload = await response_payload(response)
+    try:
+        payload = await response_payload(response)
+    finally:
+        await run_response_finalizers(response)
     if as_json:
         print_json(payload)
     else:

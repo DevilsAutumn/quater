@@ -7,6 +7,7 @@ from collections.abc import Coroutine, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Protocol, TypeAlias, TypeVar, cast
 
+from quater._finalize import run_response_finalizers
 from quater.adapters._shared import (
     QuaterApplication,
     collect_response_body,
@@ -67,11 +68,14 @@ class WSGIAdapter:
             client=_optional_string(environ.get("REMOTE_ADDR")),
         )
         response = await self._app.handle(request)
-        return (
-            response.status_code,
-            response_headers(response),
-            await collect_response_body(response),
-        )
+        try:
+            return (
+                response.status_code,
+                response_headers(response),
+                await collect_response_body(response),
+            )
+        finally:
+            await run_response_finalizers(response)
 
 
 def _headers_from_environ(environ: WSGIEnvironment) -> HeaderItems:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Iterable
 from typing import Protocol, TypeAlias, cast
 
+from quater._finalize import schedule_response_finalizers
 from quater.adapters._shared import (
     QuaterApplication,
     first_client_address,
@@ -101,26 +102,29 @@ class RSGIAdapter:
             client=first_client_address(scope.client),
         )
         response = await self._app.handle(request)
-        response_header_list = response_headers(response)
+        try:
+            response_header_list = response_headers(response)
 
-        if response.is_streaming:
-            transport = protocol.response_stream(
-                response.status_code,
-                response_header_list,
-            )
-            async for chunk in iter_response_body(response):
-                await transport.send_bytes(chunk)
-            return
+            if response.is_streaming:
+                transport = protocol.response_stream(
+                    response.status_code,
+                    response_header_list,
+                )
+                async for chunk in iter_response_body(response):
+                    await transport.send_bytes(chunk)
+                return
 
-        if response.body:
-            protocol.response_bytes(
-                response.status_code,
-                response_header_list,
-                response.body,
-            )
-            return
+            if response.body:
+                protocol.response_bytes(
+                    response.status_code,
+                    response_header_list,
+                    response.body,
+                )
+                return
 
-        protocol.response_empty(response.status_code, response_header_list)
+            protocol.response_empty(response.status_code, response_header_list)
+        finally:
+            schedule_response_finalizers(response)
 
 
 def _body_reader(protocol: RSGIHTTPProtocol, max_body_size: int) -> BodyReader:

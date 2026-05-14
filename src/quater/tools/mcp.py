@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import cast
 
+from quater._finalize import move_response_finalizers, run_response_finalizers
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
 from quater.config import AppConfig
 from quater.exceptions import BadRequestError, HTTPError, RequestJSONError
@@ -288,6 +289,7 @@ async def _call_tool_with_audit(
 ) -> Response:
     start = time.perf_counter()
     typed_arguments = cast(Mapping[str, object], arguments)
+    response: Response | None = None
     try:
         response = await tool.call(
             request,
@@ -371,28 +373,41 @@ async def _call_tool_with_audit(
     try:
         result = await _tool_result_response(response, is_error=not success)
     except _ToolResponseTooLarge:
+        assert response is not None
+        try:
+            await _audit(
+                audit_hook,
+                request,
+                name,
+                typed_arguments,
+                success=False,
+                start=start,
+            )
+        except Exception:
+            await run_response_finalizers(response)
+            raise
+        error_response = _json_rpc_result(
+            request_id,
+            _tool_result("Tool response too large", is_error=True),
+        )
+        return move_response_finalizers(response, error_response)
+
+    try:
         await _audit(
             audit_hook,
             request,
             name,
             typed_arguments,
-            success=False,
+            success=success,
             start=start,
         )
-        return _json_rpc_result(
-            request_id,
-            _tool_result("Tool response too large", is_error=True),
-        )
+    except Exception:
+        assert response is not None
+        await run_response_finalizers(response)
+        raise
 
-    await _audit(
-        audit_hook,
-        request,
-        name,
-        typed_arguments,
-        success=success,
-        start=start,
-    )
-    return _json_rpc_result(request_id, result)
+    assert response is not None
+    return move_response_finalizers(response, _json_rpc_result(request_id, result))
 
 
 def _approval_token(params: Mapping[str, object]) -> str | None:

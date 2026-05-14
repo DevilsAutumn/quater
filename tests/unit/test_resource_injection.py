@@ -8,13 +8,16 @@ import pytest
 from quater import (
     AuthContext,
     AuthRequest,
+    JSONResponse,
     Quater,
     Query,
     Request,
     Resource,
     RouteGroup,
+    StreamResponse,
     TestClient,
 )
+from quater._finalize import run_response_finalizers
 from quater.actions.executor import execute_action, preflight_action
 from quater.actions.registry import ActionDefinition, build_action_registry
 from quater.exceptions import BadRequestError, ConfigurationError, RouteBindingError
@@ -54,7 +57,8 @@ async def test_resource_injection_resolves_and_cleans_up_per_request() -> None:
         events.append(f"handler:{session.label}")
         return {"session": session.label}
 
-    response = await app.handle(Request(method="GET", path="/orders"))
+    async with TestClient(app) as client:
+        response = await client.get("/orders")
 
     assert response.body == b'{"session":"primary"}'
     assert events == ["open:/orders", "handler:primary", "close:/orders"]
@@ -81,6 +85,66 @@ async def test_resource_cleanup_runs_when_handler_raises() -> None:
 
     assert response.status_code == 500
     assert events == ["open", "close"]
+
+
+@pytest.mark.asyncio
+async def test_resource_stays_open_until_streaming_response_is_consumed() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[FakeSession]:
+        events.append("open")
+        try:
+            yield FakeSession("primary")
+        finally:
+            events.append("close")
+
+    app = Quater()
+
+    @app.get("/stream", inject={"session": Resource(provider)})
+    async def stream(session: FakeSession) -> StreamResponse:
+        async def body() -> AsyncIterator[bytes]:
+            events.append(f"chunk:{session.label}")
+            yield session.label.encode()
+
+        return StreamResponse(body())
+
+    async with TestClient(app) as client:
+        response = await client.get("/stream")
+
+    assert response.body == b"primary"
+    assert events == ["open", "chunk:primary", "close"]
+
+
+@pytest.mark.asyncio
+async def test_resource_cleanup_survives_response_replacement_middleware() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[FakeSession]:
+        events.append("open")
+        try:
+            yield FakeSession("primary")
+        finally:
+            events.append("close")
+
+    app = Quater()
+
+    @app.after_response
+    async def replace_response(
+        request: Request,
+        response: object,
+    ) -> JSONResponse:
+        return JSONResponse({"replaced": request.path == "/orders"})
+
+    @app.get("/orders", inject={"session": Resource(provider)})
+    async def list_orders(session: FakeSession) -> dict[str, str]:
+        events.append(f"handler:{session.label}")
+        return {"session": session.label}
+
+    async with TestClient(app) as client:
+        response = await client.get("/orders")
+
+    assert response.body == b'{"replaced":true}'
+    assert events == ["open", "handler:primary", "close"]
 
 
 @pytest.mark.asyncio
@@ -248,6 +312,7 @@ async def test_cli_action_resolves_injected_resources_at_execution_time() -> Non
     )
 
     assert response.body == b'{"id":"ord_1","session":"primary"}'
+    await run_response_finalizers(response)
     assert events == ["open:cli", "close:cli"]
 
 

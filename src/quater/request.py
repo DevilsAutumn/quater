@@ -39,6 +39,7 @@ class Request:
         "_body_cache",
         "_body_reader",
         "_cookies",
+        "_finalizers",
         "_headers",
         "_json_cache",
         "_raw_headers",
@@ -76,6 +77,7 @@ class Request:
         self._headers: Headers | None = None
         self._query: QueryParams | None = None
         self._cookies: Cookies | None = None
+        self._finalizers: list[Callable[[], Awaitable[None]]] | None = None
         self._body_cache: bytes | object = _UNSET
         self._json_cache: Any = _UNSET
         self._state: State | None = None
