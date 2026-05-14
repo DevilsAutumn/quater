@@ -6,6 +6,7 @@ from quater.app import Quater
 from quater.config import AppConfig
 from quater.cookies import SignedCookieSigner
 from quater.cors import CORSConfig
+from quater.dependencies import Resource
 from quater.exceptions import HTTPError, ImproperlyConfigured
 from quater.groups import RouteGroup
 from quater.observability import AccessLogEvent, AccessLogHook
@@ -50,6 +51,7 @@ __all__ = [
     "RedirectResponse",
     "Request",
     "Response",
+    "Resource",
     "RouteGroup",
     "SignedCookieSigner",
     "State",

@@ -54,6 +54,7 @@ def build_action_registry(routes: tuple[RouteDefinition, ...]) -> ActionRegistry
         handler_plan = build_handler_plan(
             route.handler,
             path_param_names=pattern.param_names,
+            inject=route.inject,
         )
         actions[route.name] = ActionDefinition(
             name=route.name,

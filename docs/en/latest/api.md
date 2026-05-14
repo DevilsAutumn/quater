@@ -34,6 +34,7 @@ from quater import (
     RedirectResponse,
     Request,
     Response,
+    Resource,
     RouteGroup,
     SignedCookieSigner,
     State,
@@ -132,6 +133,7 @@ Documented decorator options:
 - `cli`
 - `needs_approval`
 - `auth`
+- `inject`
 - `metadata`
 - `before`
 - `after`
@@ -147,6 +149,10 @@ a useful description and the app must be created with `cli_auth`.
 
 `needs_approval=True` can be used with `tool=True` or `cli=True`. It requires an
 `action_approval` hook on the app.
+
+Use [`inject`](/en/latest/resources) when a handler needs app-owned values such
+as a database session. Injected values are created by Quater and are not exposed
+as HTTP, MCP, or CLI inputs.
 
 Quater reserves its own protocol paths. User routes cannot be registered under
 `/mcp`, under `/mcp/...`, at `/.well-known/quater-actions.json`, or under

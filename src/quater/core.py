@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeAlias
 
+from quater.dependencies import ResourceMap
 from quater.middleware import MiddlewareStack
 from quater.typing import Authenticate
 
@@ -25,5 +26,6 @@ class RouteDefinition:
     cli: bool = False
     needs_approval: bool = False
     auth: Authenticate | None = None
+    inject: ResourceMap = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     middleware: MiddlewareStack = field(default_factory=MiddlewareStack)

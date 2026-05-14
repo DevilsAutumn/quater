@@ -61,6 +61,7 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
         { text: 'Overview', link: version.index },
         { text: 'Quickstart', link: `${version.base}quickstart` },
         { text: 'Actions and CLI', link: `${version.base}actions` },
+        { text: 'Resources', link: `${version.base}resources` },
         { text: 'Deployment', link: `${version.base}deployment` },
         { text: 'Testing', link: `${version.base}testing` },
         { text: 'Public API', link: `${version.base}api` },
@@ -71,6 +72,7 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
           items: [
             { text: 'Overview', link: `${version.base}reference/` },
             { text: 'Application', link: `${version.base}reference/application` },
+            { text: 'Resources', link: `${version.base}reference/resources` },
             { text: 'Request', link: `${version.base}reference/request` },
             { text: 'Parameters', link: `${version.base}reference/parameters` },
             { text: 'Responses', link: `${version.base}reference/responses` },
@@ -105,6 +107,7 @@ const latestBase = latestDocs?.base ?? `/${language}/${latestDirectory}/`
 const nav: DefaultTheme.NavItem[] = [
   { text: 'Guide', link: `${latestBase}quickstart` },
   { text: 'CLI', link: `${latestBase}actions` },
+  { text: 'Resources', link: `${latestBase}resources` },
   { text: 'Deploy', link: `${latestBase}deployment` },
   { text: 'API', link: `${latestBase}api` },
   { text: 'Reference', link: `${latestBase}reference/` },

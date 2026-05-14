@@ -109,15 +109,9 @@ async def execute_action(
 
     async def endpoint(
         action_request: Request,
-        _path_params: Mapping[str, object],
+        path_params: Mapping[str, object],
     ) -> Response:
-        result = await action.handler_plan.handler(
-            **_handler_arguments_for_request(
-                action.handler_plan,
-                prepared.bound_arguments,
-                action_request,
-            )
-        )
+        result = await action.handler_plan.call(action_request, path_params)
         return normalize_response(result)
 
     pipeline = compile_middleware_pipeline(
@@ -128,18 +122,6 @@ async def execute_action(
         handle_unhandled_exceptions=False,
     )
     return await pipeline(prepared.request, prepared.path_params)
-
-
-def _handler_arguments_for_request(
-    handler_plan: HandlerPlan,
-    bound_arguments: Mapping[str, object],
-    request: Request,
-) -> dict[str, object]:
-    arguments = dict(bound_arguments)
-    for parameter in handler_plan.parameters:
-        if parameter.source == "request":
-            arguments[parameter.name] = request
-    return arguments
 
 
 async def preflight_action(
@@ -229,6 +211,7 @@ async def prepare_action_call(
     bound_arguments = await action.handler_plan.bind(
         action_request,
         parts.path_params,
+        include_resources=False,
     )
     return PreparedActionCall(
         action=action.name,
@@ -247,7 +230,7 @@ def _build_request_parts(
     expected_names = {
         parameter.input_name
         for parameter in action.handler_plan.parameters
-        if parameter.source != "request"
+        if parameter.source not in {"request", "resource"}
     }
     unknown = sorted(set(arguments) - expected_names)
     if unknown:
@@ -263,7 +246,7 @@ def _build_request_parts(
 
     converters = _path_converters(action.pattern)
     for parameter in action.handler_plan.parameters:
-        if parameter.source == "request":
+        if parameter.source in {"request", "resource"}:
             continue
         if parameter.input_name not in arguments:
             value = _missing_value(parameter)

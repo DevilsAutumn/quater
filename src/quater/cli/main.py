@@ -501,8 +501,9 @@ def _add_server_options(
 
 def _server_options(namespace: argparse.Namespace) -> ServerOptions:
     environment = cast(ServerEnvironment, namespace.server_environment)
+    target = namespace.target or namespace.app or os.environ.get("QUATER_APP")
     return ServerOptions(
-        target=namespace.target,
+        target=target,
         environment=environment,
         host=namespace.host,
         port=namespace.port,

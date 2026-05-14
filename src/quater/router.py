@@ -203,6 +203,7 @@ class Router:
         handler_plan = build_handler_plan(
             route.handler,
             path_param_names=pattern.param_names,
+            inject=route.inject,
         )
 
         async def endpoint(

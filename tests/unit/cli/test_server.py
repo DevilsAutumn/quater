@@ -243,6 +243,56 @@ def test_run_disables_reload_and_keeps_production_checks_by_default(
     assert seen[0].strict_production is True
 
 
+def test_server_command_uses_global_app_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[ServerOptions] = []
+
+    def fake_serve(options: ServerOptions) -> None:
+        seen.append(options)
+
+    monkeypatch.setattr("quater.cli.main.serve", fake_serve)
+
+    code = main(["--app", "sample:app", "run"])
+
+    assert code == 0
+    assert seen[0].target == "sample:app"
+
+
+def test_server_command_uses_quater_app_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[ServerOptions] = []
+
+    def fake_serve(options: ServerOptions) -> None:
+        seen.append(options)
+
+    monkeypatch.setattr("quater.cli.main.serve", fake_serve)
+    monkeypatch.setenv("QUATER_APP", "sample:app")
+
+    code = main(["run"])
+
+    assert code == 0
+    assert seen[0].target == "sample:app"
+
+
+def test_server_positional_target_wins_over_global_app_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[ServerOptions] = []
+
+    def fake_serve(options: ServerOptions) -> None:
+        seen.append(options)
+
+    monkeypatch.setattr("quater.cli.main.serve", fake_serve)
+    monkeypatch.setenv("QUATER_APP", "env:app")
+
+    code = main(["--app", "global:app", "run", "positional:app"])
+
+    assert code == 0
+    assert seen[0].target == "positional:app"
+
+
 def test_server_options_can_be_overridden(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

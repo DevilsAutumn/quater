@@ -80,6 +80,7 @@ def build_tool_registry(routes: tuple[RouteDefinition, ...]) -> ToolRegistry:
         handler_plan = build_handler_plan(
             route.handler,
             path_param_names=pattern.param_names,
+            inject=route.inject,
         )
         tools[name] = ToolDefinition(
             name=name,

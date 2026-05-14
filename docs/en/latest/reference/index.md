@@ -16,6 +16,7 @@ For import guarantees, read [Stability](/en/latest/stability).
 | Page | Use it for |
 | --- | --- |
 | [Application](./application) | App objects, route groups, and configuration. |
+| [Resources](./resources) | Request-scoped resources injected into handlers. |
 | [Request](./request) | Request data and state passed through handlers. |
 | [Parameters](./parameters) | Handler parameter markers for request data binding. |
 | [Responses](./responses) | Return values and explicit response classes. |
@@ -29,6 +30,7 @@ Use top-level imports for normal app code. These are the documented
 symbols Quater expects application code to use.
 
 - **Application:** [`AppConfig`](./application#symbol-appconfig), [`CORSConfig`](./application#symbol-corsconfig), [`Quater`](./application#symbol-quater), [`RouteGroup`](./application#symbol-routegroup), [`__version__`](./application#symbol-version)
+- **Resources:** [`Resource`](./resources#symbol-resource)
 - **Request:** [`Request`](./request#symbol-request), [`State`](./request#symbol-state)
 - **Parameters:** [`Body`](./parameters#symbol-body), [`Cookie`](./parameters#symbol-cookie), [`Header`](./parameters#symbol-header), [`Path`](./parameters#symbol-path), [`Query`](./parameters#symbol-query)
 - **Responses:** [`BytesResponse`](./responses#symbol-bytesresponse), [`EmptyResponse`](./responses#symbol-emptyresponse), [`HTMLResponse`](./responses#symbol-htmlresponse), [`JSONResponse`](./responses#symbol-jsonresponse), [`RedirectResponse`](./responses#symbol-redirectresponse), [`Response`](./responses#symbol-response), [`StreamResponse`](./responses#symbol-streamresponse), [`TextResponse`](./responses#symbol-textresponse)

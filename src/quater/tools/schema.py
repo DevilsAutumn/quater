@@ -11,7 +11,7 @@ def tool_input_schema(parameters: tuple[BoundParameter, ...]) -> dict[str, objec
     required: list[str] = []
 
     for parameter in parameters:
-        if parameter.source == "request":
+        if parameter.source in {"request", "resource"}:
             continue
 
         properties[parameter.input_name] = parameter_schema(parameter)

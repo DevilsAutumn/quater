@@ -9,7 +9,7 @@ For the route model, read [Public API](/en/latest/api). For production
 settings, read [Security](/en/latest/security).
 
 ```python
-from quater import AppConfig, CORSConfig, Quater, RouteGroup
+from quater import AppConfig, CORSConfig, Quater, Resource, RouteGroup
 ```
 
 ## Quater {#symbol-quater}
@@ -93,6 +93,7 @@ route(
     cli: bool = False,
     needs_approval: bool = False,
     auth: Authenticate | None = None,
+    inject: ResourceMap | None = None,
     metadata: dict[str, Any] | None = None,
     before: Iterable[BeforeMiddleware] = (),
     after: Iterable[AfterMiddleware] = (),
@@ -113,6 +114,7 @@ route(
 | `cli` | `bool` | Expose this route as a Quater CLI action. |
 | `needs_approval` | `bool` | Require approval before MCP or CLI execution. |
 | `auth` | [`Authenticate`](/en/latest/reference/auth#type-authenticate) \| None | Route-level auth hook. See [Auth](./auth). |
+| `inject` | [`ResourceMap`](/en/latest/reference/resources#type-resourcemap) \| None | Handler resources created by Quater. See [Resources](/en/latest/resources). |
 | `metadata` | `dict[str, Any] \| None` | Extra metadata used by docs and extensions. |
 | `before` | Iterable[[`BeforeMiddleware`](/en/latest/reference/application#type-beforemiddleware)] | Route before-request middleware. |
 | `after` | Iterable[[`AfterMiddleware`](/en/latest/reference/application#type-aftermiddleware)] | Route after-response middleware. |
@@ -155,6 +157,7 @@ RouteGroup(
     *,
     tags: Iterable[str] = (),
     auth: Authenticate | None = None,
+    inject: ResourceMap | None = None,
     metadata: Mapping[str, Any] | None = None,
     before: Iterable[BeforeMiddleware] = (),
     after: Iterable[AfterMiddleware] = (),
@@ -170,6 +173,7 @@ RouteGroup(
 | `prefix` | `str` | Path prefix applied to child routes. |
 | `tags` | `Iterable[str]` | OpenAPI tags inherited by child routes. |
 | `auth` | [`Authenticate`](/en/latest/reference/auth#type-authenticate) \| None | Auth hook inherited by child routes. See [Auth](./auth). |
+| `inject` | [`ResourceMap`](/en/latest/reference/resources#type-resourcemap) \| None | Resources inherited by child routes. See [Resources](/en/latest/resources). |
 | `metadata` | `Mapping[str, Any] \| None` | Metadata inherited by child routes. |
 | `before` | Iterable[[`BeforeMiddleware`](/en/latest/reference/application#type-beforemiddleware)] | Before middleware inherited by routes. |
 | `after` | Iterable[[`AfterMiddleware`](/en/latest/reference/application#type-aftermiddleware)] | After middleware inherited by routes. |
@@ -192,6 +196,7 @@ route(
     cli: bool = False,
     needs_approval: bool = False,
     auth: Authenticate | None = None,
+    inject: ResourceMap | None = None,
     metadata: Mapping[str, Any] | None = None,
     before: Iterable[BeforeMiddleware] = (),
     after: Iterable[AfterMiddleware] = (),
@@ -212,6 +217,7 @@ route(
 | `cli` | `bool` | Expose this route as a Quater CLI action. |
 | `needs_approval` | `bool` | Require approval before MCP or CLI execution. |
 | `auth` | [`Authenticate`](/en/latest/reference/auth#type-authenticate) \| None | Route-level auth hook. See [Auth](./auth). |
+| `inject` | [`ResourceMap`](/en/latest/reference/resources#type-resourcemap) \| None | Handler resources created by Quater. See [Resources](/en/latest/resources). |
 | `metadata` | `Mapping[str, Any] \| None` | Extra metadata inherited into the final route. |
 | `before` | Iterable[[`BeforeMiddleware`](/en/latest/reference/application#type-beforemiddleware)] | Route before-request middleware. |
 | `after` | Iterable[[`AfterMiddleware`](/en/latest/reference/application#type-aftermiddleware)] | Route after-response middleware. |
@@ -220,7 +226,7 @@ route(
 
 The route options mean the same thing on
 [`RouteGroup`](#symbol-routegroup) as they do on
-[`Quater`](#symbol-quater). Group-level auth, metadata, and
+[`Quater`](#symbol-quater). Group-level auth, resources, metadata, and
 middleware are merged into the final route before the app compiles
 routes.
 

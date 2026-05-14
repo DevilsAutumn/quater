@@ -84,31 +84,35 @@ workflow.
    Learn how `cli=True`, `cli_auth`, dry-run, remote action discovery, and
    approval-protected actions work.
 
-3. [Testing](/en/latest/testing)
+3. [Resources and Injection](/en/latest/resources)
+   Add request-scoped resources such as database sessions without exposing
+   those values as client inputs.
+
+4. [Testing](/en/latest/testing)
    Write useful in-process tests for HTTP routes, auth boundaries, cookies,
    lifespan hooks, streams, and MCP tools.
 
-4. [Deployment](/en/latest/deployment)
+5. [Deployment](/en/latest/deployment)
    Run Quater safely with `quater run`, direct server commands, allowed hosts,
    reverse proxies, and production checks.
 
-5. [MCP](/en/latest/mcp)
+6. [MCP](/en/latest/mcp)
    Expose selected routes as MCP tools, configure bearer auth, understand the
    MCP request lifecycle, and use approval tokens for sensitive tools.
 
-6. [Security](/en/latest/security)
+7. [Security](/en/latest/security)
    Review host checks, body limits, CORS, MCP origin validation, CLI action
    security, docs endpoint exposure, and production server checks.
 
-7. [Public API](/en/latest/api)
+8. [Public API](/en/latest/api)
    Check the import surface, constructor options, route options, auth types,
    response classes, and advanced modules.
 
-8. [Stability](/en/latest/stability)
+9. [Stability](/en/latest/stability)
    Understand which imports are public, which modules are internal, and how
    Quater handles compatibility while it is pre-release.
 
-9. [Reference](/en/latest/reference/)
+10. [Reference](/en/latest/reference/)
    Look up generated signatures and public objects after you know which part of
    the framework you need.
 
@@ -119,6 +123,8 @@ workflow.
 - **Route groups:** feature-level prefixes, tags, auth, and middleware are
   flattened into normal routes before matching, so structure does not add a hot
   path router layer.
+- **Resources:** request-scoped values such as database sessions are injected
+  explicitly with `inject={...}` and are not exposed in MCP or CLI schemas.
 - **Explicit auth boundaries:** HTTP routes use route `auth=...`; MCP uses
   `mcp_auth`; CLI actions use `cli_auth`.
 - **Progressive action discovery:** list or search for action names first, then

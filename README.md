@@ -32,6 +32,8 @@ Request flow:
   what an exposed operation does and how to call it.
 - **Explicit auth boundaries:** normal routes use `auth=...`, MCP uses
   `mcp_auth`, and CLI actions use `cli_auth`.
+- **Request resources:** database sessions and similar app-owned values can be
+  injected explicitly without becoming client-controlled inputs.
 - **Operational safety:** CLI actions support dry-run and approval hooks for
   sensitive workflows.
 - **Generated docs:** OpenAPI, Swagger UI, and MCP tool docs are generated from
@@ -170,6 +172,7 @@ still change while the API settles.
 
 - [Quickstart](docs/en/latest/quickstart.md)
 - [Actions and CLI](docs/en/latest/actions.md)
+- [Resources and Injection](docs/en/latest/resources.md)
 - [Deployment](docs/en/latest/deployment.md)
 - [MCP](docs/en/latest/mcp.md)
 - [Security](docs/en/latest/security.md)

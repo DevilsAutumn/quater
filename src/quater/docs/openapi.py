@@ -43,6 +43,7 @@ def build_openapi_schema(
         handler_plan = build_handler_plan(
             route.handler,
             path_param_names=pattern.param_names,
+            inject=route.inject,
         )
         path = _openapi_path(pattern)
         path_item = paths.setdefault(path, {})

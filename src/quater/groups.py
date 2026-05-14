@@ -8,6 +8,7 @@ from typing import Any, TypeVar
 
 from quater.actions.descriptions import resolve_action_description
 from quater.core import Handler, RouteDefinition
+from quater.dependencies import Resource, ResourceMap
 from quater.exceptions import ConfigurationError
 from quater.middleware import (
     AfterMiddleware,
@@ -36,6 +37,7 @@ class RouteGroup:
 
     __slots__ = (
         "auth",
+        "inject",
         "metadata",
         "middleware",
         "prefix",
@@ -51,6 +53,7 @@ class RouteGroup:
         *,
         tags: Iterable[str] = (),
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -66,6 +69,7 @@ class RouteGroup:
             group_metadata["tags"] = group_tags
 
         self.auth = auth
+        self.inject = _normalize_inject(inject)
         self.metadata = group_metadata
         self.middleware = MiddlewareStack.from_parts(
             before=before,
@@ -117,6 +121,7 @@ class RouteGroup:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -152,6 +157,7 @@ class RouteGroup:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=_normalize_inject(inject),
             metadata=dict(metadata or {}),
             middleware=MiddlewareStack.from_parts(
                 before=before,
@@ -174,6 +180,7 @@ class RouteGroup:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -193,6 +200,7 @@ class RouteGroup:
                 cli=cli,
                 needs_approval=needs_approval,
                 auth=auth,
+                inject=inject,
                 metadata=metadata,
                 before=before,
                 after=after,
@@ -213,6 +221,7 @@ class RouteGroup:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -228,6 +237,7 @@ class RouteGroup:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -245,6 +255,7 @@ class RouteGroup:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -260,6 +271,7 @@ class RouteGroup:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -277,6 +289,7 @@ class RouteGroup:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -292,6 +305,7 @@ class RouteGroup:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -309,6 +323,7 @@ class RouteGroup:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -324,6 +339,7 @@ class RouteGroup:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -341,6 +357,7 @@ class RouteGroup:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -356,6 +373,7 @@ class RouteGroup:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -367,6 +385,7 @@ class RouteGroup:
         return tuple(
             self._iter_flattened_routes(
                 prefix="",
+                inject={},
                 metadata={},
                 auth=None,
                 middleware=MiddlewareStack(),
@@ -377,11 +396,13 @@ class RouteGroup:
         self,
         *,
         prefix: str,
+        inject: Mapping[str, Resource],
         metadata: Mapping[str, Any],
         auth: Authenticate | None,
         middleware: MiddlewareStack,
     ) -> Iterator[RouteDefinition]:
         group_prefix = _join_prefix(prefix, self.prefix)
+        group_inject = _merge_inject(inject, self.inject)
         group_metadata = _merge_metadata(metadata, self.metadata)
         group_auth = _compose_auth(auth, self.auth)
         group_middleware = merge_middleware_stack(middleware, self.middleware)
@@ -391,6 +412,7 @@ class RouteGroup:
                 route,
                 path=_join_route_path(group_prefix, route.path),
                 auth=_compose_auth(group_auth, route.auth),
+                inject=_merge_inject(group_inject, route.inject),
                 metadata=_merge_metadata(group_metadata, route.metadata),
                 middleware=merge_middleware_stack(group_middleware, route.middleware),
             )
@@ -398,6 +420,7 @@ class RouteGroup:
         for group in self._groups:
             yield from group._iter_flattened_routes(
                 prefix=group_prefix,
+                inject=group_inject,
                 metadata=group_metadata,
                 auth=group_auth,
                 middleware=group_middleware,
@@ -520,6 +543,32 @@ def _merge_metadata(
     )
     if tags:
         merged["tags"] = tags
+    return merged
+
+
+def _normalize_inject(inject: ResourceMap | None) -> dict[str, Resource]:
+    if inject is None:
+        return {}
+    normalized: dict[str, Resource] = {}
+    for name, resource in inject.items():
+        if not isinstance(name, str) or not name.isidentifier():
+            raise ConfigurationError(f"Invalid injected parameter name: {name!r}")
+        if not isinstance(resource, Resource):
+            raise TypeError("inject values must be Resource instances")
+        normalized[name] = resource
+    return normalized
+
+
+def _merge_inject(
+    parent: Mapping[str, Resource],
+    child: Mapping[str, Resource],
+) -> dict[str, Resource]:
+    merged = dict(parent)
+    for name, resource in child.items():
+        existing = merged.get(name)
+        if existing is not None and existing != resource:
+            raise ConfigurationError(f"Duplicate injected parameter: {name}")
+        merged[name] = resource
     return merged
 
 

@@ -2,10 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from quater import Quater, Request, Response, RouteGroup
+from quater import Quater, Request, Resource, Response, RouteGroup
 
 app = Quater()
 group = RouteGroup(prefix="/api")
+
+
+async def db_resource() -> str:
+    return "db"
+
+
+db = Resource(db_resource)
 
 
 @app.get("/users/{id:int}")
@@ -23,8 +30,14 @@ async def grouped_health() -> dict[str, bool]:
     return {"ok": True}
 
 
+@app.get("/resource", inject={"db": db})
+async def injected_resource(db: str) -> dict[str, str]:
+    return {"db": db}
+
+
 app.include(group)
 
 get_user_handler: Callable[[int], Awaitable[dict[str, int]]] = get_user
 create_user_handler: Callable[[Request], Awaitable[Response]] = create_user
 grouped_handler: Callable[[], Awaitable[dict[str, bool]]] = grouped_health
+injected_handler: Callable[[str], Awaitable[dict[str, str]]] = injected_resource

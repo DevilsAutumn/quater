@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from types import UnionType
 from typing import (
@@ -18,11 +19,20 @@ from typing import (
 
 from quater._parameters import ParameterMarker
 from quater.core import Handler
+from quater.dependencies import Resource, ResourceMap
 from quater.exceptions import BadRequestError, RequestJSONError, RouteBindingError
 from quater.request import Request
 
 _EMPTY = inspect.Signature.empty
-ParameterSource = Literal["request", "path", "query", "body", "header", "cookie"]
+ParameterSource = Literal[
+    "request",
+    "resource",
+    "path",
+    "query",
+    "body",
+    "header",
+    "cookie",
+]
 
 
 @dataclass(slots=True, frozen=True)
@@ -34,6 +44,7 @@ class BoundParameter:
     annotation: object
     default: object
     description: str | None = None
+    resource: Resource | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -45,11 +56,28 @@ class HandlerPlan:
         self,
         request: Request,
         path_params: Mapping[str, object],
+        *,
+        include_resources: bool = True,
+        resource_stack: AsyncExitStack | None = None,
+        resource_cache: dict[int, object] | None = None,
     ) -> dict[str, object]:
         kwargs: dict[str, object] = {}
         for parameter in self.parameters:
             if parameter.source == "request":
                 kwargs[parameter.name] = request
+            elif parameter.source == "resource":
+                if not include_resources:
+                    continue
+                if parameter.resource is None:
+                    raise RuntimeError("Injected parameter is missing its resource")
+                if resource_stack is None or resource_cache is None:
+                    raise RuntimeError("Resource binding requires a resource stack")
+                kwargs[parameter.name] = await _bind_resource_parameter(
+                    parameter,
+                    request,
+                    stack=resource_stack,
+                    cache=resource_cache,
+                )
             elif parameter.source == "path":
                 kwargs[parameter.name] = path_params[parameter.request_name]
             elif parameter.source == "query":
@@ -64,13 +92,24 @@ class HandlerPlan:
         return kwargs
 
     async def call(self, request: Request, path_params: Mapping[str, object]) -> object:
-        return await self.handler(**await self.bind(request, path_params))
+        if not any(parameter.source == "resource" for parameter in self.parameters):
+            return await self.handler(**await self.bind(request, path_params))
+
+        async with AsyncExitStack() as stack:
+            kwargs = await self.bind(
+                request,
+                path_params,
+                resource_stack=stack,
+                resource_cache={},
+            )
+            return await self.handler(**kwargs)
 
 
 def build_handler_plan(
     handler: Handler,
     *,
     path_param_names: frozenset[str],
+    inject: ResourceMap | None = None,
 ) -> HandlerPlan:
     if not inspect.iscoroutinefunction(handler):
         raise RouteBindingError("Route handlers must be async functions")
@@ -81,9 +120,12 @@ def build_handler_plan(
     except (NameError, TypeError):
         type_hints = handler.__annotations__
     body_parameters = 0
+    resources = _normalize_resources(inject)
     parameters: list[BoundParameter] = []
+    seen_names: set[str] = set()
 
     for name, parameter in signature.parameters.items():
+        seen_names.add(name)
         if parameter.kind not in {
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             inspect.Parameter.KEYWORD_ONLY,
@@ -98,7 +140,14 @@ def build_handler_plan(
         raw_default, default_marker = _default_and_marker(parameter.default)
         marker = _resolve_marker(name, annotation_marker, default_marker)
         default = _resolve_default(name, raw_default, marker)
-        source = _parameter_source(name, annotation, marker, path_param_names)
+        resource = resources.get(name)
+        source = _parameter_source(
+            name,
+            annotation,
+            marker,
+            path_param_names,
+            resource=resource,
+        )
         request_name = _parameter_request_name(name, source, marker)
         input_name = _parameter_input_name(name, source, marker)
         _validate_bound_parameter(
@@ -109,6 +158,8 @@ def build_handler_plan(
             default=default,
             annotation=annotation,
             path_param_names=path_param_names,
+            resource=resource,
+            marker=marker,
         )
         if source == "body":
             body_parameters += 1
@@ -124,9 +175,11 @@ def build_handler_plan(
                 annotation=annotation,
                 default=default,
                 description=marker.description if marker is not None else None,
+                resource=resource,
             )
         )
 
+    _validate_all_resources_are_used(resources, seen_names)
     _validate_parameter_collisions(parameters)
     return HandlerPlan(handler=handler, parameters=tuple(parameters))
 
@@ -136,7 +189,21 @@ def _parameter_source(
     annotation: object,
     marker: ParameterMarker | None,
     path_param_names: frozenset[str],
+    *,
+    resource: Resource | None,
 ) -> ParameterSource:
+    if resource is not None:
+        if name == "request" or annotation is Request:
+            raise RouteBindingError("Request objects cannot be injected as resources")
+        if marker is not None:
+            raise RouteBindingError(
+                f"Injected parameter {name!r} cannot use a parameter marker"
+            )
+        if name in path_param_names:
+            raise RouteBindingError(
+                f"Injected parameter {name!r} conflicts with a path parameter"
+            )
+        return "resource"
     if name == "request" or annotation is Request:
         if marker is not None:
             raise RouteBindingError(
@@ -360,8 +427,22 @@ def _validate_bound_parameter(
     default: object,
     annotation: object,
     path_param_names: frozenset[str],
+    resource: Resource | None,
+    marker: ParameterMarker | None,
 ) -> None:
     if source == "request":
+        return
+    if source == "resource":
+        if resource is None:
+            raise RouteBindingError(f"Injected parameter {name!r} has no resource")
+        if default is not _EMPTY:
+            raise RouteBindingError(
+                f"Injected parameter {name!r} cannot define a default"
+            )
+        if marker is not None:
+            raise RouteBindingError(
+                f"Injected parameter {name!r} cannot use a parameter marker"
+            )
         return
     if source == "path":
         if request_name not in path_param_names:
@@ -422,7 +503,7 @@ def _validate_parameter_collisions(parameters: list[BoundParameter]) -> None:
     request_names: dict[tuple[ParameterSource, str], str] = {}
 
     for parameter in parameters:
-        if parameter.source == "request":
+        if parameter.source in {"request", "resource"}:
             continue
 
         existing_action_name = action_names.get(parameter.input_name)
@@ -453,3 +534,43 @@ def _request_name_collision_key(
     if parameter.source == "header":
         return parameter.source, parameter.request_name.lower()
     return parameter.source, parameter.request_name
+
+
+async def _bind_resource_parameter(
+    parameter: BoundParameter,
+    request: Request,
+    *,
+    stack: AsyncExitStack,
+    cache: dict[int, object],
+) -> object:
+    resource = parameter.resource
+    if resource is None:
+        raise RuntimeError("Injected parameter is missing its resource")
+    cache_key = id(resource)
+    if cache_key not in cache:
+        cache[cache_key] = await resource.resolve(request, stack)
+    return cache[cache_key]
+
+
+def _normalize_resources(inject: ResourceMap | None) -> dict[str, Resource]:
+    if inject is None:
+        return {}
+    resources: dict[str, Resource] = {}
+    for name, resource in inject.items():
+        if not isinstance(name, str) or not name.isidentifier():
+            raise RouteBindingError(f"Invalid injected parameter name: {name!r}")
+        if not isinstance(resource, Resource):
+            raise TypeError("inject values must be Resource instances")
+        resources[name] = resource
+    return resources
+
+
+def _validate_all_resources_are_used(
+    resources: Mapping[str, Resource],
+    seen_names: set[str],
+) -> None:
+    for name in resources:
+        if name not in seen_names:
+            raise RouteBindingError(
+                f"Injected parameter {name!r} does not exist on the handler"
+            )

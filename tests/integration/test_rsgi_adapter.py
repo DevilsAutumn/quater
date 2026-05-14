@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from dataclasses import dataclass
 from inspect import isawaitable
 
@@ -92,6 +92,22 @@ class FakeWebSocketProtocol:
     def close(self, status: int | None) -> tuple[int, bool]:
         self.closed_with = status
         return (status or 1000, True)
+
+
+class FakeRSGIScheduler:
+    def __init__(self) -> None:
+        self.callbacks: list[Awaitable[None]] = []
+
+    def _run(self, callback: Awaitable[None]) -> None:
+        self.callbacks.append(callback)
+
+
+class FakeRSGILoop:
+    def __init__(self) -> None:
+        self.callbacks: list[Awaitable[None]] = []
+
+    def run_until_complete(self, callback: Awaitable[None]) -> None:
+        self.callbacks.append(callback)
 
 
 async def call_rsgi(app: Quater, path: str, protocol: FakeHTTPProtocol) -> None:
@@ -236,3 +252,58 @@ def test_rsgi_websocket_scope_closes_without_router_dispatch() -> None:
     assert result == (1003, True)
     assert protocol.closed_with == 1003
     assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_rsgi_lifespan_callbacks_run_app_startup_and_shutdown() -> None:
+    app = Quater()
+    scheduler = FakeRSGIScheduler()
+    events: list[str] = []
+
+    @app.on_startup
+    async def startup() -> None:
+        events.append("startup")
+
+    @app.on_shutdown
+    async def shutdown() -> None:
+        events.append("shutdown")
+
+    app.__rsgi_init__(scheduler)
+    app.__rsgi_init__(scheduler)
+    app.__rsgi_del__(scheduler)
+    app.__rsgi_del__(scheduler)
+
+    for callback in scheduler.callbacks:
+        await callback
+
+    assert events == ["startup", "shutdown"]
+
+
+@pytest.mark.asyncio
+async def test_rsgi_lifespan_callbacks_support_granian_event_loop() -> None:
+    app = Quater()
+    loop = FakeRSGILoop()
+    events: list[str] = []
+
+    @app.on_startup
+    async def startup() -> None:
+        events.append("startup")
+
+    @app.on_shutdown
+    async def shutdown() -> None:
+        events.append("shutdown")
+
+    app.__rsgi_init__(loop)
+    app.__rsgi_del__(loop)
+
+    for callback in loop.callbacks:
+        await callback
+
+    assert events == ["startup", "shutdown"]
+
+
+def test_rsgi_lifespan_callbacks_fail_loudly_without_runner() -> None:
+    app = Quater()
+
+    with pytest.raises(RuntimeError, match="RSGI lifespan runner is unavailable"):
+        app.__rsgi_init__(object())

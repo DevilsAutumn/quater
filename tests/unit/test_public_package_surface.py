@@ -28,6 +28,7 @@ from quater import (
     Path,
     Quater,
     Query,
+    Resource,
     RouteGroup,
     SignedCookieSigner,
     State,
@@ -100,6 +101,7 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.Header is Header
     assert quater.Path is Path
     assert quater.Query is Query
+    assert quater.Resource is Resource
     assert quater.AppConfig is AppConfig
     assert quater.CORSConfig is CORSConfig
     assert quater.ImproperlyConfigured is ImproperlyConfigured

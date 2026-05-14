@@ -24,6 +24,7 @@ from quater.config import (
 from quater.core import Handler, RouteDefinition
 from quater.cors import CORSConfig, add_cors_headers, is_cors_preflight
 from quater.datastructures import normalize_response_headers
+from quater.dependencies import ResourceMap
 from quater.deployment import validate_production_config
 from quater.exceptions import (
     BadRequestError,
@@ -227,6 +228,12 @@ class Quater:
     def __rsgi__(self) -> RSGIAdapter:
         return self.rsgi
 
+    def __rsgi_init__(self, runner: object, *args: object, **kwargs: object) -> None:
+        _run_rsgi_lifespan_callback(runner, self.startup())
+
+    def __rsgi_del__(self, runner: object, *args: object, **kwargs: object) -> None:
+        _run_rsgi_lifespan_callback(runner, self.shutdown())
+
     @overload
     def __call__(
         self,
@@ -291,6 +298,7 @@ class Quater:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -330,6 +338,7 @@ class Quater:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=dict(inject or {}),
             metadata=dict(metadata or {}),
             middleware=MiddlewareStack.from_parts(
                 before=before,
@@ -368,6 +377,7 @@ class Quater:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -387,6 +397,7 @@ class Quater:
                 cli=cli,
                 needs_approval=needs_approval,
                 auth=auth,
+                inject=inject,
                 metadata=metadata,
                 before=before,
                 after=after,
@@ -407,6 +418,7 @@ class Quater:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -422,6 +434,7 @@ class Quater:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -439,6 +452,7 @@ class Quater:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -454,6 +468,7 @@ class Quater:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -471,6 +486,7 @@ class Quater:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -486,6 +502,7 @@ class Quater:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -503,6 +520,7 @@ class Quater:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -518,6 +536,7 @@ class Quater:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -535,6 +554,7 @@ class Quater:
         cli: bool = False,
         needs_approval: bool = False,
         auth: Authenticate | None = None,
+        inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
         after: Iterable[AfterMiddleware] = (),
@@ -550,6 +570,7 @@ class Quater:
             cli=cli,
             needs_approval=needs_approval,
             auth=auth,
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
@@ -1158,6 +1179,26 @@ def _action_approval_token(payload: Mapping[object, object]) -> str | None:
     if not isinstance(value, str) or not value.strip():
         raise BadRequestError("Invalid approval token")
     return value
+
+
+def _run_rsgi_lifespan_callback(
+    runner: object,
+    callback: Awaitable[None],
+) -> None:
+    run = getattr(runner, "_run", None)
+    if callable(run):
+        run(callback)
+        return
+
+    run_until_complete = getattr(runner, "run_until_complete", None)
+    if callable(run_until_complete):
+        run_until_complete(callback)
+        return
+
+    close = getattr(callback, "close", None)
+    if callable(close):
+        close()
+    raise RuntimeError("RSGI lifespan runner is unavailable")
 
 
 def _validate_user_route_path(path: str) -> None:

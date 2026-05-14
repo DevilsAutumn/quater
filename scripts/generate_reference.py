@@ -45,6 +45,12 @@ PAGES: tuple[ReferencePage, ...] = (
         symbols=("Quater", "RouteGroup", "AppConfig", "CORSConfig", "__version__"),
     ),
     ReferencePage(
+        slug="resources",
+        title="Resources",
+        description="Request-scoped resources injected into handlers.",
+        symbols=("Resource",),
+    ),
+    ReferencePage(
         slug="request",
         title="Request",
         description="Request data and state passed through handlers.",
@@ -100,6 +106,14 @@ PAGES: tuple[ReferencePage, ...] = (
         symbols=("TestClient", "TestResponse", "MCPTestClient"),
     ),
 )
+
+
+def page_symbols(slug: str) -> tuple[str, ...]:
+    for page in PAGES:
+        if page.slug == slug:
+            return page.symbols
+    raise KeyError(slug)
+
 
 FIELD_DOCS: Mapping[str, Mapping[str, str]] = {
     "AppConfig": {
@@ -360,6 +374,11 @@ ROUTE_OPTIONS: tuple[tuple[str, str, str], ...] = (
     ("needs_approval", "bool", "Require approval before MCP or CLI execution."),
     ("auth", "Authenticate | None", "Route-level auth hook. See [Auth](./auth)."),
     (
+        "inject",
+        "ResourceMap | None",
+        "Handler resources created by Quater. See [Resources](/en/latest/resources).",
+    ),
+    (
         "metadata",
         "dict[str, Any] | None",
         "Extra metadata used by docs and extensions.",
@@ -393,6 +412,11 @@ GROUP_ROUTE_OPTIONS: tuple[tuple[str, str, str], ...] = (
     ("needs_approval", "bool", "Require approval before MCP or CLI execution."),
     ("auth", "Authenticate | None", "Route-level auth hook. See [Auth](./auth)."),
     (
+        "inject",
+        "ResourceMap | None",
+        "Handler resources created by Quater. See [Resources](/en/latest/resources).",
+    ),
+    (
         "metadata",
         "Mapping[str, Any] | None",
         "Extra metadata inherited into the final route.",
@@ -414,6 +438,11 @@ ROUTE_GROUP_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "auth",
         "Authenticate | None",
         "Auth hook inherited by child routes. See [Auth](./auth).",
+    ),
+    (
+        "inject",
+        "ResourceMap | None",
+        "Resources inherited by child routes. See [Resources](/en/latest/resources).",
     ),
     ("metadata", "Mapping[str, Any] | None", "Metadata inherited by child routes."),
     ("before", "Iterable[BeforeMiddleware]", "Before middleware inherited by routes."),
@@ -623,6 +652,7 @@ def render_reference(
     return {
         REFERENCE_DIR / "index.md": render_index(public_api, pages_by_symbol),
         REFERENCE_DIR / "application.md": render_application(package),
+        REFERENCE_DIR / "resources.md": render_resources(package),
         REFERENCE_DIR / "request.md": render_request(package),
         REFERENCE_DIR / "parameters.md": render_parameters(package),
         REFERENCE_DIR / "responses.md": render_responses(package),
@@ -685,7 +715,7 @@ def render_application(package: Any) -> str:
             "settings, read [Security](/en/latest/security).",
             "",
             "```python",
-            "from quater import AppConfig, CORSConfig, Quater, RouteGroup",
+            "from quater import AppConfig, CORSConfig, Quater, Resource, RouteGroup",
             "```",
             "",
         ]
@@ -797,7 +827,7 @@ def render_application(package: Any) -> str:
         [
             "The route options mean the same thing on",
             "[`RouteGroup`](#symbol-routegroup) as they do on",
-            "[`Quater`](#symbol-quater). Group-level auth, metadata, and",
+            "[`Quater`](#symbol-quater). Group-level auth, resources, metadata, and",
             "middleware are merged into the final route before the app compiles",
             "routes.",
             "",
@@ -889,6 +919,110 @@ def render_application(package: Any) -> str:
                 ),
             )
         )
+    )
+    return finish(lines)
+
+
+def render_resources(package: Any) -> str:
+    lines = new_page("Resources Reference")
+    lines.extend(
+        [
+            "Use these objects when a handler needs an app-owned value, such as a",
+            "database session, cache handle, tenant object, or request-scoped service.",
+            "",
+            "For the guide, read [Resources and Injection](/en/latest/resources).",
+            "",
+            "```python",
+            "from quater import Resource",
+            "```",
+            "",
+        ]
+    )
+    symbol_intro(
+        lines,
+        package,
+        "Resource",
+        "A request-scoped injectable value.",
+        [
+            "`Resource` wraps a provider callable and lets a route inject the",
+            "provider result into a named handler parameter.",
+        ],
+    )
+    lines.extend(signature_block(class_signature(package, "Resource")))
+    lines.extend(
+        [
+            "### Constructor options",
+            "",
+            "| Name | Type | Meaning |",
+            "| --- | --- | --- |",
+            "| `provider` | [`ResourceProvider`](#type-resourceprovider) | "
+            "Callable that creates the value. |",
+            "| `scope` | [`ResourceScope`](#type-resourcescope) | "
+            "Resource lifetime. Currently only `request` is supported. |",
+            "| `name` | `str \\| None` | Optional name used in resource error "
+            "messages. |",
+            "",
+            "### Provider forms",
+            "",
+            "The provider may accept no arguments:",
+            "",
+            "```python",
+            "async def settings() -> Settings:",
+            "    return Settings.from_env()",
+            "```",
+            "",
+            "Or it may accept the current [`Request`](./request#symbol-request):",
+            "",
+            "```python",
+            "async def current_tenant(request: Request) -> Tenant:",
+            "    return await request.app.state.tenants.load(",
+            '        request.headers.get("x-tenant-id")',
+            "    )",
+            "```",
+            "",
+            "The provider can return a plain value, an awaitable value, a sync or "
+            "async",
+            "context manager, or yield one value from a sync or async generator.",
+            "",
+            "```python",
+            "async def db_session(request: Request) -> AsyncIterator[DatabaseSession]:",
+            "    async with request.app.state.database.session() as session:",
+            "        yield session",
+            "```",
+            "",
+            "Quater closes context-manager and generator resources after the handler",
+            "finishes. Cleanup also runs when the handler raises.",
+            "",
+            "### Route usage",
+            "",
+            "```python",
+            "db = Resource(db_session)",
+            "",
+            "",
+            '@app.get("/orders/{order_id}", inject={"session": db})',
+            "async def get_order(",
+            "    order_id: str,",
+            "    session: DatabaseSession,",
+            ") -> dict[str, object]:",
+            "    ...",
+            "```",
+            "",
+            "Injected parameters are not included in OpenAPI request parameters, MCP",
+            "input schemas, or CLI action schemas.",
+            "",
+            "## Types",
+            "",
+            "| Type | Meaning |",
+            "| --- | --- |",
+            '| <span id="type-resourceprovider"></span>`ResourceProvider` | '
+            "Callable used by [`Resource`](#symbol-resource). It may accept no "
+            "arguments or one [`Request`](./request#symbol-request). |",
+            '| <span id="type-resourcemap"></span>`ResourceMap` | Mapping of '
+            "handler parameter name to [`Resource`](#symbol-resource). This is "
+            "the type accepted by `inject`. |",
+            '| <span id="type-resourcescope"></span>`ResourceScope` | Literal '
+            "resource lifetime. Currently `request`. |",
+        ]
     )
     return finish(lines)
 
@@ -1161,7 +1295,7 @@ def render_parameters(package: Any) -> str:
             "",
         ]
     )
-    for symbol in PAGES[2].symbols:
+    for symbol in page_symbols("parameters"):
         summary, details = PARAMETER_DOCS[symbol]
         symbol_intro(lines, package, symbol, summary, details)
         lines.extend(signature_block(callable_signature(package, symbol)))
@@ -1214,7 +1348,7 @@ def render_responses(package: Any) -> str:
             "",
         ]
     )
-    for symbol in PAGES[3].symbols:
+    for symbol in page_symbols("responses"):
         symbol_intro(lines, package, symbol, RESPONSE_DOCS[symbol], [])
         lines.extend(signature_block(class_signature(package, symbol)))
         lines.extend(
@@ -1914,6 +2048,9 @@ def type_reference(name: str) -> str | None:
         "ExceptionHandlerEntry": (
             "/en/latest/reference/application#type-exceptionhandlerentry"
         ),
+        "ResourceMap": "/en/latest/reference/resources#type-resourcemap",
+        "ResourceProvider": "/en/latest/reference/resources#type-resourceprovider",
+        "ResourceScope": "/en/latest/reference/resources#type-resourcescope",
         "ResponseBody": "/en/latest/reference/responses#type-responsebody",
         "RequestContent": "/en/latest/reference/testing#type-requestcontent",
         "JSONRPCID": "/en/latest/reference/testing#type-jsonrpcid",
