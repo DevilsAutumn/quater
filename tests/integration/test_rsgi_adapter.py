@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable
 from dataclasses import dataclass
 from inspect import isawaitable
@@ -11,6 +12,7 @@ from quater import (
     EmptyResponse,
     Quater,
     Request,
+    Resource,
     StreamResponse,
     TextResponse,
 )
@@ -42,6 +44,12 @@ class FakeStreamTransport:
 
     async def send_bytes(self, data: bytes) -> None:
         self.chunks.append(data)
+
+
+class FailingStreamTransport(FakeStreamTransport):
+    async def send_bytes(self, data: bytes) -> None:
+        await super().send_bytes(data)
+        raise RuntimeError("client disconnected")
 
 
 class FakeHTTPProtocol:
@@ -83,6 +91,12 @@ class FakeHTTPProtocol:
         self.status = status
         self.headers = headers
         return self.stream
+
+
+class FailingStreamHTTPProtocol(FakeHTTPProtocol):
+    def __init__(self, body: bytes = b"") -> None:
+        super().__init__(body=body)
+        self.stream = FailingStreamTransport()
 
 
 class FakeWebSocketProtocol:
@@ -173,6 +187,64 @@ async def test_rsgi_stream_response_uses_stream_transport() -> None:
 
     assert protocol.kind == "stream"
     assert protocol.stream.chunks == [b"a", b"b"]
+
+
+@pytest.mark.asyncio
+async def test_rsgi_finalizes_resources_after_regular_response() -> None:
+    app = Quater()
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+
+    @app.get("/finalize", inject={"value": Resource(provider)})
+    async def finalize(value: str) -> bytes:
+        return value.encode()
+
+    protocol = FakeHTTPProtocol()
+
+    await call_rsgi(app, "/finalize", protocol)
+    await asyncio.sleep(0)
+
+    assert protocol.response_body == b"primary"
+    assert events == ["open", "close"]
+
+
+@pytest.mark.asyncio
+async def test_rsgi_schedules_finalizers_when_stream_send_fails() -> None:
+    app = Quater()
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+
+    async def chunks() -> AsyncIterator[bytes]:
+        yield b"first"
+        yield b"second"
+
+    @app.get("/stream", inject={"value": Resource(provider)})
+    async def stream(value: str) -> StreamResponse:
+        assert value == "primary"
+        return StreamResponse(chunks())
+
+    protocol = FailingStreamHTTPProtocol()
+    result = app.rsgi(FakeRSGIScope(path="/stream"), protocol)
+
+    assert isawaitable(result)
+    with pytest.raises(RuntimeError, match="client disconnected"):
+        await result
+    await asyncio.sleep(0)
+
+    assert protocol.stream.chunks == [b"first"]
+    assert events == ["open", "close"]
 
 
 @pytest.mark.asyncio

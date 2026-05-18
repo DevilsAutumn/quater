@@ -4,12 +4,15 @@ import importlib
 import os
 import sys
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
+from quater.cli.errors import CLIUsageError
 from quater.cli.main import main
 from quater.cli.server import ServerOptions, serve
+from quater.exceptions import ImproperlyConfigured
 
 
 def write_module(tmp_path: Path, filename: str, source: str) -> None:
@@ -257,6 +260,82 @@ def test_server_command_uses_global_app_option(
 
     assert code == 0
     assert seen[0].target == "sample:app"
+
+
+def test_serve_restores_environment_when_resolution_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_resolve(target: str | None, *, working_dir: Path | None) -> object:
+        raise RuntimeError("resolver failed")
+
+    monkeypatch.setenv("QUATER_ENV", "staging")
+    monkeypatch.setattr("quater.cli.server.resolve_app_target", fail_resolve)
+
+    with pytest.raises(RuntimeError, match="resolver failed"):
+        serve(
+            ServerOptions(
+                target=None,
+                environment="production",
+                host="127.0.0.1",
+                port=8000,
+                interface="rsgi",
+                loop="auto",
+                workers=1,
+                reload=False,
+                access_log=True,
+                log_level="info",
+                factory=False,
+            )
+        )
+
+    assert os.environ["QUATER_ENV"] == "staging"
+
+
+def test_serve_validates_app_before_handing_off_to_granian(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = importlib.import_module("quater").Quater()
+    served: list[ServerOptions] = []
+
+    def fail_validation(self: object) -> None:
+        raise ImproperlyConfigured("allowed_hosts must be configured")
+
+    @dataclass(slots=True, frozen=True)
+    class FakeDiscovery:
+        target: str
+        factory: bool = False
+
+    monkeypatch.delenv("QUATER_ENV", raising=False)
+    monkeypatch.setattr(
+        "quater.cli.server.resolve_app_target",
+        lambda target, *, working_dir: FakeDiscovery("sample:app"),
+    )
+    monkeypatch.setattr("quater.cli.server.load_app", lambda *args, **kwargs: app)
+    monkeypatch.setattr(
+        "quater.cli.server.Quater.validate_production",
+        fail_validation,
+    )
+    monkeypatch.setattr("quater.cli.server._serve_with_granian", served.append)
+
+    with pytest.raises(CLIUsageError, match="Application failed to start"):
+        serve(
+            ServerOptions(
+                target="sample:app",
+                environment="production",
+                host="127.0.0.1",
+                port=8000,
+                interface="rsgi",
+                loop="auto",
+                workers=1,
+                reload=False,
+                access_log=True,
+                log_level="info",
+                factory=False,
+            )
+        )
+
+    assert served == []
+    assert os.environ.get("QUATER_ENV") is None
 
 
 def test_server_command_uses_quater_app_environment(

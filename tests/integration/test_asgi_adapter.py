@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import pytest
 
-from quater import Quater, Request, StreamResponse
+from quater import Quater, Request, Resource, StreamResponse
 from quater.adapters.asgi import ASGIAdapter, ASGIMessage
 
 
@@ -118,6 +118,61 @@ async def test_asgi_body_limit_stops_reading_oversized_chunked_body() -> None:
 
 
 @pytest.mark.asyncio
+async def test_asgi_disconnect_returns_partial_body_without_adapter_crash() -> None:
+    app = Quater()
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    sent = await call_asgi(
+        app.asgi,
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/echo",
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost")],
+            "client": ("127.0.0.1", 5000),
+        },
+        [
+            {"type": "http.request", "body": b"partial", "more_body": True},
+            {"type": "http.disconnect"},
+        ],
+    )
+
+    assert sent[0]["status"] == 200
+    assert response_body(sent) == b"partial"
+
+
+@pytest.mark.asyncio
+async def test_asgi_unsupported_http_receive_message_becomes_safe_500() -> None:
+    app = Quater(debug=False)
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    sent = await call_asgi(
+        app.asgi,
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/echo",
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost")],
+            "client": ("127.0.0.1", 5000),
+        },
+        [{"type": "http.response.start"}],
+    )
+
+    assert sent[0]["status"] == 500
+    assert response_body(sent) == b"Internal Server Error"
+
+
+@pytest.mark.asyncio
 async def test_asgi_non_stream_response_uses_single_final_body_message() -> None:
     app = Quater()
 
@@ -185,6 +240,94 @@ async def test_asgi_stream_response_uses_multiple_body_messages() -> None:
 
 
 @pytest.mark.asyncio
+async def test_asgi_runs_response_finalizers_when_send_fails() -> None:
+    events: list[str] = []
+    app = Quater()
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+
+    @app.get("/finalize", inject={"value": Resource(provider)})
+    async def finalize(value: str) -> bytes:
+        return value.encode()
+
+    async def receive() -> ASGIMessage:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Mapping[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise RuntimeError("client disconnected")
+
+    with pytest.raises(RuntimeError, match="client disconnected"):
+        await app.asgi(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/finalize",
+                "scheme": "http",
+                "query_string": b"",
+                "headers": [(b"host", b"localhost")],
+                "client": ("127.0.0.1", 5000),
+            },
+            receive,
+            send,
+        )
+
+    assert events == ["open", "close"]
+
+
+@pytest.mark.asyncio
+async def test_asgi_runs_stream_finalizers_when_iterator_fails() -> None:
+    events: list[str] = []
+    sent: list[dict[str, object]] = []
+    app = Quater()
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+
+    async def chunks() -> AsyncIterator[bytes]:
+        yield b"first"
+        raise RuntimeError("stream failed")
+
+    @app.get("/stream", inject={"value": Resource(provider)})
+    async def stream(value: str) -> StreamResponse:
+        assert value == "primary"
+        return StreamResponse(chunks())
+
+    async def receive() -> ASGIMessage:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Mapping[str, Any]) -> None:
+        sent.append(dict(message))
+
+    with pytest.raises(RuntimeError, match="stream failed"):
+        await app.asgi(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/stream",
+                "scheme": "http",
+                "query_string": b"",
+                "headers": [(b"host", b"localhost")],
+                "client": ("127.0.0.1", 5000),
+            },
+            receive,
+            send,
+        )
+
+    assert events == ["open", "close"]
+    assert response_body(sent) == b"first"
+
+
+@pytest.mark.asyncio
 async def test_asgi_lifespan_runs_startup_and_shutdown_once() -> None:
     app = Quater()
     calls: list[str] = []
@@ -214,6 +357,39 @@ async def test_asgi_lifespan_runs_startup_and_shutdown_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_asgi_lifespan_reports_hook_failures_without_traceback() -> None:
+    app = Quater()
+
+    @app.on_startup
+    async def startup() -> None:
+        raise RuntimeError("database offline")
+
+    sent = await call_asgi(
+        app.asgi,
+        {"type": "lifespan"},
+        [
+            {"type": "lifespan.startup"},
+            {"type": "lifespan.shutdown"},
+        ],
+    )
+
+    assert sent == [
+        {"type": "lifespan.startup.failed", "message": "database offline"},
+        {"type": "lifespan.shutdown.complete"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_asgi_lifespan_rejects_unknown_messages_loudly() -> None:
+    with pytest.raises(ValueError, match="Unsupported ASGI lifespan message"):
+        await call_asgi(
+            Quater().asgi,
+            {"type": "lifespan"},
+            [{"type": "lifespan.ping"}],
+        )
+
+
+@pytest.mark.asyncio
 async def test_asgi_websocket_scope_closes_without_entering_router() -> None:
     app = Quater()
     calls = 0
@@ -238,3 +414,9 @@ async def test_asgi_websocket_scope_closes_without_entering_router() -> None:
             "reason": "WebSocket support is not enabled",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_asgi_rejects_unsupported_scope_types_loudly() -> None:
+    with pytest.raises(ValueError, match="Unsupported ASGI scope type"):
+        await call_asgi(Quater().asgi, {"type": "smtp"}, [])

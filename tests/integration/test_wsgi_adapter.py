@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from io import BytesIO
 from typing import cast
 
 import pytest
 
-from quater import Quater, Request
+from quater import Quater, Request, Resource, Response, StreamResponse
 from quater.adapters.wsgi import WSGIEnvironment
 
 
@@ -83,6 +84,43 @@ def test_wsgi_route_response_maps_status_headers_and_body() -> None:
     assert header_map["x-content-type-options"] == "nosniff"
 
 
+def test_wsgi_unknown_status_codes_use_safe_status_phrase() -> None:
+    app = Quater()
+
+    @app.get("/custom")
+    async def custom() -> Response:
+        return Response(b"custom", status_code=599)
+
+    status, _, body = call_wsgi(app, base_environ(path="/custom"))
+
+    assert status == "599 Unknown"
+    assert body == b"custom"
+
+
+def test_wsgi_request_parts_include_query_scheme_client_and_host_fallback() -> None:
+    app = Quater()
+    environ = base_environ(path="/inspect")
+    environ["QUERY_STRING"] = "page=2"
+    environ["wsgi.url_scheme"] = "https"
+    environ["REMOTE_ADDR"] = "10.0.0.5"
+
+    @app.get("/inspect")
+    async def inspect_request(request: Request) -> dict[str, object]:
+        return {
+            "scheme": request.scheme,
+            "page": request.query["page"],
+            "client": request.client,
+            "host": request.headers["host"],
+        }
+
+    status, _, body = call_wsgi(app, environ)
+
+    assert status == "200 OK"
+    assert body == (
+        b'{"scheme":"https","page":"2","client":"10.0.0.5","host":"localhost:80"}'
+    )
+
+
 def test_wsgi_input_stream_is_read_once_by_handler() -> None:
     app = Quater()
     stream = CountingInput(b"abc")
@@ -101,6 +139,24 @@ def test_wsgi_input_stream_is_read_once_by_handler() -> None:
     assert status == "200 OK"
     assert body == b"abc"
     assert stream.read_calls == 1
+
+
+def test_wsgi_negative_content_length_reads_no_body() -> None:
+    app = Quater()
+    stream = CountingInput(b"should-not-be-read")
+    environ = base_environ(method="POST", path="/echo", body=b"should-not-be-read")
+    environ["CONTENT_LENGTH"] = "-50"
+    environ["wsgi.input"] = stream
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    status, _, body = call_wsgi(app, environ)
+
+    assert status == "400 Bad Request"
+    assert body == b"Invalid Content-Length header"
+    assert stream.read_calls == 0
 
 
 def test_wsgi_body_limit_uses_content_length_before_stream_read() -> None:
@@ -137,6 +193,32 @@ def test_wsgi_body_limit_caps_reads_without_content_length() -> None:
     assert body == b"Payload Too Large"
     assert stream.read_calls == 1
     assert stream.tell() == 3
+
+
+def test_wsgi_runs_response_finalizers_when_streaming_body_fails() -> None:
+    events: list[str] = []
+    app = Quater()
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+
+    async def chunks() -> AsyncIterator[bytes]:
+        yield b"first"
+        raise RuntimeError("stream failed")
+
+    @app.get("/stream", inject={"value": Resource(provider)})
+    async def stream(value: str) -> StreamResponse:
+        assert value == "primary"
+        return StreamResponse(chunks())
+
+    with pytest.raises(RuntimeError, match="stream failed"):
+        call_wsgi(app, base_environ(path="/stream"))
+
+    assert events == ["open", "close"]
 
 
 @pytest.mark.asyncio
