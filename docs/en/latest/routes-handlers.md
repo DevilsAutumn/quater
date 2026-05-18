@@ -50,7 +50,7 @@ shape:
 
 1. resources declared with `inject={...}`
 2. the current `Request`
-3. `Path`, `Query`, `Body`, `Header`, or `Cookie` markers
+3. `Path`, `Query`, `Body`, `Form`, `File`, `Header`, or `Cookie` markers
 4. path parameters from the route pattern
 5. scalar query parameters
 6. one JSON body parameter
@@ -86,6 +86,31 @@ async def update_order(
     }
 ```
 
+Use form and file markers for non-JSON request bodies:
+
+```python
+from quater import File, Form, Quater, UploadFile
+
+app = Quater()
+
+
+@app.post("/imports", description="Import one CSV file.")
+async def import_orders(
+    account_id: str = Form(),
+    document: UploadFile = File(description="CSV document."),
+) -> dict[str, object]:
+    content = await document.read()
+    return {
+        "account_id": account_id,
+        "filename": document.filename,
+        "size": len(content),
+    }
+```
+
+Routes with `File` parameters are HTTP-only in this release. Quater rejects
+`tool=True` or `cli=True` on those routes so agents and CLI callers do not get a
+fake file-upload contract.
+
 ## Route Groups
 
 Use `RouteGroup` when a feature has a shared prefix, auth policy, middleware, or
@@ -117,6 +142,10 @@ app.include(orders)
 
 `Only one body parameter is supported`
 : Move body fields into one `msgspec.Struct`.
+
+`JSON body parameters cannot be combined with form or file parameters`
+: One handler reads one request body format. Split the route or pick one input
+  shape.
 
 `Dynamic routes at the same position must use the same name and converter`
 : Keep conflicting route patterns consistent, or split the paths.

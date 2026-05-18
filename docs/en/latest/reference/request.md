@@ -9,7 +9,7 @@ Read [Public API](/en/latest/api#binding) for binding rules. Use `Request` when
 you need headers, cookies, raw body access, auth, state, or call-source context.
 
 ```python
-from quater import Request, State
+from quater import FormData, Request, State, UploadFile
 ```
 
 ## Request {#symbol-request}
@@ -32,6 +32,10 @@ Request(
     context: RequestContext | None = None,
     app: Quater | None = None,
     max_body_size: int | None = None,
+    max_form_parts: int | None = None,
+    max_form_field_size: int | None = None,
+    max_file_size: int | None = None,
+    upload_spool_size: int | None = None,
 ) -> None
 ```
 
@@ -48,6 +52,10 @@ Request(
 | `context` | `RequestContext \| None` | `None` | Source and entrypoint metadata. |
 | `app` | [`Quater`](./application#symbol-quater) \| None | `None` | App handling the request. Quater sets it at the app boundary. |
 | `max_body_size` | `int \| None` | `None` | Per-request body size limit. |
+| `max_form_parts` | `int \| None` | `None` | Per-request form field and file count limit. |
+| `max_form_field_size` | `int \| None` | `None` | Per-request string form field size limit. |
+| `max_file_size` | `int \| None` | `None` | Per-request uploaded file size limit. |
+| `upload_spool_size` | `int \| None` | `None` | Per-request upload spool threshold. |
 
 Normal app code receives a `Request`; it rarely constructs one directly outside
 tests.
@@ -69,6 +77,7 @@ tests.
 | `client` | `str \| None` | Client address when available. |
 | `body()` | `bytes` | Reads and caches the request body. |
 | `json()` | `Any` | Parses and caches the JSON body with Quater's JSON decoder. |
+| `form()` | [`FormData`](#symbol-formdata) | Parses and caches submitted form fields and files. |
 
 Example:
 
@@ -123,6 +132,102 @@ async def cache_size(request: Request) -> dict[str, int]:
 
 Do not store per-request values on `app.state`. Use `request.state` for those.
 
+## FormData {#symbol-formdata}
+
+Added in `0.1.0a1`.
+
+Parsed form fields and uploaded files returned by `Request.form()`.
+
+```python
+FormData(
+    *,
+    fields: tuple[tuple[str, str], ...] = (),
+    files: tuple[tuple[str, UploadFile], ...] = (),
+) -> None
+```
+
+`FormData` behaves like a read-only mapping of string form fields. Normal
+mapping lookup returns the last value for a repeated field. Use `get_all()` when
+repeated field values matter.
+
+Files live separately from fields because uploaded files are not strings. Use
+`get_file()` for one file and `get_files()` for repeated file fields.
+
+| Member | Type | Description |
+| --- | --- | --- |
+| `fields` | `tuple[tuple[str, str], ...]` | All string field pairs in request order. |
+| `files` | `tuple[tuple[str, UploadFile], ...]` | All uploaded file pairs in request order. |
+| `get_all(key)` | `tuple[str, ...]` | All string values for a field. |
+| `get_file(key)` | [`UploadFile`](#symbol-uploadfile) \| None | Last uploaded file for a field. |
+| `get_files(key)` | `tuple[UploadFile, ...]` | All uploaded files for a field. |
+
+```python
+from quater import Quater, Request
+
+app = Quater()
+
+
+@app.post("/profile")
+async def profile(request: Request) -> dict[str, object]:
+    form = await request.form()
+    avatar = form.get_file("avatar")
+    return {
+        "name": form["name"],
+        "avatar": avatar.filename if avatar else None,
+    }
+```
+
+## UploadFile {#symbol-uploadfile}
+
+Added in `0.1.0a1`.
+
+Uploaded multipart file passed to handlers using
+[`File`](./parameters#symbol-file) markers.
+
+```python
+UploadFile(
+    *,
+    filename: str,
+    content_type: str,
+    headers: Mapping[str, str] | None = None,
+    content: bytes = b"",
+    spool_size: int = 1048576,
+) -> None
+```
+
+Quater strips path components from submitted filenames before it creates
+`UploadFile`. Treat `filename` as display metadata, not a safe storage path.
+`spool_size` controls when the underlying temporary file rolls from memory to
+disk.
+
+| Member | Type | Description |
+| --- | --- | --- |
+| `filename` | `str` | Sanitized client filename without directory components. |
+| `content_type` | `str` | File part content type, or `application/octet-stream`. |
+| `headers` | `dict[str, str]` | File part headers with lowercase names. |
+| `size` | `int` | Uploaded byte count. |
+| `file` | `BinaryIO` | Underlying spooled binary file object. |
+| `closed` | `bool` | Whether Quater has closed the underlying file. |
+| `read(size=-1)` | `bytes` | Read bytes from the current file position. |
+| `seek(offset, whence=0)` | `int` | Move the file cursor and return the new position. |
+| `close()` | `None` | Close the underlying file. Quater also closes it after the response. |
+
+```python
+from quater import File, Quater, UploadFile
+
+app = Quater()
+
+
+@app.post("/imports")
+async def import_document(document: UploadFile = File()) -> dict[str, object]:
+    content = await document.read()
+    return {
+        "filename": document.filename,
+        "content_type": document.content_type,
+        "size": len(content),
+    }
+```
+
 ## Header, Query, And Cookie Views
 
 `Headers`, `QueryParams`, and `Cookies` are request views. They are not top-level
@@ -176,6 +281,13 @@ session_id = request.cookies.get("session")
 
 `Malformed JSON body`
 : `await request.json()` could not decode valid JSON.
+
+`Malformed form body`
+: `await request.form()` could not decode submitted form data.
+
+`Unsupported form content type`
+: The route expected form data, but the request did not use
+  `application/x-www-form-urlencoded` or `multipart/form-data`.
 
 `request.auth is None`
 : The route had no auth hook, or auth failed before the handler. Check before

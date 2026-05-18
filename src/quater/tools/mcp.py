@@ -110,6 +110,7 @@ async def handle_mcp_request(
     approval_hook: ActionApproval | None = None,
     audit_hook: AuditHook | None = None,
     debug: bool = False,
+    max_response_size: int = MAX_TOOL_RESPONSE_BYTES,
 ) -> Response:
     if request.method != "POST":
         return TextResponse(
@@ -159,6 +160,7 @@ async def handle_mcp_request(
             approval_hook=approval_hook,
             audit_hook=audit_hook,
             debug=debug,
+            max_response_size=max_response_size,
         )
     return _json_rpc_error(request_id, -32601, "Method not found")
 
@@ -235,6 +237,7 @@ async def _handle_tools_call(
     approval_hook: ActionApproval | None,
     audit_hook: AuditHook | None,
     debug: bool,
+    max_response_size: int,
 ) -> Response:
     if not isinstance(params, Mapping):
         return _json_rpc_error(request_id, -32602, "Invalid params")
@@ -265,6 +268,7 @@ async def _handle_tools_call(
             approval_token=approval_token,
             audit_hook=audit_hook,
             debug=debug,
+            max_response_size=max_response_size,
         )
     except _AuditHookError as exc:
         return _json_rpc_error(
@@ -286,6 +290,7 @@ async def _call_tool_with_audit(
     approval_token: str | None,
     audit_hook: AuditHook | None,
     debug: bool,
+    max_response_size: int,
 ) -> Response:
     start = time.perf_counter()
     typed_arguments = cast(Mapping[str, object], arguments)
@@ -374,7 +379,11 @@ async def _call_tool_with_audit(
 
     success = response.status_code < 400
     try:
-        result = await _tool_result_response(response, is_error=not success)
+        result = await _tool_result_response(
+            response,
+            is_error=not success,
+            max_response_size=max_response_size,
+        )
     except _ToolResponseTooLarge:
         try:
             await _audit(
@@ -429,18 +438,19 @@ async def _tool_result_response(
     response: Response,
     *,
     is_error: bool,
+    max_response_size: int = MAX_TOOL_RESPONSE_BYTES,
 ) -> dict[str, object]:
     if isinstance(response, StreamResponse):
         chunks: list[bytes] = []
         size = 0
         async for chunk in response.body_iterator:
             size += len(chunk)
-            if size > MAX_TOOL_RESPONSE_BYTES:
+            if size > max_response_size:
                 raise _ToolResponseTooLarge
             chunks.append(chunk)
         text = b"".join(chunks).decode("utf-8", errors="replace")
     else:
-        if len(response.body) > MAX_TOOL_RESPONSE_BYTES:
+        if len(response.body) > max_response_size:
             raise _ToolResponseTooLarge
         text = response.body.decode("utf-8", errors="replace")
     return _tool_result(text, is_error=is_error)

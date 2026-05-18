@@ -5,6 +5,8 @@ from typing import Any, assert_type
 from quater import (
     Body,
     Cookie,
+    File,
+    Form,
     Header,
     Path,
     Quater,
@@ -33,6 +35,8 @@ assert_type(app.state, State)
 assert_type(Query(), Any)
 assert_type(Path(), Any)
 assert_type(Body(), Any)
+assert_type(Form(), Any)
+assert_type(File(), Any)
 assert_type(Header(), Any)
 assert_type(Cookie(), Any)
 assert_type(__version__, str)

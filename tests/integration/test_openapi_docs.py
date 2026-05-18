@@ -5,7 +5,19 @@ import json
 import msgspec
 import pytest
 
-from quater import Body, Cookie, Header, HTMLResponse, Path, Quater, Query, Request
+from quater import (
+    Body,
+    Cookie,
+    File,
+    Form,
+    Header,
+    HTMLResponse,
+    Path,
+    Quater,
+    Query,
+    Request,
+    UploadFile,
+)
 from quater.exceptions import ConfigurationError, RouteConflictError
 from quater.typing import AuthContext, AuthRequest
 
@@ -16,6 +28,7 @@ class CreateUser(msgspec.Struct):
 
 
 UPDATE_PAYLOAD = Body(description="Update payload.")
+CSV_DOCUMENT = File(description="CSV document.")
 
 
 @pytest.mark.asyncio
@@ -133,6 +146,64 @@ async def test_openapi_uses_parameter_markers_for_metadata() -> None:
         operation["requestBody"]["content"]["application/json"]["schema"]["description"]
         == "Update payload."
     )
+
+
+@pytest.mark.asyncio
+async def test_openapi_documents_form_and_file_request_bodies() -> None:
+    app = Quater(name="Imports API")
+
+    @app.post("/oauth/token")
+    async def token(
+        grant_type: str = Form(description="OAuth grant type."),
+        client_id: str = Form(alias="client-id"),
+    ) -> dict[str, str]:
+        return {"grant_type": grant_type, "client_id": client_id}
+
+    @app.post("/imports")
+    async def import_document(
+        account_id: str = Form(),
+        document: UploadFile = CSV_DOCUMENT,
+    ) -> dict[str, str]:
+        return {"account_id": account_id, "filename": document.filename}
+
+    response = await app.handle(Request(method="GET", path="/openapi.json"))
+    body = json.loads(response.body)
+
+    token_body = body["paths"]["/oauth/token"]["post"]["requestBody"]
+    assert token_body == {
+        "content": {
+            "application/x-www-form-urlencoded": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "grant_type": {
+                            "type": "string",
+                            "description": "OAuth grant type.",
+                        },
+                        "client-id": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                    "required": ["grant_type", "client-id"],
+                }
+            }
+        },
+        "description": "grant_type: OAuth grant type.",
+        "required": True,
+    }
+    import_body = body["paths"]["/imports"]["post"]["requestBody"]
+    assert import_body["content"]["multipart/form-data"]["schema"] == {
+        "type": "object",
+        "properties": {
+            "account_id": {"type": "string"},
+            "document": {
+                "type": "string",
+                "format": "binary",
+                "description": "CSV document.",
+            },
+        },
+        "additionalProperties": False,
+        "required": ["account_id", "document"],
+    }
 
 
 @pytest.mark.asyncio

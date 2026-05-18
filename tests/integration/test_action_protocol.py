@@ -371,6 +371,26 @@ async def test_remote_action_rejects_oversized_response() -> None:
 
 
 @pytest.mark.asyncio
+async def test_remote_action_response_limit_uses_app_config() -> None:
+    app = Quater(cli_auth=authenticate, max_action_response_size=4)
+
+    @app.get("/small-limit", cli=True, description="Return a small oversized payload.")
+    async def small_limit() -> Response:
+        return Response(b"hello")
+
+    status, body = await action_rpc(
+        app,
+        {"action": "small_limit", "arguments": {}},
+    )
+
+    assert status == 502
+    assert body["error"] == {
+        "code": "response_too_large",
+        "message": "Response too large",
+    }
+
+
+@pytest.mark.asyncio
 async def test_remote_action_rejects_bad_payload_shapes() -> None:
     app = Quater(cli_auth=authenticate)
 

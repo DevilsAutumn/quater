@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from http.cookies import SimpleCookie
+from secrets import token_hex
 from typing import Any, ClassVar, Literal, TypeAlias
 from urllib.parse import urlencode
 
@@ -17,6 +18,13 @@ QueryValue: TypeAlias = QueryPrimitive | Sequence[QueryPrimitive]
 QueryPairs: TypeAlias = Sequence[tuple[str, QueryPrimitive]]
 QueryParams: TypeAlias = Mapping[str, QueryValue] | QueryPairs
 RequestContent: TypeAlias = bytes | bytearray | memoryview | str
+FormValue: TypeAlias = QueryPrimitive | Sequence[QueryPrimitive]
+FormDataInput: TypeAlias = Mapping[str, FormValue] | QueryPairs
+FileContent: TypeAlias = bytes | bytearray | memoryview | str
+FileValue: TypeAlias = (
+    FileContent | tuple[str, FileContent] | tuple[str, FileContent, str]
+)
+FilesInput: TypeAlias = Mapping[str, FileValue] | Sequence[tuple[str, FileValue]]
 JSONRPCID: TypeAlias = str | int
 
 __all__ = ["MCPTestClient", "TestClient", "TestResponse"]
@@ -144,9 +152,16 @@ class TestClient:
         cookies: Mapping[str, str] | None = None,
         json: object = None,
         content: RequestContent | None = None,
+        data: FormDataInput | None = None,
+        files: FilesInput | None = None,
     ) -> TestResponse:
         request_path, query_string = _request_target(path, params)
-        body, content_type = _request_body(json=json, content=content)
+        body, content_type = _request_body(
+            json=json,
+            content=content,
+            data=data,
+            files=files,
+        )
         request_headers = self._request_headers(
             headers,
             cookies=cookies,
@@ -192,6 +207,8 @@ class TestClient:
         cookies: Mapping[str, str] | None = None,
         json: object = None,
         content: RequestContent | None = None,
+        data: FormDataInput | None = None,
+        files: FilesInput | None = None,
     ) -> TestResponse:
         return await self.request(
             "POST",
@@ -201,6 +218,8 @@ class TestClient:
             cookies=cookies,
             json=json,
             content=content,
+            data=data,
+            files=files,
         )
 
     async def put(
@@ -212,6 +231,8 @@ class TestClient:
         cookies: Mapping[str, str] | None = None,
         json: object = None,
         content: RequestContent | None = None,
+        data: FormDataInput | None = None,
+        files: FilesInput | None = None,
     ) -> TestResponse:
         return await self.request(
             "PUT",
@@ -221,6 +242,8 @@ class TestClient:
             cookies=cookies,
             json=json,
             content=content,
+            data=data,
+            files=files,
         )
 
     async def patch(
@@ -232,6 +255,8 @@ class TestClient:
         cookies: Mapping[str, str] | None = None,
         json: object = None,
         content: RequestContent | None = None,
+        data: FormDataInput | None = None,
+        files: FilesInput | None = None,
     ) -> TestResponse:
         return await self.request(
             "PATCH",
@@ -241,6 +266,8 @@ class TestClient:
             cookies=cookies,
             json=json,
             content=content,
+            data=data,
+            files=files,
         )
 
     async def delete(
@@ -252,6 +279,8 @@ class TestClient:
         cookies: Mapping[str, str] | None = None,
         json: object = None,
         content: RequestContent | None = None,
+        data: FormDataInput | None = None,
+        files: FilesInput | None = None,
     ) -> TestResponse:
         return await self.request(
             "DELETE",
@@ -261,6 +290,8 @@ class TestClient:
             cookies=cookies,
             json=json,
             content=content,
+            data=data,
+            files=files,
         )
 
     def _request_headers(
@@ -464,9 +495,20 @@ def _request_body(
     *,
     json: object,
     content: RequestContent | None,
+    data: FormDataInput | None,
+    files: FilesInput | None,
 ) -> tuple[bytes, str | None]:
     if json is not None and content is not None:
         raise ValueError("Use either json or content, not both")
+    provided = sum(value is not None for value in (json, content, data, files))
+    if provided > 1 and not (data is not None and files is not None and provided == 2):
+        raise ValueError("Use one request body style")
+    if files is not None:
+        return _multipart_body(data=data, files=files)
+    if data is not None:
+        return urlencode(_flatten_form_mapping(data)).encode("utf-8"), (
+            "application/x-www-form-urlencoded"
+        )
     if json is not None:
         from quater.serialization import dumps_json
 
@@ -476,6 +518,110 @@ def _request_body(
     if isinstance(content, str):
         return content.encode("utf-8"), "text/plain; charset=utf-8"
     return bytes(content), None
+
+
+def _flatten_form_mapping(
+    data: FormDataInput,
+) -> list[tuple[str, QueryPrimitive]]:
+    if isinstance(data, Mapping):
+        return _flatten_query_mapping(data)
+    return list(data)
+
+
+def _multipart_body(
+    *,
+    data: FormDataInput | None,
+    files: FilesInput,
+) -> tuple[bytes, str]:
+    boundary = f"quater-{token_hex(16)}"
+    chunks: list[bytes] = []
+    for name, value in _flatten_form_mapping(data or ()):
+        _append_multipart_field(chunks, boundary=boundary, name=name, value=value)
+    for name, file_value in _iter_file_items(files):
+        filename, content, content_type = _normalize_file_value(name, file_value)
+        _append_multipart_file(
+            chunks,
+            boundary=boundary,
+            name=name,
+            filename=filename,
+            content=content,
+            content_type=content_type,
+        )
+    chunks.append(f"--{boundary}--\r\n".encode("ascii"))
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def _iter_file_items(files: FilesInput) -> Iterable[tuple[str, FileValue]]:
+    if isinstance(files, Mapping):
+        return files.items()
+    return files
+
+
+def _append_multipart_field(
+    chunks: list[bytes],
+    *,
+    boundary: str,
+    name: str,
+    value: QueryPrimitive,
+) -> None:
+    chunks.append(f"--{boundary}\r\n".encode("ascii"))
+    chunks.append(
+        b'Content-Disposition: form-data; name="' + _header_value(name) + b'"\r\n\r\n'
+    )
+    chunks.append(str(value).encode("utf-8"))
+    chunks.append(b"\r\n")
+
+
+def _append_multipart_file(
+    chunks: list[bytes],
+    *,
+    boundary: str,
+    name: str,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> None:
+    chunks.append(f"--{boundary}\r\n".encode("ascii"))
+    chunks.append(
+        b'Content-Disposition: form-data; name="'
+        + _header_value(name)
+        + b'"; filename="'
+        + _header_value(filename)
+        + b'"\r\n'
+    )
+    chunks.append(b"Content-Type: " + _header_value(content_type) + b"\r\n\r\n")
+    chunks.append(content)
+    chunks.append(b"\r\n")
+
+
+def _normalize_file_value(name: str, value: FileValue) -> tuple[str, bytes, str]:
+    if isinstance(value, tuple):
+        if len(value) == 2:
+            filename, content = value
+            content_type = "application/octet-stream"
+        elif len(value) == 3:
+            filename, content, content_type = value
+        else:
+            raise ValueError("File tuples must contain 2 or 3 items")
+        return filename, _content_bytes(content), content_type
+    return name, _content_bytes(value), "application/octet-stream"
+
+
+def _content_bytes(value: FileContent) -> bytes:
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    return bytes(value)
+
+
+def _header_value(value: str) -> bytes:
+    if not value or any(_invalid_multipart_header_char(char) for char in value):
+        raise ValueError("Multipart names and filenames must not be empty or unsafe")
+    return value.encode("utf-8")
+
+
+def _invalid_multipart_header_char(value: str) -> bool:
+    ordinal = ord(value)
+    return ordinal < 32 or ordinal == 127 or value in {'"', "\\"}
 
 
 def _cookie_header(cookies: Mapping[str, str]) -> str:

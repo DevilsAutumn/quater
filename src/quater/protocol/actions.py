@@ -66,8 +66,12 @@ def preflight_payload(result: ActionPreflightResult) -> dict[str, object]:
     }
 
 
-async def response_payload(response: Response) -> dict[str, object]:
-    body = await response_body(response)
+async def response_payload(
+    response: Response,
+    *,
+    max_response_size: int = MAX_ACTION_RESPONSE_BYTES,
+) -> dict[str, object]:
+    body = await response_body(response, max_response_size=max_response_size)
     return {
         "ok": response.status_code < 400,
         "status_code": response.status_code,
@@ -75,20 +79,30 @@ async def response_payload(response: Response) -> dict[str, object]:
     }
 
 
-async def response_body(response: Response) -> bytes:
+async def response_body(
+    response: Response,
+    *,
+    max_response_size: int = MAX_ACTION_RESPONSE_BYTES,
+) -> bytes:
     if not isinstance(response, StreamResponse):
-        if len(response.body) > MAX_ACTION_RESPONSE_BYTES:
-            raise ValueError("Action response exceeded 1 MiB")
+        if len(response.body) > max_response_size:
+            raise ValueError(_response_limit_message(max_response_size))
         return response.body
 
     chunks: list[bytes] = []
     size = 0
     async for chunk in response.body_iterator:
         size += len(chunk)
-        if size > MAX_ACTION_RESPONSE_BYTES:
-            raise ValueError("Action response exceeded 1 MiB")
+        if size > max_response_size:
+            raise ValueError(_response_limit_message(max_response_size))
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+def _response_limit_message(max_response_size: int) -> str:
+    if max_response_size == MAX_ACTION_RESPONSE_BYTES:
+        return "Action response exceeded 1 MiB"
+    return "Action response exceeded configured response limit"
 
 
 def json_or_text(response: Response, body: bytes) -> object:

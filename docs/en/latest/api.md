@@ -26,6 +26,9 @@ from quater import (
     CORSConfig,
     Cookie,
     EmptyResponse,
+    File,
+    Form,
+    FormData,
     Header,
     HTMLResponse,
     HTTPError,
@@ -47,6 +50,7 @@ from quater import (
     TestResponse,
     TextResponse,
     ToolAuditEvent,
+    UploadFile,
 )
 ```
 
@@ -76,6 +80,8 @@ Important constructor options:
 - `allowed_hosts`: accepted Host headers.
 - `trusted_proxies`: proxy IPs or CIDR ranges trusted for forwarded headers.
 - `cors`: browser CORS policy.
+- `max_form_parts`, `max_file_size`, and response-size options: request and
+  tool/action limits. These can also come from deployment environment variables.
 - `mcp_auth`: surface auth for MCP. Required when any route has `tool=True`.
 - `cli_auth`: surface auth for CLI actions. Required when any route has
   `cli=True`.
@@ -139,7 +145,8 @@ Quater decides a handler parameter source in this order:
 
 1. `inject={...}` resources
 2. `Request`
-3. parameter markers: `Path`, `Query`, `Body`, `Header`, `Cookie`
+3. parameter markers: `Path`, `Query`, `Body`, `Form`, `File`, `Header`,
+   `Cookie`
 4. route path names
 5. scalar query parameters
 6. JSON body parameters
@@ -176,6 +183,31 @@ async def update_order(
 `msgspec.Struct` gives typed JSON validation and fast serialization through
 [msgspec](https://jcristharif.com/msgspec/). Plain `dict` is fine for dynamic
 responses.
+
+Use [`Form`](/en/latest/reference/parameters#symbol-form) for scalar form
+fields and [`File`](/en/latest/reference/parameters#symbol-file) for multipart
+uploads. File parameters bind to
+[`UploadFile`](/en/latest/reference/request#symbol-uploadfile), `bytes`,
+`list[UploadFile]`, or `list[bytes]`.
+
+```python
+from quater import File, Form, Quater, UploadFile
+
+app = Quater()
+
+
+@app.post("/imports")
+async def import_document(
+    account_id: str = Form(),
+    document: UploadFile = File(),
+) -> dict[str, object]:
+    content = await document.read()
+    return {
+        "account_id": account_id,
+        "filename": document.filename,
+        "size": len(content),
+    }
+```
 
 ## Middleware
 
@@ -347,6 +379,10 @@ must exist.
 
 `Only one body parameter is supported`
 : Move body fields into one `msgspec.Struct`.
+
+`JSON body parameters cannot be combined with form or file parameters`
+: A route can read one request body format. Use JSON, URL-encoded form data, or
+  multipart form data for that handler.
 
 `Path parameter 'order_id' does not match route path`
 : Rename the handler parameter or use `Path(alias=...)`.

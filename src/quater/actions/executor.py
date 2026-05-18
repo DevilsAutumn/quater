@@ -77,6 +77,7 @@ class _ActionRequestParts:
     path_params: dict[str, object]
     query_string: str
     body: bytes
+    content_type: str | None
     headers: tuple[tuple[str, str], ...]
     cookies: tuple[tuple[str, str], ...]
 
@@ -191,6 +192,10 @@ async def prepare_action_call(
         auth=request.auth,
         client=request.client,
         max_body_size=request.max_body_size,
+        max_form_parts=request.max_form_parts,
+        max_form_field_size=request.max_form_field_size,
+        max_file_size=request.max_file_size,
+        upload_spool_size=request.upload_spool_size,
         context=context,
         app=request.app,
     )
@@ -212,6 +217,7 @@ async def prepare_action_call(
         auth_request,
         query_string=parts.query_string,
         body=parts.body,
+        content_type=parts.content_type,
         headers=parts.headers,
         cookies=parts.cookies,
     )
@@ -248,9 +254,11 @@ def _build_request_parts(
     query_items: list[tuple[str, str]] = []
     header_items: list[tuple[str, str]] = []
     cookie_items: list[tuple[str, str]] = []
+    form_items: list[tuple[str, str]] = []
     body_value: object = None
     body_parameter_name: str | None = None
     has_body = False
+    has_form = False
 
     converters = _path_converters(action.pattern)
     for parameter in action.handler_plan.parameters:
@@ -291,17 +299,34 @@ def _build_request_parts(
                         _argument_to_cookie(value, parameter.input_name),
                     )
                 )
+        elif parameter.source == "form":
+            if value is not _MISSING:
+                form_items.append((parameter.request_name, _argument_to_scalar(value)))
+                has_form = True
         elif parameter.source == "body":
             body_value = value
             body_parameter_name = parameter.input_name
             has_body = True
+        elif parameter.source == "file":
+            raise BadRequestError("File arguments are not supported for actions")
 
     return _ActionRequestParts(
         path_params=path_params,
         query_string=urlencode(query_items),
-        body=_encode_body_argument(body_value, body_parameter_name)
-        if has_body
-        else b"",
+        body=(
+            _encode_body_argument(body_value, body_parameter_name)
+            if has_body
+            else urlencode(form_items).encode("utf-8")
+            if has_form
+            else b""
+        ),
+        content_type=(
+            "application/json"
+            if has_body
+            else "application/x-www-form-urlencoded"
+            if has_form
+            else None
+        ),
         headers=tuple(header_items),
         cookies=tuple(cookie_items),
     )
@@ -325,7 +350,7 @@ def _normalize_action_argument(parameter: BoundParameter, value: object) -> obje
         return value
     if parameter.source == "body":
         return value
-    if parameter.source in {"query", "header", "cookie"} and _allows_none(
+    if parameter.source in {"query", "header", "cookie", "form"} and _allows_none(
         parameter.annotation
     ):
         return _MISSING
@@ -400,17 +425,23 @@ def _request_with_action_headers(
     *,
     query_string: str,
     body: bytes,
+    content_type: str | None,
     headers: tuple[tuple[str, str], ...],
     cookies: tuple[tuple[str, str], ...],
 ) -> Request:
-    if not headers and not cookies:
+    if content_type is None and not headers and not cookies:
         return request
 
     return Request(
         method=request.method,
         path=request.path,
         scheme=request.scheme,
-        headers=_merge_action_headers(request, headers=headers, cookies=cookies),
+        headers=_merge_action_headers(
+            request,
+            content_type=content_type,
+            headers=headers,
+            cookies=cookies,
+        ),
         query_string=query_string,
         body=body,
         auth=request.auth,
@@ -418,16 +449,23 @@ def _request_with_action_headers(
         context=request.context,
         app=request.app,
         max_body_size=request.max_body_size,
+        max_form_parts=request.max_form_parts,
+        max_form_field_size=request.max_form_field_size,
+        max_file_size=request.max_file_size,
+        upload_spool_size=request.upload_spool_size,
     )
 
 
 def _merge_action_headers(
     request: Request,
     *,
+    content_type: str | None,
     headers: tuple[tuple[str, str], ...],
     cookies: tuple[tuple[str, str], ...],
 ) -> tuple[tuple[str, str], ...]:
     override_names = {name.lower() for name, _value in headers}
+    if content_type is not None:
+        override_names.add("content-type")
     if cookies:
         override_names.add("cookie")
 
@@ -436,12 +474,16 @@ def _merge_action_headers(
         for name, value in request.headers.raw
         if name.lower() not in override_names
     )
+    content_type_header = (
+        (("content-type", content_type),) if content_type is not None else ()
+    )
     if not cookies:
-        return (*merged, *headers)
+        return (*merged, *headers, *content_type_header)
 
     return (
         *merged,
         *headers,
+        *content_type_header,
         ("cookie", _merged_cookie_header(request.headers.get("cookie"), cookies)),
     )
 

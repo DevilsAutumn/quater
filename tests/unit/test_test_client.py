@@ -80,11 +80,44 @@ async def test_test_client_posts_json_body() -> None:
 
 
 @pytest.mark.asyncio
+async def test_test_client_posts_form_and_file_bodies() -> None:
+    app = Quater()
+
+    @app.post("/inspect")
+    async def inspect(request: Request) -> dict[str, object]:
+        form = await request.form()
+        file = form.get_file("avatar")
+        assert file is not None
+        return {
+            "name": form["name"],
+            "filename": file.filename,
+            "content": (await file.read()).decode("utf-8"),
+            "content_type": request.headers["content-type"].split(";", 1)[0],
+        }
+
+    response = await TestClient(app).post(
+        "/inspect",
+        data={"name": "Ada"},
+        files={"avatar": ("avatar.txt", b"hello", "text/plain")},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "name": "Ada",
+        "filename": "avatar.txt",
+        "content": "hello",
+        "content_type": "multipart/form-data",
+    }
+
+
+@pytest.mark.asyncio
 async def test_test_client_rejects_ambiguous_body_arguments() -> None:
     client = TestClient(Quater())
 
     with pytest.raises(ValueError, match="Use either json or content"):
         await client.post("/echo", json={"name": "Ada"}, content=b"{}")
+    with pytest.raises(ValueError, match="Use one request body style"):
+        await client.post("/echo", json={"name": "Ada"}, data={"name": "Ada"})
 
 
 @pytest.mark.asyncio

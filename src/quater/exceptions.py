@@ -53,11 +53,24 @@ class RequestJSONError(BadRequestError):
     detail = "Malformed JSON body"
 
 
+class RequestFormError(BadRequestError):
+    """Raised when a request body is not valid form data."""
+
+    detail = "Malformed form body"
+
+
 class PayloadTooLargeError(HTTPError):
     """Raised when a request body exceeds the configured limit."""
 
     status_code = 413
     detail = "Payload Too Large"
+
+
+class UnsupportedMediaTypeError(HTTPError):
+    """Raised when the request content type cannot satisfy the handler."""
+
+    status_code = 415
+    detail = "Unsupported Media Type"
 
 
 class UnauthorizedError(HTTPError):
@@ -96,10 +109,12 @@ __all__ = [
     "MiddlewareStateError",
     "PayloadTooLargeError",
     "QuaterError",
+    "RequestFormError",
     "RequestJSONError",
     "ResponseConversionError",
     "RouteBindingError",
     "RouteConflictError",
     "RouteError",
+    "UnsupportedMediaTypeError",
     "UnauthorizedError",
 ]

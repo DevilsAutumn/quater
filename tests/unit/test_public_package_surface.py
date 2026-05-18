@@ -22,6 +22,9 @@ from quater import (
     Body,
     Cookie,
     CORSConfig,
+    File,
+    Form,
+    FormData,
     Header,
     ImproperlyConfigured,
     MCPTestClient,
@@ -35,6 +38,7 @@ from quater import (
     TestClient,
     TestResponse,
     ToolAuditEvent,
+    UploadFile,
 )
 from quater._api_boundary import (
     INTERNAL_SUBMODULES,
@@ -98,6 +102,9 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.AuthRequest is AuthRequest
     assert quater.Body is Body
     assert quater.Cookie is Cookie
+    assert quater.File is File
+    assert quater.Form is Form
+    assert quater.FormData is FormData
     assert quater.Header is Header
     assert quater.Path is Path
     assert quater.Query is Query
@@ -111,6 +118,7 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.TestClient is TestClient
     assert quater.TestResponse is TestResponse
     assert quater.ToolAuditEvent is ToolAuditEvent
+    assert quater.UploadFile is UploadFile
 
 
 def test_top_level_submodules_are_intentionally_classified() -> None:

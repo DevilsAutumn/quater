@@ -54,6 +54,12 @@ def test_secure_defaults_are_represented_in_config() -> None:
     assert app.config.allowed_hosts == ()
     assert app.config.trusted_proxies == ()
     assert app.config.max_body_size == 2 * 1024 * 1024
+    assert app.config.max_form_parts == 1000
+    assert app.config.max_form_field_size == 1024 * 1024
+    assert app.config.max_file_size == 2 * 1024 * 1024
+    assert app.config.upload_spool_size == 1024 * 1024
+    assert app.config.max_tool_response_size == 1024 * 1024
+    assert app.config.max_action_response_size == 1024 * 1024
     assert app.config.cors is None
     assert app.config.content_security_policy is None
     assert app.config.docs_path == "/docs"
@@ -109,6 +115,70 @@ def test_validate_production_compiles_routes_first() -> None:
 
     with pytest.raises(RouteConflictError):
         app.validate_production()
+
+
+def test_quater_reads_limit_settings_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUATER_MAX_BODY_SIZE", "4mb")
+    monkeypatch.setenv("QUATER_MAX_FORM_PARTS", "25")
+    monkeypatch.setenv("QUATER_MAX_FORM_FIELD_SIZE", "64kb")
+    monkeypatch.setenv("QUATER_MAX_FILE_SIZE", "8mb")
+    monkeypatch.setenv("QUATER_UPLOAD_SPOOL_SIZE", "512kb")
+    monkeypatch.setenv("QUATER_MAX_TOOL_RESPONSE_SIZE", "2mb")
+    monkeypatch.setenv("QUATER_MAX_ACTION_RESPONSE_SIZE", "3mb")
+
+    app = Quater()
+
+    assert app.config.max_body_size == 4 * 1024 * 1024
+    assert app.config.max_form_parts == 25
+    assert app.config.max_form_field_size == 64 * 1024
+    assert app.config.max_file_size == 8 * 1024 * 1024
+    assert app.config.upload_spool_size == 512 * 1024
+    assert app.config.max_tool_response_size == 2 * 1024 * 1024
+    assert app.config.max_action_response_size == 3 * 1024 * 1024
+
+
+def test_explicit_limit_options_override_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUATER_MAX_BODY_SIZE", "4mb")
+    monkeypatch.setenv("QUATER_MAX_FILE_SIZE", "8mb")
+
+    app = Quater(max_body_size="1mb", max_file_size="16kb")
+
+    assert app.config.max_body_size == 1024 * 1024
+    assert app.config.max_file_size == 16 * 1024
+
+
+def test_explicit_config_does_not_read_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUATER_MAX_BODY_SIZE", "4mb")
+
+    app = Quater(config=AppConfig(max_body_size=128))
+
+    assert app.config.max_body_size == 128
+
+
+@pytest.mark.parametrize(
+    ("env_name", "value"),
+    (
+        ("QUATER_MAX_BODY_SIZE", "2tb"),
+        ("QUATER_MAX_FORM_PARTS", "0"),
+        ("QUATER_MAX_FORM_FIELD_SIZE", "-1mb"),
+        ("QUATER_MAX_FILE_SIZE", ""),
+    ),
+)
+def test_invalid_environment_limit_settings_fail_early(
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+    value: str,
+) -> None:
+    monkeypatch.setenv(env_name, value)
+
+    with pytest.raises(ConfigurationError, match=env_name):
+        Quater()
 
 
 @pytest.mark.parametrize("value", ["", "2", "mb", "2tb", "-1mb"])

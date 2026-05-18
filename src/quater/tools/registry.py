@@ -82,6 +82,10 @@ def build_tool_registry(routes: tuple[RouteDefinition, ...]) -> ToolRegistry:
             path_param_names=pattern.param_names,
             inject=route.inject,
         )
+        if any(parameter.source == "file" for parameter in handler_plan.parameters):
+            raise ConfigurationError(
+                "Routes with File parameters cannot be exposed as MCP tools"
+            )
         tools[name] = ToolDefinition(
             name=name,
             description=resolve_tool_description(

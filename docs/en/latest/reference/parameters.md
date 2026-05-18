@@ -1,7 +1,7 @@
 # Parameter Reference
 
-This page documents request binding markers: `Path`, `Query`, `Body`, `Header`,
-and `Cookie`.
+This page documents request binding markers: `Path`, `Query`, `Body`, `Form`,
+`File`, `Header`, and `Cookie`.
 
 ## Prerequisites
 
@@ -9,10 +9,13 @@ Read [Public API](/en/latest/api#binding). Markers are needed when inference is
 not enough, or when you want aliases and schema descriptions.
 
 ```python
-from quater import Body, Cookie, Header, Path, Query
+from quater import Body, Cookie, File, Form, Header, Path, Query
 ```
 
 Markers can be used as defaults or inside `typing.Annotated`.
+`Query`, `Header`, `Cookie`, and `Form` bind scalar values only: `str`, `int`,
+`float`, or `bool`. Use `Body` for structured JSON input and `File` for
+multipart file uploads.
 
 ```python
 from typing import Annotated
@@ -84,6 +87,53 @@ Body(
 | `alias` | `str \| None` | `None` | MCP and CLI argument name for the body. |
 | `description` | `str \| None` | `None` | Schema description. Empty strings become `None`. |
 
+## Form {#symbol-form}
+
+Added in `0.1.0a1`.
+
+```python
+Form(
+    default: object = ...,
+    *,
+    alias: str | None = None,
+    description: str | None = None,
+) -> Any
+```
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `default` | `object` | `...` | Omit to require the form field. |
+| `alias` | `str \| None` | `None` | Form field name. |
+| `description` | `str \| None` | `None` | Schema description. Empty strings become `None`. |
+
+`Form` reads `application/x-www-form-urlencoded` and `multipart/form-data`
+fields. It is for scalar values such as login forms, OAuth-style token requests,
+and compatibility with clients that do not send JSON.
+
+## File {#symbol-file}
+
+Added in `0.1.0a1`.
+
+```python
+File(
+    default: object = ...,
+    *,
+    alias: str | None = None,
+    description: str | None = None,
+) -> Any
+```
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `default` | `object` | `...` | Omit to require the file. |
+| `alias` | `str \| None` | `None` | Multipart field name. |
+| `description` | `str \| None` | `None` | Schema description. Empty strings become `None`. |
+
+`File` reads `multipart/form-data` file parts. Handler annotations may be
+[`UploadFile`](./request#symbol-uploadfile), `bytes`, `list[UploadFile]`, or
+`list[bytes]`. Quater keeps file uploads HTTP-only in this release; routes with
+`File` parameters cannot be exposed as MCP tools or CLI actions.
+
 ## Header {#symbol-header}
 
 Added in `0.1.0a1`.
@@ -154,6 +204,27 @@ async def update_order(
     }
 ```
 
+Form and file uploads use explicit markers too:
+
+```python
+from quater import File, Form, Quater, UploadFile
+
+app = Quater()
+
+
+@app.post("/imports")
+async def import_document(
+    account_id: str = Form(description="Account id."),
+    document: UploadFile = File(description="CSV document."),
+) -> dict[str, object]:
+    content = await document.read()
+    return {
+        "account_id": account_id,
+        "filename": document.filename,
+        "size": len(content),
+    }
+```
+
 Expected body:
 
 ```json
@@ -180,6 +251,16 @@ Expected body:
 
 `Query parameter 'filters' must use str, int, float, or bool`
 : Use `Body` for structured data.
+
+`Form parameter 'profile' must use str, int, float, or bool`
+: Use `File` for uploaded files and `Body` for structured JSON.
+
+`File parameter 'document' must use UploadFile, bytes, list[UploadFile], or list[bytes]`
+: Change the handler annotation to one of the supported file shapes.
+
+`JSON body parameters cannot be combined with form or file parameters`
+: A request body is either JSON or form data. Split the route or move all input
+  to one format.
 
 ## Also See
 

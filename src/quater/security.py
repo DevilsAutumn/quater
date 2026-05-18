@@ -27,6 +27,10 @@ def prepare_request_security(
     config: AppConfig,
 ) -> RequestSecurityContext:
     request.max_body_size = config.max_body_size
+    request.max_form_parts = config.max_form_parts
+    request.max_form_field_size = config.max_form_field_size
+    request.max_file_size = config.max_file_size
+    request.upload_spool_size = config.upload_spool_size
     _validate_singleton_request_headers(request)
     _enforce_content_length(request, config.max_body_size)
 

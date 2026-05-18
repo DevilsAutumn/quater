@@ -6,6 +6,7 @@ from typing import Annotated, Any
 
 import msgspec
 
+from quater import UploadFile
 from quater.params import BoundParameter
 from quater.schema import (
     allows_none,
@@ -53,6 +54,7 @@ def bound_parameter(
 def test_annotation_schema_handles_builtin_and_container_types() -> None:
     assert annotation_schema(str) == {"type": "string"}
     assert annotation_schema(bytes) == {"type": "string", "format": "binary"}
+    assert annotation_schema(UploadFile) == {"type": "string", "format": "binary"}
     assert annotation_schema(int) == {"type": "integer"}
     assert annotation_schema(float) == {"type": "number"}
     assert annotation_schema(bool) == {"type": "boolean"}

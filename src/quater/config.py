@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import os
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from ipaddress import ip_network
 from string import ascii_letters, digits
-from typing import Literal, TypeAlias, cast
+from typing import Literal, TypeAlias, TypedDict, cast
 
 from quater.cors import CORSConfig
 from quater.exceptions import ConfigurationError
 
 SecurityMode: TypeAlias = Literal["strict", "relaxed", "off"]
 MaxBodySize: TypeAlias = int | str
+MaxSize: TypeAlias = int | str
+
+DEFAULT_MAX_BODY_SIZE = 2 * 1024 * 1024
+DEFAULT_MAX_FORM_PARTS = 1000
+DEFAULT_MAX_FORM_FIELD_SIZE = 1024 * 1024
+DEFAULT_MAX_FILE_SIZE = 2 * 1024 * 1024
+DEFAULT_UPLOAD_SPOOL_SIZE = 1024 * 1024
+DEFAULT_MAX_TOOL_RESPONSE_SIZE = 1024 * 1024
+DEFAULT_MAX_ACTION_RESPONSE_SIZE = 1024 * 1024
 
 _SIZE_UNITS = {
     "b": 1,
@@ -29,6 +39,17 @@ _DOCS_ASSETS = (
     "favicon-32x32.png",
 )
 _HEADER_NAME_CHARS = frozenset(f"!#$%&'*+-.^_`|~{digits}{ascii_letters}")
+_SIZE_ENV_FIELDS = {
+    "QUATER_MAX_BODY_SIZE": "max_body_size",
+    "QUATER_MAX_FORM_FIELD_SIZE": "max_form_field_size",
+    "QUATER_MAX_FILE_SIZE": "max_file_size",
+    "QUATER_UPLOAD_SPOOL_SIZE": "upload_spool_size",
+    "QUATER_MAX_TOOL_RESPONSE_SIZE": "max_tool_response_size",
+    "QUATER_MAX_ACTION_RESPONSE_SIZE": "max_action_response_size",
+}
+_COUNT_ENV_FIELDS = {
+    "QUATER_MAX_FORM_PARTS": "max_form_parts",
+}
 
 
 class _Unset:
@@ -36,6 +57,16 @@ class _Unset:
 
 
 _UNSET = _Unset()
+
+
+class _EnvironmentOverrides(TypedDict, total=False):
+    max_body_size: int
+    max_form_parts: int
+    max_form_field_size: int
+    max_file_size: int
+    upload_spool_size: int
+    max_tool_response_size: int
+    max_action_response_size: int
 
 
 @dataclass(slots=True, frozen=True)
@@ -51,7 +82,13 @@ class AppConfig:
     security: SecurityMode = "strict"
     allowed_hosts: tuple[str, ...] = ()
     trusted_proxies: tuple[str, ...] = ()
-    max_body_size: int = 2 * 1024 * 1024
+    max_body_size: int = DEFAULT_MAX_BODY_SIZE
+    max_form_parts: int = DEFAULT_MAX_FORM_PARTS
+    max_form_field_size: int = DEFAULT_MAX_FORM_FIELD_SIZE
+    max_file_size: int = DEFAULT_MAX_FILE_SIZE
+    upload_spool_size: int = DEFAULT_UPLOAD_SPOOL_SIZE
+    max_tool_response_size: int = DEFAULT_MAX_TOOL_RESPONSE_SIZE
+    max_action_response_size: int = DEFAULT_MAX_ACTION_RESPONSE_SIZE
     cors: CORSConfig | None = None
     content_security_policy: str | None = None
     docs_path: str | None = "/docs"
@@ -65,6 +102,19 @@ class AppConfig:
             raise ConfigurationError(f"Unsupported security mode: {self.security!r}")
         if self.max_body_size < 0:
             raise ConfigurationError("max_body_size must be greater than or equal to 0")
+        if self.max_form_parts < 1:
+            raise ConfigurationError("max_form_parts must be greater than 0")
+        for field_name in (
+            "max_form_field_size",
+            "max_file_size",
+            "upload_spool_size",
+            "max_tool_response_size",
+            "max_action_response_size",
+        ):
+            if getattr(self, field_name) < 0:
+                raise ConfigurationError(
+                    f"{field_name} must be greater than or equal to 0"
+                )
         if any(not _is_valid_ip_network(proxy) for proxy in self.trusted_proxies):
             raise ConfigurationError(
                 "trusted_proxies must contain IP addresses or CIDR networks"
@@ -82,6 +132,15 @@ class AppConfig:
             raise ConfigurationError("docs_path requires openapi_path")
         self._validate_reserved_paths()
 
+    @classmethod
+    def from_environment(
+        cls,
+        env: Mapping[str, str] | None = None,
+    ) -> AppConfig:
+        """Build config defaults from ``QUATER_*`` environment variables."""
+
+        return cls(**_environment_overrides(os.environ if env is None else env))
+
     def _with_overrides(
         self,
         *,
@@ -90,6 +149,12 @@ class AppConfig:
         allowed_hosts: Iterable[str] | None = None,
         trusted_proxies: Iterable[str] | None = None,
         max_body_size: MaxBodySize | None = None,
+        max_form_parts: int | None = None,
+        max_form_field_size: MaxSize | None = None,
+        max_file_size: MaxSize | None = None,
+        upload_spool_size: MaxSize | None = None,
+        max_tool_response_size: MaxSize | None = None,
+        max_action_response_size: MaxSize | None = None,
         cors: CORSConfig | None = None,
         content_security_policy: str | None = None,
         docs_path: str | None | _Unset = _UNSET,
@@ -118,6 +183,45 @@ class AppConfig:
                 self.max_body_size
                 if max_body_size is None
                 else parse_size(max_body_size, field_name="max_body_size")
+            ),
+            max_form_parts=(
+                self.max_form_parts
+                if max_form_parts is None
+                else parse_count(max_form_parts, field_name="max_form_parts")
+            ),
+            max_form_field_size=(
+                self.max_form_field_size
+                if max_form_field_size is None
+                else parse_size(
+                    max_form_field_size,
+                    field_name="max_form_field_size",
+                )
+            ),
+            max_file_size=(
+                self.max_file_size
+                if max_file_size is None
+                else parse_size(max_file_size, field_name="max_file_size")
+            ),
+            upload_spool_size=(
+                self.upload_spool_size
+                if upload_spool_size is None
+                else parse_size(upload_spool_size, field_name="upload_spool_size")
+            ),
+            max_tool_response_size=(
+                self.max_tool_response_size
+                if max_tool_response_size is None
+                else parse_size(
+                    max_tool_response_size,
+                    field_name="max_tool_response_size",
+                )
+            ),
+            max_action_response_size=(
+                self.max_action_response_size
+                if max_action_response_size is None
+                else parse_size(
+                    max_action_response_size,
+                    field_name="max_action_response_size",
+                )
             ),
             cors=self.cors if cors is None else cors,
             content_security_policy=(
@@ -184,6 +288,36 @@ def parse_size(value: MaxBodySize, *, field_name: str) -> int:
         )
 
     return int(digits) * _SIZE_UNITS[unit]
+
+
+def parse_count(value: int | str, *, field_name: str) -> int:
+    """Parse positive integer count settings."""
+
+    if isinstance(value, int):
+        if value < 1:
+            raise ConfigurationError(f"{field_name} must be greater than 0")
+        return value
+
+    normalized = value.strip()
+    if not normalized:
+        raise ConfigurationError(f"{field_name} must not be empty")
+    if not normalized.isdigit() or normalized.startswith("0") and normalized != "0":
+        raise ConfigurationError(f"{field_name} must be a positive integer")
+    parsed = int(normalized)
+    if parsed < 1:
+        raise ConfigurationError(f"{field_name} must be greater than 0")
+    return parsed
+
+
+def _environment_overrides(env: Mapping[str, str]) -> _EnvironmentOverrides:
+    overrides: dict[str, int] = {}
+    for env_name, field_name in _SIZE_ENV_FIELDS.items():
+        if env_name in env:
+            overrides[field_name] = parse_size(env[env_name], field_name=env_name)
+    for env_name, field_name in _COUNT_ENV_FIELDS.items():
+        if env_name in env:
+            overrides[field_name] = parse_count(env[env_name], field_name=env_name)
+    return cast(_EnvironmentOverrides, overrides)
 
 
 def _normalize_string_tuple(values: Iterable[str], field_name: str) -> tuple[str, ...]:

@@ -32,6 +32,8 @@ ParameterSource = Literal[
     "path",
     "query",
     "body",
+    "form",
+    "file",
     "header",
     "cookie",
 ]
@@ -90,6 +92,10 @@ class HandlerPlan:
                 kwargs[parameter.name] = _bind_cookie_parameter(request, parameter)
             elif parameter.source == "body":
                 kwargs[parameter.name] = await _bind_body_parameter(request, parameter)
+            elif parameter.source == "form":
+                kwargs[parameter.name] = await _bind_form_parameter(request, parameter)
+            elif parameter.source == "file":
+                kwargs[parameter.name] = await _bind_file_parameter(request, parameter)
 
         return kwargs
 
@@ -150,6 +156,8 @@ def build_handler_plan(
     except (NameError, TypeError):
         type_hints = handler.__annotations__
     body_parameters = 0
+    form_parameters = 0
+    file_parameters = 0
     resources = _normalize_resources(inject)
     parameters: list[BoundParameter] = []
     seen_names: set[str] = set()
@@ -195,6 +203,10 @@ def build_handler_plan(
             body_parameters += 1
             if body_parameters > 1:
                 raise RouteBindingError("Only one body parameter is supported")
+        elif source == "form":
+            form_parameters += 1
+        elif source == "file":
+            file_parameters += 1
 
         parameters.append(
             BoundParameter(
@@ -209,6 +221,10 @@ def build_handler_plan(
             )
         )
 
+    if body_parameters and (form_parameters or file_parameters):
+        raise RouteBindingError(
+            "JSON body parameters cannot be combined with form or file parameters"
+        )
     _validate_all_resources_are_used(resources, seen_names)
     _validate_parameter_collisions(parameters)
     return HandlerPlan(handler=handler, parameters=tuple(parameters))
@@ -311,6 +327,18 @@ def _bind_cookie_parameter(request: Request, parameter: BoundParameter) -> objec
     )
 
 
+async def _bind_form_parameter(request: Request, parameter: BoundParameter) -> object:
+    value = (await request.form()).get(parameter.request_name)
+    if value is None:
+        return _missing_request_value(parameter, label="form field")
+    return convert_scalar_value(
+        value,
+        parameter.annotation,
+        parameter.request_name,
+        source="form field",
+    )
+
+
 def _missing_request_value(parameter: BoundParameter, *, label: str) -> object:
     if parameter.default is not _EMPTY:
         return parameter.default
@@ -336,6 +364,39 @@ async def _bind_body_parameter(request: Request, parameter: BoundParameter) -> o
         ) from exc
 
 
+async def _bind_file_parameter(request: Request, parameter: BoundParameter) -> object:
+    files = (await request.form()).get_files(parameter.request_name)
+    if not files:
+        return _missing_request_value(parameter, label="file")
+
+    if _is_upload_file_list(parameter.annotation):
+        return list(files)
+    if _is_bytes_list(parameter.annotation):
+        return [await _read_upload_file(file) for file in files]
+
+    if len(files) > 1:
+        raise BadRequestError(
+            f"Multiple files received for parameter: {parameter.name}"
+        )
+
+    file = files[0]
+    if _is_upload_file_annotation(parameter.annotation):
+        return file
+    if _is_bytes_annotation(parameter.annotation):
+        return await _read_upload_file(file)
+
+    raise BadRequestError(f"Invalid file parameter: {parameter.name}")
+
+
+async def _read_upload_file(file: object) -> bytes:
+    from quater.formdata import UploadFile
+
+    if not isinstance(file, UploadFile):
+        raise RuntimeError("File parameter did not resolve to UploadFile")
+    await file.seek(0)
+    return await file.read()
+
+
 def _uses_generic_json(annotation: object) -> bool:
     return annotation in {_EMPTY, Any, object, dict, list}
 
@@ -345,6 +406,28 @@ def _is_query_type(annotation: object) -> bool:
         return True
     annotation = _strip_optional(annotation)
     return annotation in {str, int, float, bool}
+
+
+def _is_upload_file_annotation(annotation: object) -> bool:
+    from quater.formdata import UploadFile
+
+    return _strip_optional(annotation) is UploadFile
+
+
+def _is_bytes_annotation(annotation: object) -> bool:
+    return _strip_optional(annotation) is bytes
+
+
+def _is_upload_file_list(annotation: object) -> bool:
+    from quater.formdata import UploadFile
+
+    stripped = _strip_optional(annotation)
+    return get_origin(stripped) is list and get_args(stripped) == (UploadFile,)
+
+
+def _is_bytes_list(annotation: object) -> bool:
+    stripped = _strip_optional(annotation)
+    return get_origin(stripped) is list and get_args(stripped) == (bytes,)
 
 
 def convert_scalar_value(
@@ -493,8 +576,10 @@ def _validate_bound_parameter(
         raise RouteBindingError(
             f"Request parameter {name!r} cannot be bound from {source}"
         )
-    if source in {"query", "header", "cookie"}:
+    if source in {"query", "header", "cookie", "form"}:
         _validate_scalar_annotation(name, source=source, annotation=annotation)
+    if source == "file":
+        _validate_file_annotation(name, annotation)
 
 
 def _validate_header_name(name: str) -> None:
@@ -528,6 +613,20 @@ def _validate_scalar_annotation(
     )
 
 
+def _validate_file_annotation(name: str, annotation: object) -> None:
+    if (
+        _is_upload_file_annotation(annotation)
+        or _is_bytes_annotation(annotation)
+        or _is_upload_file_list(annotation)
+        or _is_bytes_list(annotation)
+    ):
+        return
+    raise RouteBindingError(
+        f"File parameter {name!r} must use UploadFile, bytes, "
+        "list[UploadFile], or list[bytes]"
+    )
+
+
 def _validate_parameter_collisions(parameters: list[BoundParameter]) -> None:
     action_names: dict[str, str] = {}
     request_names: dict[tuple[ParameterSource, str], str] = {}
@@ -545,7 +644,14 @@ def _validate_parameter_collisions(parameters: list[BoundParameter]) -> None:
             )
         action_names[parameter.input_name] = parameter.name
 
-        if parameter.source not in {"path", "query", "header", "cookie"}:
+        if parameter.source not in {
+            "path",
+            "query",
+            "header",
+            "cookie",
+            "form",
+            "file",
+        }:
             continue
         request_key = _request_name_collision_key(parameter)
         existing_request_name = request_names.get(request_key)
@@ -563,6 +669,8 @@ def _request_name_collision_key(
 ) -> tuple[ParameterSource, str]:
     if parameter.source == "header":
         return parameter.source, parameter.request_name.lower()
+    if parameter.source in {"form", "file"}:
+        return "form", parameter.request_name
     return parameter.source, parameter.request_name
 
 

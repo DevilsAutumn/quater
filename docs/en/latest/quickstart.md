@@ -178,7 +178,8 @@ Quater binds handler parameters by type and marker:
 
 - `Request` receives the normalized request object.
 - `Resource` values come from `inject={...}`.
-- `Path`, `Query`, `Body`, `Header`, and `Cookie` markers choose a source.
+- `Path`, `Query`, `Body`, `Form`, `File`, `Header`, and `Cookie` markers
+  choose a source.
 - Route path names bind path parameters.
 - Scalar values bind query parameters.
 - Structured values bind JSON bodies.
@@ -186,6 +187,10 @@ Quater binds handler parameters by type and marker:
 Use [`msgspec.Struct`](https://jcristharif.com/msgspec/) when you want typed,
 validated JSON input with Quater's fast JSON path. Plain `dict` works for
 dynamic responses or data that does not need validation.
+
+Use `Form` and `File` when a route must accept browser form posts or multipart
+uploads. Form fields bind scalar values; file fields bind `UploadFile` or
+`bytes`.
 
 ```python
 import msgspec
@@ -275,6 +280,10 @@ in this release.
 `Malformed JSON body`
 : Send valid JSON and set `content-type: application/json` when you call the
   route manually.
+
+`Unsupported form content type`
+: Send form requests as `application/x-www-form-urlencoded` or
+  `multipart/form-data`.
 
 ## Also See
 

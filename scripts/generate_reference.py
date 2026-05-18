@@ -54,13 +54,13 @@ PAGES: tuple[ReferencePage, ...] = (
         slug="request",
         title="Request",
         description="Request data and state passed through handlers.",
-        symbols=("Request", "State"),
+        symbols=("Request", "State", "FormData", "UploadFile"),
     ),
     ReferencePage(
         slug="parameters",
         title="Parameters",
         description="Handler parameter markers for request data binding.",
-        symbols=("Path", "Query", "Body", "Header", "Cookie"),
+        symbols=("Path", "Query", "Body", "Form", "File", "Header", "Cookie"),
     ),
     ReferencePage(
         slug="responses",
@@ -122,6 +122,12 @@ FIELD_DOCS: Mapping[str, Mapping[str, str]] = {
         "allowed_hosts": "Host names the app should accept.",
         "trusted_proxies": "Proxy IPs or CIDR ranges trusted for forwarded headers.",
         "max_body_size": "Maximum request body size in bytes.",
+        "max_form_parts": "Maximum number of form fields and file parts.",
+        "max_form_field_size": "Maximum size for one string form field.",
+        "max_file_size": "Maximum size for one uploaded file.",
+        "upload_spool_size": "Per-file size before upload data rolls to disk.",
+        "max_tool_response_size": "Maximum MCP tool response body size.",
+        "max_action_response_size": "Maximum CLI action response body size.",
         "cors": "Optional CORS policy.",
         "content_security_policy": "Optional Content-Security-Policy header value.",
         "docs_path": "Swagger UI path. Set to `None` to disable it.",
@@ -214,6 +220,14 @@ REQUEST_CONSTRUCTOR_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "Application handling the request. Quater sets this at the app boundary.",
     ),
     ("max_body_size", "int | None", "Optional body-size limit for this request."),
+    ("max_form_parts", "int | None", "Optional form part count limit."),
+    (
+        "max_form_field_size",
+        "int | None",
+        "Optional per-field form size limit.",
+    ),
+    ("max_file_size", "int | None", "Optional per-file upload size limit."),
+    ("upload_spool_size", "int | None", "Optional upload spool threshold."),
 )
 
 RESPONSE_DOCS: Mapping[str, str] = {
@@ -248,6 +262,22 @@ PARAMETER_DOCS: Mapping[str, tuple[str, tuple[str, ...]]] = {
         (
             "`Body` documents the body parameter and feeds the same schema into",
             "OpenAPI, MCP tools, and CLI actions.",
+        ),
+    ),
+    "Form": (
+        "Bind a scalar field from a submitted form.",
+        (
+            "`Form` reads fields from `application/x-www-form-urlencoded` or",
+            "`multipart/form-data` requests. It is useful for browser forms,",
+            "OAuth-style token endpoints, and compatibility with existing clients.",
+        ),
+    ),
+    "File": (
+        "Bind uploaded files from multipart form data.",
+        (
+            "`File` reads uploaded files from `multipart/form-data`. HTTP routes",
+            "can receive files, but MCP tools and CLI actions cannot expose file",
+            "parameters in this release.",
         ),
     ),
     "Header": (
@@ -286,6 +316,16 @@ PARAMETER_OPTIONS: Mapping[str, tuple[tuple[str, str, str], ...]] = {
         ),
         ("description", "str | None", "Human description used in generated schemas."),
     ),
+    "Form": (
+        ("default", "object", "Default value. Omit it to make the field required."),
+        ("alias", "str | None", "Form field name when it differs."),
+        ("description", "str | None", "Human description used in generated schemas."),
+    ),
+    "File": (
+        ("default", "object", "Default value. Omit it to make the file required."),
+        ("alias", "str | None", "Multipart field name when it differs."),
+        ("description", "str | None", "Human description used in generated schemas."),
+    ),
     "Header": (
         ("default", "object", "Default value. Omit it to make the header required."),
         ("alias", "str | None", "HTTP header name, such as `X-Request-ID`."),
@@ -319,6 +359,28 @@ QUATER_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "Proxy IPs trusted for forwarded headers.",
     ),
     ("max_body_size", "MaxBodySize | None", "Maximum request body size."),
+    ("max_form_parts", "int | None", "Maximum form field and file count."),
+    (
+        "max_form_field_size",
+        "MaxBodySize | None",
+        "Maximum size for one string form field.",
+    ),
+    ("max_file_size", "MaxBodySize | None", "Maximum size for one uploaded file."),
+    (
+        "upload_spool_size",
+        "MaxBodySize | None",
+        "Per-file size before upload data rolls to disk.",
+    ),
+    (
+        "max_tool_response_size",
+        "MaxBodySize | None",
+        "Maximum MCP tool response body size.",
+    ),
+    (
+        "max_action_response_size",
+        "MaxBodySize | None",
+        "Maximum CLI action response body size.",
+    ),
     ("cors", "CORSConfig | None", "Optional [CORSConfig](#symbol-corsconfig)."),
     ("content_security_policy", "str | None", "Optional CSP response header."),
     ("mcp_docs_path", "str | None", "MCP docs path. `None` disables it."),
@@ -1302,13 +1364,14 @@ def render_parameters(package: Any) -> str:
             "For raw request access, read [Request](./request).",
             "",
             "```python",
-            "from quater import Body, Cookie, Header, Path, Query",
+            "from quater import Body, Cookie, File, Form, Header, Path, Query",
             "```",
             "",
             "Markers can be used as defaults or inside `typing.Annotated`. The",
             "default form is shorter. `Annotated` keeps the Python default separate.",
-            "`Query`, `Header`, and `Cookie` bind scalar values only: `str`,",
-            "`int`, `float`, or `bool`. Use `Body` for structured JSON input.",
+            "`Query`, `Header`, `Cookie`, and `Form` bind scalar values only:",
+            "`str`, `int`, `float`, or `bool`. Use `Body` for structured JSON",
+            "input and `File` for multipart file uploads.",
             "",
             "```python",
             "from typing import Annotated",

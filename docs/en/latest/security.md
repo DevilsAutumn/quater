@@ -153,15 +153,25 @@ matches `trusted_proxies`.
 
 ## Body Limits
 
-`max_body_size` defaults to `2mb` and applies before JSON parsing:
+`max_body_size` defaults to `2mb` and applies before JSON parsing or form
+parsing:
 
 ```python
-app = Quater(max_body_size="2mb")
+app = Quater(
+    max_body_size="2mb",
+    max_form_parts=1000,
+    max_form_field_size="1mb",
+    max_file_size="2mb",
+)
 ```
 
 If `Content-Length` exceeds the limit, Quater rejects the request before reading
 the stream. If no content length exists, adapters enforce the limit while
 reading the body.
+
+Form and file limits apply after the request body fits inside `max_body_size`.
+Set them through constructor options or environment variables such as
+`QUATER_MAX_FILE_SIZE=8mb`.
 
 Expected error:
 

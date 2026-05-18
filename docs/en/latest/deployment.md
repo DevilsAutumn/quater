@@ -178,6 +178,18 @@ quater dev --working-dir ./apps/store main:app
 | `QUATER_TOKEN` | local CLI actions | unset | Bearer token for local `cli_auth`. |
 | `QUATER_HOME` | remote CLI config | `~/.quater` | Directory for `remotes.json`. |
 | `QUATER_ENV` | server startup | set by `quater dev` or `quater run` | `development` or `production` during server startup. |
+| `QUATER_MAX_BODY_SIZE` | app config | `2mb` | Maximum request body size. |
+| `QUATER_MAX_FORM_PARTS` | app config | `1000` | Maximum number of form fields and file parts. |
+| `QUATER_MAX_FORM_FIELD_SIZE` | app config | `1mb` | Maximum size for one string form field. |
+| `QUATER_MAX_FILE_SIZE` | app config | `2mb` | Maximum size for one uploaded file. |
+| `QUATER_UPLOAD_SPOOL_SIZE` | app config | `1mb` | Per-file size before upload data rolls to disk. |
+| `QUATER_MAX_TOOL_RESPONSE_SIZE` | app config | `1mb` | Maximum MCP tool response body size. |
+| `QUATER_MAX_ACTION_RESPONSE_SIZE` | app config | `1mb` | Maximum CLI action response body size. |
+
+Environment limit values accept `b`, `kb`, `mb`, or `gb`, except
+`QUATER_MAX_FORM_PARTS`, which must be a positive integer. Constructor keyword
+options override environment values. If you pass an explicit `AppConfig`, Quater
+uses that config as-is.
 
 ## Hosted MCP And Remote CLI
 

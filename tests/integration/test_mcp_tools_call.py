@@ -267,6 +267,23 @@ async def test_oversized_tool_response_becomes_tool_result_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tool_response_limit_uses_app_config() -> None:
+    app = Quater(mcp_auth=allow_mcp_auth, max_tool_response_size=4)
+
+    @app.get("/small-limit", tool=True, description="Return a small oversized payload.")
+    async def small_limit() -> Response:
+        return Response(b"hello")
+
+    status, body = await mcp_call(app, name="small_limit", arguments={})
+
+    assert status == 200
+    assert body["result"] == {
+        "content": [{"type": "text", "text": "Tool response too large"}],
+        "isError": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_approval_required_tool_call_requires_token() -> None:
     approval_calls = 0
     handler_calls = 0

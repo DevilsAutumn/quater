@@ -17,6 +17,9 @@ PUBLIC_API_SYMBOLS: Final[tuple[str, ...]] = (
     "CORSConfig",
     "Cookie",
     "EmptyResponse",
+    "File",
+    "Form",
+    "FormData",
     "HTTPError",
     "Header",
     "HTMLResponse",
@@ -38,6 +41,7 @@ PUBLIC_API_SYMBOLS: Final[tuple[str, ...]] = (
     "TestResponse",
     "TextResponse",
     "ToolAuditEvent",
+    "UploadFile",
     "__version__",
 )
 
@@ -66,6 +70,7 @@ INTERNAL_SUBMODULES: Final[frozenset[str]] = frozenset(
         "dependencies",
         "docs",
         "groups",
+        "formdata",
         "lifespan",
         "middleware",
         "observability",

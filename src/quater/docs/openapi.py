@@ -7,7 +7,7 @@ from inspect import Signature
 from typing import get_type_hints
 
 from quater.core import RouteDefinition
-from quater.params import HandlerPlan, build_handler_plan
+from quater.params import BoundParameter, HandlerPlan, build_handler_plan
 from quater.request import Request
 from quater.response import Response
 from quater.routing import (
@@ -121,6 +121,14 @@ def _parameters(handler_plan: HandlerPlan) -> list[dict[str, object]]:
 
 
 def _request_body(handler_plan: HandlerPlan) -> dict[str, object] | None:
+    form_parameters = tuple(
+        parameter
+        for parameter in handler_plan.parameters
+        if parameter.source in {"form", "file"}
+    )
+    if form_parameters:
+        return _form_request_body(form_parameters)
+
     for parameter in handler_plan.parameters:
         if parameter.source != "body":
             continue
@@ -138,6 +146,44 @@ def _request_body(handler_plan: HandlerPlan) -> dict[str, object] | None:
             body["required"] = True
         return body
     return None
+
+
+def _form_request_body(parameters: tuple[BoundParameter, ...]) -> dict[str, object]:
+    properties: dict[str, object] = {}
+    required: list[str] = []
+    descriptions: list[str] = []
+    has_file = False
+    for parameter in parameters:
+        properties[parameter.request_name] = parameter_schema(parameter)
+        if parameter.source == "file":
+            has_file = True
+        if parameter.description:
+            descriptions.append(f"{parameter.request_name}: {parameter.description}")
+        if parameter_required(parameter):
+            required.append(parameter.request_name)
+
+    schema: dict[str, object] = {
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": False,
+    }
+    if required:
+        schema["required"] = required
+
+    body: dict[str, object] = {
+        "content": {
+            (
+                "multipart/form-data"
+                if has_file
+                else "application/x-www-form-urlencoded"
+            ): {"schema": schema}
+        }
+    }
+    if descriptions:
+        body["description"] = "\n".join(descriptions)
+    if required:
+        body["required"] = True
+    return body
 
 
 def _responses(route: RouteDefinition) -> dict[str, object]:

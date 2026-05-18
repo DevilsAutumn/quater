@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from inspect import Signature
 from typing import Any, Literal, cast
 
-ParameterSource = Literal["path", "query", "body", "header", "cookie"]
+ParameterSource = Literal["path", "query", "body", "header", "cookie", "form", "file"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -68,6 +68,44 @@ def Body(
         Any,
         ParameterMarker(
             source="body",
+            default=_marker_default(default),
+            alias=_clean_alias(alias),
+            description=_clean_description(description),
+        ),
+    )
+
+
+def Form(
+    default: object = ...,
+    *,
+    alias: str | None = None,
+    description: str | None = None,
+) -> Any:
+    """Declare a form field parameter for binding and generated schemas."""
+
+    return cast(
+        Any,
+        ParameterMarker(
+            source="form",
+            default=_marker_default(default),
+            alias=_clean_alias(alias),
+            description=_clean_description(description),
+        ),
+    )
+
+
+def File(
+    default: object = ...,
+    *,
+    alias: str | None = None,
+    description: str | None = None,
+) -> Any:
+    """Declare a multipart file parameter for binding and generated schemas."""
+
+    return cast(
+        Any,
+        ParameterMarker(
+            source="file",
             default=_marker_default(default),
             alias=_clean_alias(alias),
             description=_clean_description(description),
@@ -149,6 +187,8 @@ def _is_control_character(value: str) -> bool:
 __all__ = [
     "Body",
     "Cookie",
+    "File",
+    "Form",
     "Header",
     "ParameterMarker",
     "ParameterSource",

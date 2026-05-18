@@ -244,6 +244,31 @@ HTTP aliases stay on the HTTP side for `Path`, `Query`, `Header`, and `Cookie`.
 `Body(alias=...)` changes the CLI and MCP body argument name because the body has
 no HTTP query or header name.
 
+`Form` fields behave like scalar arguments for actions. Quater encodes them as
+form data before it calls the same handler path:
+
+```python
+from quater import Form
+
+
+async def issue_token(
+    grant_type: str = Form(),
+    client_id: str = Form(),
+) -> dict[str, str]:
+    return {"grant_type": grant_type, "client_id": client_id}
+```
+
+```bash
+quater call issue_token \
+  --grant-type client_credentials \
+  --client-id client_123
+```
+
+`File` parameters are not exposed as CLI actions in this release. A local file
+path passed by an operator and a remote file upload are different trust
+boundaries, so Quater rejects `cli=True` on routes with `File` parameters
+instead of inventing unsafe behavior.
+
 ## Dry Run And Argument Hashes
 
 Dry-run exists on every action. You do not write a separate dry-run handler.
@@ -379,6 +404,10 @@ file permissions. Set `QUATER_HOME` to use another directory.
 
 `Invalid JSON value for --order`
 : Object and array arguments must be valid JSON.
+
+`Routes with File parameters cannot be exposed as MCP tools or CLI actions`
+: Keep upload routes HTTP-only today, or split the upload from the operation
+  that agents and operators may call.
 
 `Approval token must not be empty`
 : Pass a non-empty `--approval` value or omit the flag.

@@ -29,6 +29,12 @@ Quater(
     allowed_hosts: Iterable[str] | None = None,
     trusted_proxies: Iterable[str] | None = None,
     max_body_size: MaxBodySize | None = None,
+    max_form_parts: int | None = None,
+    max_form_field_size: MaxBodySize | None = None,
+    max_file_size: MaxBodySize | None = None,
+    upload_spool_size: MaxBodySize | None = None,
+    max_tool_response_size: MaxBodySize | None = None,
+    max_action_response_size: MaxBodySize | None = None,
     cors: CORSConfig | None = None,
     content_security_policy: str | None = None,
     mcp_docs_path: str | None = "/mcp/docs",
@@ -53,6 +59,12 @@ Quater(
 | `allowed_hosts` | `Iterable[str] \| None` | `None` | Overrides accepted Host headers. Empty strict mode accepts local hosts only. |
 | `trusted_proxies` | `Iterable[str] \| None` | `None` | Proxy IPs or CIDR ranges trusted for forwarded headers. |
 | `max_body_size` | `int \| str \| None` | `None` | Maximum body size. Strings accept `b`, `kb`, `mb`, or `gb`. |
+| `max_form_parts` | `int \| None` | `None` | Maximum number of form fields and file parts. |
+| `max_form_field_size` | `int \| str \| None` | `None` | Maximum size for one string form field. |
+| `max_file_size` | `int \| str \| None` | `None` | Maximum size for one uploaded file. |
+| `upload_spool_size` | `int \| str \| None` | `None` | Per-file size before upload data rolls to disk. |
+| `max_tool_response_size` | `int \| str \| None` | `None` | Maximum MCP tool response body size. |
+| `max_action_response_size` | `int \| str \| None` | `None` | Maximum CLI action response body size. |
 | `cors` | [`CORSConfig`](#symbol-corsconfig) \| None | `None` | Browser CORS policy. |
 | `content_security_policy` | `str \| None` | `None` | Adds `Content-Security-Policy` in strict and relaxed modes. |
 | `mcp_docs_path` | `str \| None` | `"/mcp/docs"` | Human MCP docs path. `None` disables the page. |
@@ -222,6 +234,12 @@ AppConfig(
     allowed_hosts: tuple[str, ...] = (),
     trusted_proxies: tuple[str, ...] = (),
     max_body_size: int = 2097152,
+    max_form_parts: int = 1000,
+    max_form_field_size: int = 1048576,
+    max_file_size: int = 2097152,
+    upload_spool_size: int = 1048576,
+    max_tool_response_size: int = 1048576,
+    max_action_response_size: int = 1048576,
     cors: CORSConfig | None = None,
     content_security_policy: str | None = None,
     docs_path: str | None = "/docs",
@@ -239,6 +257,12 @@ AppConfig(
 | `allowed_hosts` | `tuple[str, ...]` | `()` | Accepted Host headers. |
 | `trusted_proxies` | `tuple[str, ...]` | `()` | Trusted proxy IPs and CIDR networks. |
 | `max_body_size` | `int` | `2097152` | Maximum request body size in bytes. |
+| `max_form_parts` | `int` | `1000` | Maximum number of form fields and file parts. |
+| `max_form_field_size` | `int` | `1048576` | Maximum size for one string form field. |
+| `max_file_size` | `int` | `2097152` | Maximum size for one uploaded file. |
+| `upload_spool_size` | `int` | `1048576` | Per-file size before upload data rolls to disk. |
+| `max_tool_response_size` | `int` | `1048576` | Maximum MCP tool response body size. |
+| `max_action_response_size` | `int` | `1048576` | Maximum CLI action response body size. |
 | `cors` | [`CORSConfig`](#symbol-corsconfig) \| None | `None` | Browser CORS policy. |
 | `content_security_policy` | `str \| None` | `None` | CSP header value. |
 | `docs_path` | `str \| None` | `"/docs"` | Swagger UI path. |
@@ -247,8 +271,12 @@ AppConfig(
 | `mcp_allowed_origins` | `tuple[str, ...]` | `()` | Browser origins allowed for MCP. |
 | `request_id_header` | `str \| None` | `"x-request-id"` | Request id header. |
 
+Quater reads limit defaults from `QUATER_*` environment variables when you use
+`Quater()` without an explicit `config`. Constructor keyword options override
+environment values.
+
 Raises `ImproperlyConfigured` for unsupported security modes, invalid paths,
-invalid header names, negative body sizes, invalid trusted proxies, empty CSP,
+invalid header names, invalid size settings, invalid trusted proxies, empty CSP,
 or `docs_path` without `openapi_path`.
 
 ## CORSConfig {#symbol-corsconfig}

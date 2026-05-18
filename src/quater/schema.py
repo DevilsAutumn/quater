@@ -19,6 +19,8 @@ def annotation_schema(annotation: object) -> dict[str, object]:
         return {"type": "string"}
     if annotation is bytes:
         return {"type": "string", "format": "binary"}
+    if _is_upload_file(annotation):
+        return {"type": "string", "format": "binary"}
     if annotation is int:
         return {"type": "integer"}
     if annotation is float:
@@ -133,6 +135,12 @@ def _is_msgspec_struct(annotation: object) -> bool:
     import msgspec
 
     return isinstance(annotation, type) and issubclass(annotation, msgspec.Struct)
+
+
+def _is_upload_file(annotation: object) -> bool:
+    from quater.formdata import UploadFile
+
+    return annotation is UploadFile
 
 
 def _is_json_schema_default(value: object) -> bool:

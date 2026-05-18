@@ -147,6 +147,12 @@ class Quater:
         allowed_hosts: Iterable[str] | None = None,
         trusted_proxies: Iterable[str] | None = None,
         max_body_size: MaxBodySize | None = None,
+        max_form_parts: int | None = None,
+        max_form_field_size: MaxBodySize | None = None,
+        max_file_size: MaxBodySize | None = None,
+        upload_spool_size: MaxBodySize | None = None,
+        max_tool_response_size: MaxBodySize | None = None,
+        max_action_response_size: MaxBodySize | None = None,
         cors: CORSConfig | None = None,
         content_security_policy: str | None = None,
         mcp_docs_path: str | None | _Unset = _UNSET,
@@ -161,12 +167,18 @@ class Quater:
         request_id_header: str | None | _Unset = _UNSET,
     ) -> None:
         self.name = name
-        self.config = (config or AppConfig())._with_overrides(
+        self.config = (config or AppConfig.from_environment())._with_overrides(
             debug=debug,
             security=security,
             allowed_hosts=allowed_hosts,
             trusted_proxies=trusted_proxies,
             max_body_size=max_body_size,
+            max_form_parts=max_form_parts,
+            max_form_field_size=max_form_field_size,
+            max_file_size=max_file_size,
+            upload_spool_size=upload_spool_size,
+            max_tool_response_size=max_tool_response_size,
+            max_action_response_size=max_action_response_size,
             cors=cors,
             content_security_policy=content_security_policy,
             docs_path=docs_path,
@@ -747,6 +759,7 @@ class Quater:
                 approval_hook=self.action_approval,
                 audit_hook=self.mcp_audit,
                 debug=self.config.debug,
+                max_response_size=self.config.max_tool_response_size,
             )
         else:
             if router is None or match is None:
@@ -998,7 +1011,10 @@ class Quater:
                 debug=self.config.debug,
             )
             try:
-                payload = await response_payload(response)
+                payload = await response_payload(
+                    response,
+                    max_response_size=self.config.max_action_response_size,
+                )
             except Exception:
                 await run_response_finalizers(response)
                 raise

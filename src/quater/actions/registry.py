@@ -56,6 +56,11 @@ def build_action_registry(routes: tuple[RouteDefinition, ...]) -> ActionRegistry
             path_param_names=pattern.param_names,
             inject=route.inject,
         )
+        if any(parameter.source == "file" for parameter in handler_plan.parameters):
+            raise ConfigurationError(
+                "Routes with File parameters cannot be exposed as MCP tools "
+                "or CLI actions"
+            )
         actions[route.name] = ActionDefinition(
             name=route.name,
             description=route.description

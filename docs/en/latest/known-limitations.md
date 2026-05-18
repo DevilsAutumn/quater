@@ -22,6 +22,7 @@ usually provides.
 | Rate limiting | No framework-level limiter yet. | Put rate limiting at a proxy or middleware layer. |
 | Static files | Not a primary framework feature. | Serve static assets from your frontend host or edge layer. |
 | MCP streaming | `initialize`, `tools/list`, and `tools/call` are supported. Streaming progress is not. | Keep tools short-running or report progress through your app today. |
+| File uploads over MCP/CLI | HTTP routes support form fields and multipart uploads. MCP tools and CLI actions do not expose `File` parameters yet. | Keep upload routes HTTP-only, then expose a separate route for the follow-up operation if agents or operators need it. |
 | Remote action protocol | The Quater CLI uses it, but it is not a stable third-party protocol yet. | Treat it as Quater-owned until the framework stabilizes. |
 | OpenAPI depth | Core schemas are generated, but OpenAPI polish is still younger than FastAPI. | Check generated docs before publishing a public API. |
 

@@ -12,6 +12,7 @@ from quater.typing import AuthContext, RequestContext
 
 if TYPE_CHECKING:
     from quater.app import Quater
+    from quater.formdata import FormData
 
 BodyReader: TypeAlias = Callable[[], Awaitable[bytes]]
 RequestBody: TypeAlias = bytes | BodyReader | None
@@ -32,14 +33,19 @@ class Request:
         "client",
         "context",
         "max_body_size",
+        "max_file_size",
+        "max_form_field_size",
+        "max_form_parts",
         "method",
         "path",
         "scheme",
+        "upload_spool_size",
         "_auth",
         "_body_cache",
         "_body_reader",
         "_cookies",
         "_finalizers",
+        "_form_cache",
         "_headers",
         "_json_cache",
         "_raw_headers",
@@ -62,6 +68,10 @@ class Request:
         context: RequestContext | None = None,
         app: Quater | None = None,
         max_body_size: int | None = None,
+        max_form_parts: int | None = None,
+        max_form_field_size: int | None = None,
+        max_file_size: int | None = None,
+        upload_spool_size: int | None = None,
     ) -> None:
         self.method = method.upper()
         self.path = path
@@ -70,6 +80,10 @@ class Request:
         self.client = client
         self.context = context or RequestContext()
         self.max_body_size = max_body_size
+        self.max_form_parts = max_form_parts
+        self.max_form_field_size = max_form_field_size
+        self.max_file_size = max_file_size
+        self.upload_spool_size = upload_spool_size
         self._raw_headers = headers
         self._raw_query_string = query_string
         self._body_reader = _coerce_body_reader(body)
@@ -80,6 +94,7 @@ class Request:
         self._finalizers: list[Callable[[], Awaitable[None]]] | None = None
         self._body_cache: bytes | object = _UNSET
         self._json_cache: Any = _UNSET
+        self._form_cache: FormData | object = _UNSET
         self._state: State | None = None
 
     @property
@@ -130,6 +145,25 @@ class Request:
 
             self._json_cache = loads_json(await self.body())
         return self._json_cache
+
+    async def form(self) -> FormData:
+        if self._form_cache is _UNSET:
+            from quater._finalize import add_request_finalizer
+            from quater.formdata import parse_form_data
+
+            form = parse_form_data(
+                content_type=self.headers.get("content-type"),
+                body=await self.body(),
+                max_parts=self.max_form_parts,
+                max_field_size=self.max_form_field_size,
+                max_file_size=self.max_file_size,
+                upload_spool_size=self.upload_spool_size,
+            )
+            if form.files:
+                for _name, upload in form.files:
+                    add_request_finalizer(self, upload.close)
+            self._form_cache = form
+        return cast("FormData", self._form_cache)
 
 
 def _coerce_body_reader(body: RequestBody) -> BodyReader:

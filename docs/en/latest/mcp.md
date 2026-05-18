@@ -157,8 +157,9 @@ browser-based MCP calls.
 ## Tool Schemas
 
 Quater generates `inputSchema` from the route's path, query, header, cookie, and
-body parameters. It excludes injected `Resource` parameters because those values
-belong to the app, not the caller.
+body parameters. `Form` fields appear as scalar tool arguments. It excludes
+injected `Resource` parameters because those values belong to the app, not the
+caller.
 
 ```json
 {
@@ -178,6 +179,11 @@ belong to the app, not the caller.
 Descriptions are required for `tool=True` routes. Use `description=` or the
 first line of the handler docstring. Tool descriptions are visible to agents, so
 write them as instructions about when the tool should be used.
+
+Routes with `File` parameters cannot be MCP tools in this release. File upload
+through an agent needs a separate file-reference design and tighter trust rules,
+so Quater fails at startup instead of exposing a tool schema that cannot run
+safely.
 
 ## Approval-Protected Tools
 
@@ -284,6 +290,10 @@ silently hide audit failures.
 
 `Tool not found`
 : Check the route has `tool=True` and a description.
+
+`Routes with File parameters cannot be exposed as MCP tools`
+: Keep upload routes HTTP-only today, or split the upload from the operation an
+  agent should call.
 
 `approval_required`
 : Send `_meta.approvalToken` or remove `needs_approval=True` from that route.
