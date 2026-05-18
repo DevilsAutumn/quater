@@ -369,11 +369,13 @@ async def _call_tool_with_audit(
         detail = f"{type(exc).__name__}: {exc}" if debug else "Tool call failed"
         return _json_rpc_result(request_id, _tool_result(detail, is_error=True))
 
+    if response is None:
+        return _json_rpc_error(request_id, -32603, "Tool call failed")
+
     success = response.status_code < 400
     try:
         result = await _tool_result_response(response, is_error=not success)
     except _ToolResponseTooLarge:
-        assert response is not None
         try:
             await _audit(
                 audit_hook,
@@ -402,11 +404,9 @@ async def _call_tool_with_audit(
             start=start,
         )
     except Exception:
-        assert response is not None
         await run_response_finalizers(response)
         raise
 
-    assert response is not None
     return move_response_finalizers(response, _json_rpc_result(request_id, result))
 
 

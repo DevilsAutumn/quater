@@ -43,6 +43,12 @@ jobs:
       - name: Type check
         run: uv run --no-sync mypy src examples tests
 
+      - name: Security lint
+        run: uv run --no-sync bandit -q -c pyproject.toml -r src/quater
+
+      - name: Dependency audit
+        run: uv run --no-sync pip-audit
+
       - name: Test Rust router
         run: cargo test --locked
 
@@ -97,5 +103,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
-      - name: Run tests
-        run: uv run --no-sync pytest -q
+      - name: Run tests with coverage
+        run: uv run --no-sync coverage run -m pytest -q
+
+      - name: Coverage report
+        run: uv run --no-sync coverage report

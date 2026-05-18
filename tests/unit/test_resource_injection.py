@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Any, cast
 
 import pytest
 
@@ -226,6 +227,98 @@ def test_route_group_injections_are_inherited_by_routes() -> None:
     route = app.routes[0]
 
     assert "session" in route.inject
+
+
+def test_resource_rejects_invalid_provider_configuration() -> None:
+    def provider() -> FakeSession:
+        return FakeSession("primary")
+
+    def uses_varargs(*args: object) -> FakeSession:
+        return FakeSession(str(len(args)))
+
+    def uses_two_parameters(request: Request, other: object) -> FakeSession:
+        return FakeSession(f"{request.path}:{other!r}")
+
+    def uses_untyped_context(ctx: object) -> FakeSession:
+        return FakeSession(str(ctx))
+
+    with pytest.raises(ConfigurationError, match="scope must be 'request'"):
+        Resource(provider, scope=cast(Any, "application"))
+
+    with pytest.raises(TypeError, match="provider must be callable"):
+        Resource(cast(Any, object()))
+
+    with pytest.raises(ConfigurationError, match=r"\*args or \*\*kwargs"):
+        Resource(uses_varargs)
+
+    with pytest.raises(ConfigurationError, match="only one parameter"):
+        Resource(uses_two_parameters)
+
+    with pytest.raises(ConfigurationError, match="named 'request' or typed as Request"):
+        Resource(uses_untyped_context)
+
+
+@pytest.mark.asyncio
+async def test_resource_provider_receives_request_by_annotation_or_keyword() -> None:
+    def annotated(ctx: Request) -> str:
+        return f"annotated:{ctx.path}"
+
+    def keyword_only(*, request: Request) -> str:
+        return f"keyword:{request.path}"
+
+    def fallback(request: Request) -> str:
+        return f"fallback:{request.path}"
+
+    # A bad forward reference should not break providers named "request".
+    fallback.__annotations__["request"] = "MissingResourceRequest"
+
+    request = Request(method="GET", path="/orders")
+    async with AsyncExitStack() as stack:
+        assert await Resource(annotated).resolve(request, stack) == "annotated:/orders"
+        assert await Resource(keyword_only).resolve(request, stack) == "keyword:/orders"
+        assert await Resource(fallback).resolve(request, stack) == "fallback:/orders"
+
+
+@pytest.mark.asyncio
+async def test_resource_generators_must_yield_exactly_once() -> None:
+    def no_yield() -> Iterator[str]:
+        if False:
+            yield "never"
+
+    def yields_twice() -> Iterator[str]:
+        yield "first"
+        yield "second"
+
+    async def async_no_yield() -> AsyncIterator[str]:
+        if False:
+            yield "never"
+
+    async def async_yields_twice() -> AsyncIterator[str]:
+        yield "first"
+        yield "second"
+
+    request = Request(method="GET", path="/orders")
+
+    async with AsyncExitStack() as stack:
+        with pytest.raises(RuntimeError, match="did not yield"):
+            await Resource(no_yield, name="empty").resolve(request, stack)
+
+    async with AsyncExitStack() as stack:
+        with pytest.raises(RuntimeError, match="did not yield"):
+            await Resource(async_no_yield, name="empty").resolve(request, stack)
+
+    stack = AsyncExitStack()
+    assert await Resource(yields_twice, name="twice").resolve(request, stack) == "first"
+    with pytest.raises(RuntimeError, match="yielded more than once"):
+        await stack.aclose()
+
+    stack = AsyncExitStack()
+    assert (
+        await Resource(async_yields_twice, name="async_twice").resolve(request, stack)
+        == "first"
+    )
+    with pytest.raises(RuntimeError, match="yielded more than once"):
+        await stack.aclose()
 
 
 def test_route_group_rejects_ambiguous_injection_overrides() -> None:

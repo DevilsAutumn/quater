@@ -30,6 +30,24 @@ async def mcp_post(
     return response.status_code, response.body, body
 
 
+async def raw_mcp_post(
+    app: Quater,
+    body: bytes,
+    *,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, bytes, dict[str, object]]:
+    response = await app.handle(
+        Request(
+            method="POST",
+            path="/mcp",
+            headers=headers or {"content-type": "application/json"},
+            body=body,
+        )
+    )
+    payload = json.loads(response.body) if response.body else {}
+    return response.status_code, response.body, payload
+
+
 def require_object(value: object) -> dict[str, object]:
     assert isinstance(value, dict)
     return value
@@ -230,3 +248,103 @@ async def test_unsupported_protocol_version_header_is_rejected() -> None:
 
     assert response.status_code == 400
     assert response.body == b"Unsupported MCP protocol version"
+
+
+@pytest.mark.asyncio
+async def test_mcp_endpoint_rejects_non_post_methods() -> None:
+    response = await Quater().handle(Request(method="GET", path="/mcp"))
+
+    assert response.status_code == 405
+    assert dict(response.headers)["allow"] == "POST"
+    assert response.body == b"Method Not Allowed"
+
+
+@pytest.mark.asyncio
+async def test_malformed_json_rpc_input_returns_safe_protocol_errors() -> None:
+    malformed_status, _, malformed_body = await raw_mcp_post(
+        Quater(),
+        b'{"jsonrpc":"2.0","id":1,"method":',
+    )
+    list_status, _, list_body = await raw_mcp_post(
+        Quater(),
+        b'["not", "a", "request"]',
+    )
+    bool_id_status, _, bool_id_body = await mcp_post(
+        Quater(),
+        {"jsonrpc": "2.0", "id": True, "method": "tools/list"},
+    )
+
+    assert malformed_status == 200
+    assert malformed_body["error"] == {"code": -32700, "message": "Parse error"}
+    assert "Traceback" not in json.dumps(malformed_body)
+
+    assert list_status == 200
+    assert list_body["error"] == {"code": -32600, "message": "Invalid Request"}
+
+    assert bool_id_status == 200
+    assert bool_id_body["error"] == {"code": -32600, "message": "Invalid Request"}
+    assert bool_id_body["id"] is None
+
+
+@pytest.mark.asyncio
+async def test_unknown_notifications_are_accepted_without_executing_anything() -> None:
+    status, body_bytes, body = await mcp_post(
+        Quater(),
+        {"jsonrpc": "2.0", "method": "notifications/unknown"},
+    )
+
+    assert status == 202
+    assert body_bytes == b""
+    assert body == {}
+
+
+@pytest.mark.asyncio
+async def test_tools_call_rejects_invalid_params_without_handler_execution() -> None:
+    calls = 0
+    app = Quater(mcp_auth=allow_mcp_auth)
+
+    @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
+    async def get_user(id: int) -> dict[str, int]:
+        nonlocal calls
+        calls += 1
+        return {"id": id}
+
+    invalid_payloads: list[dict[str, object]] = [
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call"},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": 7, "arguments": {"id": 1}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "get_user", "arguments": []},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "get_user",
+                "arguments": {"id": 1},
+                "_meta": {"approvalToken": " "},
+            },
+        },
+    ]
+
+    for payload in invalid_payloads:
+        status, _, body = await mcp_post(
+            app,
+            payload,
+            headers={
+                "authorization": "Bearer mcp",
+                "content-type": "application/json",
+            },
+        )
+        assert status == 200
+        assert require_object(body["error"])["code"] == -32602
+
+    assert calls == 0

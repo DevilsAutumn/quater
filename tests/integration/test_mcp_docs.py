@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import msgspec
 import pytest
 
 from quater import Quater, Request
@@ -83,3 +84,45 @@ async def test_mcp_docs_use_mcp_auth_when_tools_are_registered() -> None:
 
     assert denied.status_code == 401
     assert allowed.status_code == 200
+
+
+class BatchPayload(msgspec.Struct):
+    ids: list[int]
+
+
+@pytest.mark.asyncio
+async def test_mcp_docs_generate_examples_for_required_argument_types() -> None:
+    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+        return AuthContext(subject="mcp")
+
+    app = Quater(mcp_auth=authenticate)
+
+    @app.post("/batches/{bucket}", tool=True, description="Process a batch.")
+    async def process_batch(
+        bucket: str,
+        threshold: float,
+        active: bool,
+        payload: BatchPayload,
+    ) -> dict[str, object]:
+        return {
+            "bucket": bucket,
+            "threshold": threshold,
+            "active": active,
+            "ids": payload.ids,
+        }
+
+    response = await app.handle(
+        Request(
+            method="GET",
+            path="/mcp/docs",
+            headers={"authorization": "Bearer mcp"},
+        )
+    )
+    body = response.body.decode("utf-8")
+
+    assert response.status_code == 200
+    assert '"bucket": "string"' in body
+    assert '"threshold": 12.3' in body
+    assert '"active": true' in body
+    assert '"payload": {}' in body
+    assert '"method": "tools/call"' in body

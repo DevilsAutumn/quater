@@ -13,6 +13,7 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .uv-cache/
+.coverage
 node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/

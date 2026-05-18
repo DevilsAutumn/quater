@@ -749,9 +749,13 @@ class Quater:
                 debug=self.config.debug,
             )
         else:
-            assert router is not None
-            assert match is not None
-            response = await router.dispatch_match(request, match)
+            if router is None or match is None:
+                response = default_exception_response(
+                    RuntimeError("Route dispatch state missing"),
+                    debug=self.config.debug,
+                )
+            else:
+                response = await router.dispatch_match(request, match)
         return await self._finalize_request(
             response,
             request,

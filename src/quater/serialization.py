@@ -30,7 +30,7 @@ def loads_json(data: bytes) -> Any:
 
     try:
         return msgspec.json.decode(data)
-    except msgspec.DecodeError as exc:
+    except (msgspec.DecodeError, UnicodeDecodeError) as exc:
         raise RequestJSONError from exc
 
 
@@ -41,5 +41,5 @@ def loads_json_as(data: bytes, target: object) -> object:
         return msgspec.json.decode(data, type=target)
     except msgspec.ValidationError as exc:
         raise JSONValidationError from exc
-    except msgspec.DecodeError as exc:
+    except (msgspec.DecodeError, UnicodeDecodeError) as exc:
         raise RequestJSONError from exc

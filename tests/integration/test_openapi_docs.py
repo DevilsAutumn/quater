@@ -211,6 +211,69 @@ async def test_openapi_marks_route_level_auth_without_guessing_scheme() -> None:
     assert body["paths"]["/private"]["get"]["x-quater-auth"] == "required"
 
 
+@pytest.mark.asyncio
+async def test_openapi_metadata_response_shapes_and_hidden_routes() -> None:
+    app = Quater(name="Orders API")
+
+    @app.get(
+        "/orders",
+        metadata={
+            "summary": "  List orders  ",
+            "tags": ["orders", "", 123, "ops"],
+            "operation_id": "orders.list",
+            "openapi_extra": {"x-audience": "internal"},
+        },
+    )
+    async def list_orders() -> str:
+        return "ok"
+
+    @app.get(
+        "/orders/archive",
+        metadata={"operation_id": "orders.list"},
+    )
+    async def archived_orders() -> bytes:
+        return b"ok"
+
+    @app.delete("/orders/{id}")
+    async def delete_order(id: str) -> None:
+        return None
+
+    @app.get("/fragments/status")
+    async def status_fragment() -> HTMLResponse:
+        return HTMLResponse("<p>ok</p>")
+
+    @app.get("/internal", metadata={"include_in_openapi": False})
+    async def internal() -> dict[str, bool]:
+        return {"ok": True}
+
+    response = await app.handle(Request(method="GET", path="/openapi.json"))
+    body = json.loads(response.body)
+
+    assert "/internal" not in body["paths"]
+    list_operation = body["paths"]["/orders"]["get"]
+    assert list_operation["operationId"] == "orders_list"
+    assert list_operation["summary"] == "List orders"
+    assert list_operation["tags"] == ["orders", "ops"]
+    assert list_operation["x-audience"] == "internal"
+    assert list_operation["responses"]["200"]["content"] == {
+        "text/plain": {"schema": {"type": "string"}}
+    }
+
+    archive_operation = body["paths"]["/orders/archive"]["get"]
+    assert archive_operation["operationId"] == "orders_list_2"
+    assert archive_operation["responses"]["200"]["content"] == {
+        "application/octet-stream": {
+            "schema": {"type": "string", "format": "binary"},
+        }
+    }
+
+    delete_operation = body["paths"]["/orders/{id}"]["delete"]
+    assert delete_operation["responses"] == {"204": {"description": "No Content"}}
+
+    html_operation = body["paths"]["/fragments/status"]["get"]
+    assert "content" not in html_operation["responses"]["200"]
+
+
 def test_user_routes_conflicting_with_enabled_docs_paths_are_rejected() -> None:
     app = Quater()
 

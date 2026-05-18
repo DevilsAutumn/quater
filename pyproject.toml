@@ -41,10 +41,14 @@ quater = "quater.cli.main:main"
 
 [dependency-groups]
 dev = [
+  "bandit>=1.9.4",
   "build>=1.2",
+  "coverage[toml]>=7.14.0",
   "griffe>=1.15",
+  "hypothesis>=6.152.7",
   "maturin>=1.11,<2.0",
   "mypy>=1.11",
+  "pip-audit>=2.10.0",
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
   "ruff>=0.6",
@@ -79,6 +83,18 @@ python_version = "3.11"
 strict = true
 mypy_path = "src"
 files = ["src", "tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["quater"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.bandit]
+exclude_dirs = ["tests", "sample_projects", "docs"]
+skips = ["B105"]
 
 [tool.pyrefly]
 project-includes = ["src", "examples", "tests"]

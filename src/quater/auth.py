@@ -14,7 +14,7 @@ async def authenticate_request(
     request: Request,
 ) -> AuthContext:
     context = await authenticate(build_auth_request(request))
-    if context is None:
+    if context is None or not isinstance(context, AuthContext):
         raise UnauthorizedError
     request.auth = context
     return context

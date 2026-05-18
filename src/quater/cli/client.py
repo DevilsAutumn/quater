@@ -10,6 +10,7 @@ from urllib.request import Request as URLRequest
 from urllib.request import urlopen
 
 from quater.cli.errors import CLIError
+from quater.cli.remotes import validate_remote_url
 from quater.exceptions import RequestJSONError
 from quater.protocol.actions import (
     ACTIONS_MANIFEST_PATH,
@@ -92,7 +93,7 @@ def _request_json(
 
     request = URLRequest(url, data=body, headers=headers, method=method)
     try:
-        with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS) as response:
+        with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS) as response:  # nosec B310
             status_code = response.status
             raw_body = _read_limited_body(response)
     except HTTPError as exc:
@@ -129,4 +130,5 @@ def _read_limited_body(response: _ReadableResponse) -> bytes:
 
 
 def _remote_url(base_url: str, path: str) -> str:
-    return urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
+    validated_base_url = validate_remote_url(base_url)
+    return urljoin(validated_base_url.rstrip("/") + "/", path.lstrip("/"))
