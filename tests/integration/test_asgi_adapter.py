@@ -167,12 +167,15 @@ async def test_asgi_duplicate_authorization_header_is_rejected_before_auth() -> 
 
 
 @pytest.mark.asyncio
-async def test_asgi_disconnect_returns_partial_body_without_adapter_crash() -> None:
-    app = Quater()
+async def test_asgi_disconnect_aborts_incomplete_body_without_side_effects() -> None:
+    app = Quater(debug=False)
+    side_effects: list[bytes] = []
 
     @app.post("/echo")
     async def echo(request: Request) -> bytes:
-        return await request.body()
+        body = await request.body()
+        side_effects.append(body)
+        return body
 
     sent = await call_asgi(
         app.asgi,
@@ -191,8 +194,11 @@ async def test_asgi_disconnect_returns_partial_body_without_adapter_crash() -> N
         ],
     )
 
-    assert sent[0]["status"] == 200
-    assert response_body(sent) == b"partial"
+    assert sent[0]["status"] == 400
+    assert (
+        response_body(sent) == b"Client disconnected before request body was complete"
+    )
+    assert side_effects == []
 
 
 @pytest.mark.asyncio

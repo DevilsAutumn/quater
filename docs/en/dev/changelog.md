@@ -23,6 +23,8 @@ production-facing config, and adapter response safety.
 - Added malformed bracketed `Host` header validation before route auth runs.
 - Added response value validation before adapters write HTTP responses, so bad
   response bodies, status codes, and stream chunks fail safely.
+- Changed ASGI request body reads to reject client disconnects instead of
+  passing partial request bodies to handlers.
 
 ## 0.1.0a1
 

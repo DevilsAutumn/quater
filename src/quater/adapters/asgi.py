@@ -13,7 +13,7 @@ from quater.adapters._shared import (
     iter_response_body,
     request_from_parts,
 )
-from quater.exceptions import PayloadTooLargeError
+from quater.exceptions import BadRequestError, PayloadTooLargeError
 from quater.request import BodyReader
 
 ASGIMessage: TypeAlias = MutableMapping[str, Any]
@@ -181,7 +181,9 @@ async def _read_body(receive: ASGIReceive, max_body_size: int) -> bytes:
         message = await receive()
         message_type = message.get("type")
         if message_type == "http.disconnect":
-            break
+            raise BadRequestError(
+                "Client disconnected before request body was complete"
+            )
         if message_type != "http.request":
             raise ValueError(f"Unsupported ASGI HTTP message: {message_type!r}")
         body = message.get("body", b"")
