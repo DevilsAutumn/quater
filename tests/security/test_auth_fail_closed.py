@@ -75,6 +75,67 @@ async def test_auth_denial_and_exceptions_never_call_protected_handler() -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("headers", "expected_body"),
+    (
+        (
+            (
+                ("authorization", "Bearer deny"),
+                ("authorization", "Bearer allow"),
+            ),
+            b"Invalid Authorization header",
+        ),
+        (
+            (
+                ("Authorization", "Bearer allow"),
+                ("authorization", "Bearer allow"),
+            ),
+            b"Invalid Authorization header",
+        ),
+        (
+            (
+                ("proxy-authorization", "Basic deny"),
+                ("Proxy-Authorization", "Basic allow"),
+            ),
+            b"Invalid Proxy-Authorization header",
+        ),
+    ),
+)
+async def test_duplicate_auth_sensitive_headers_fail_before_auth_or_handler(
+    headers: tuple[tuple[str, str], ...],
+    expected_body: bytes,
+) -> None:
+    auth_calls = 0
+    handler_calls = 0
+
+    async def authenticate(_ctx: AuthRequest) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    app = Quater()
+
+    @app.get("/private", auth=authenticate)
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(
+            method="GET",
+            path="/private",
+            headers=headers,
+        )
+    )
+
+    assert response.status_code == 400
+    assert response.body == expected_body
+    assert auth_calls == 0
+    assert handler_calls == 0
+
+
+@pytest.mark.asyncio
 async def test_same_route_auth_gate_protects_http_mcp_and_remote_cli() -> None:
     calls: list[str] = []
     app = Quater(mcp_auth=surface_token_auth, cli_auth=surface_token_auth)

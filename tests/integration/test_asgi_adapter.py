@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import pytest
 
-from quater import Quater, Request, Resource, StreamResponse
+from quater import AuthContext, AuthRequest, Quater, Request, Resource, StreamResponse
 from quater.adapters.asgi import ASGIAdapter, ASGIMessage
 
 
@@ -115,6 +115,47 @@ async def test_asgi_body_limit_stops_reading_oversized_chunked_body() -> None:
     assert sent[0]["status"] == 413
     assert response_body(sent) == b"Payload Too Large"
     assert receive_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_asgi_duplicate_authorization_header_is_rejected_before_auth() -> None:
+    auth_calls = 0
+    handler_calls = 0
+    app = Quater()
+
+    async def authenticate(_ctx: AuthRequest) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    @app.get("/private", auth=authenticate)
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    sent = await call_asgi(
+        app.asgi,
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/private",
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [
+                (b"host", b"localhost"),
+                (b"authorization", b"Bearer deny"),
+                (b"authorization", b"Bearer allow"),
+            ],
+            "client": ("127.0.0.1", 5000),
+        },
+        [{"type": "http.request", "body": b"", "more_body": False}],
+    )
+
+    assert sent[0]["status"] == 400
+    assert response_body(sent) == b"Invalid Authorization header"
+    assert auth_calls == 0
+    assert handler_calls == 0
 
 
 @pytest.mark.asyncio

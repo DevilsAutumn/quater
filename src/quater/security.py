@@ -11,6 +11,18 @@ from quater.request import Request
 from quater.response import Response
 
 _LOCAL_ALLOWED_HOSTS = ("localhost", "127.0.0.1", "::1", "testserver")
+_AUTH_SINGLETON_HEADERS = {
+    "authorization": "Invalid Authorization header",
+    "proxy-authorization": "Invalid Proxy-Authorization header",
+}
+_TRACKED_SINGLETON_HEADERS = frozenset(
+    {
+        "host",
+        ":authority",
+        "content-length",
+        *_AUTH_SINGLETON_HEADERS,
+    }
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -122,8 +134,9 @@ def _enforce_content_length(request: Request, max_body_size: int) -> None:
 
 
 def _validate_singleton_request_headers(request: Request) -> None:
-    host_values = request.headers.get_all("host")
-    authority_values = request.headers.get_all(":authority")
+    values = _tracked_singleton_header_values(request)
+    host_values = values["host"]
+    authority_values = values[":authority"]
 
     if len(host_values) > 1 or len(authority_values) > 1:
         raise BadRequestError("Invalid Host header")
@@ -134,8 +147,22 @@ def _validate_singleton_request_headers(request: Request) -> None:
         if host != authority:
             raise BadRequestError("Invalid Host header")
 
-    if len(request.headers.get_all("content-length")) > 1:
+    if len(values["content-length"]) > 1:
         raise BadRequestError("Invalid Content-Length header")
+
+    for header_name, error_message in _AUTH_SINGLETON_HEADERS.items():
+        if len(values[header_name]) > 1:
+            raise BadRequestError(error_message)
+
+
+def _tracked_singleton_header_values(request: Request) -> dict[str, list[str]]:
+    values: dict[str, list[str]] = {
+        header_name: [] for header_name in _TRACKED_SINGLETON_HEADERS
+    }
+    for header_name, header_value in request.headers.raw:
+        if header_name in _TRACKED_SINGLETON_HEADERS:
+            values[header_name].append(header_value)
+    return values
 
 
 def _effective_allowed_hosts(config: AppConfig) -> tuple[str, ...]:
