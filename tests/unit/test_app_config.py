@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import FrozenInstanceError
+from typing import cast
 
 import pytest
 
@@ -24,6 +26,74 @@ def test_app_config_copies_mutable_inputs() -> None:
 
     assert app.config.allowed_hosts == ("api.example.com",)
     assert app.config.trusted_proxies == ("127.0.0.1",)
+
+
+def test_string_allowed_hosts_fail_early() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="allowed_hosts must be an iterable of strings",
+    ):
+        Quater(allowed_hosts="api.example.com")
+
+
+def test_string_mcp_allowed_origins_fail_early() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="mcp_allowed_origins must be an iterable of strings",
+    ):
+        Quater(mcp_allowed_origins="https://app.example.com")
+
+
+def test_string_trusted_proxies_fail_early() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="trusted_proxies must be an iterable of strings",
+    ):
+        Quater(trusted_proxies="127.0.0.1")
+
+
+def test_mapping_string_config_values_fail_early() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="allowed_hosts must be an iterable of strings",
+    ):
+        Quater(allowed_hosts=cast(Iterable[str], {"api.example.com": "yes"}))
+
+
+def test_non_string_allowed_hosts_fail_early() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="allowed_hosts must contain only strings",
+    ):
+        Quater(allowed_hosts=[cast(str, 123)])
+
+
+def test_non_string_config_items_fail_early() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="mcp_allowed_origins must contain only strings",
+    ):
+        Quater(mcp_allowed_origins=["https://app.example.com", cast(str, 1)])
+
+
+def test_direct_app_config_normalizes_string_tuple_fields() -> None:
+    config = AppConfig(
+        allowed_hosts=cast(tuple[str, ...], ["api.example.com"]),
+        trusted_proxies=cast(tuple[str, ...], ["127.0.0.1"]),
+        mcp_allowed_origins=cast(tuple[str, ...], ["https://app.example.com"]),
+    )
+
+    assert config.allowed_hosts == ("api.example.com",)
+    assert config.trusted_proxies == ("127.0.0.1",)
+    assert config.mcp_allowed_origins == ("https://app.example.com",)
+
+
+def test_direct_app_config_string_tuple_fields_fail_early() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="allowed_hosts must be an iterable of strings",
+    ):
+        AppConfig(allowed_hosts=cast(tuple[str, ...], "api.example.com"))
 
 
 def test_app_config_is_immutable_after_creation() -> None:

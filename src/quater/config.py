@@ -98,6 +98,18 @@ class AppConfig:
     request_id_header: str | None = "x-request-id"
 
     def __post_init__(self) -> None:
+        allowed_hosts = _normalize_string_tuple(
+            self.allowed_hosts,
+            "allowed_hosts",
+        )
+        trusted_proxies = _normalize_string_tuple(
+            self.trusted_proxies,
+            "trusted_proxies",
+        )
+        mcp_allowed_origins = _normalize_string_tuple(
+            self.mcp_allowed_origins,
+            "mcp_allowed_origins",
+        )
         if self.security not in {"strict", "relaxed", "off"}:
             raise ConfigurationError(f"Unsupported security mode: {self.security!r}")
         if self.max_body_size < 0:
@@ -115,7 +127,7 @@ class AppConfig:
                 raise ConfigurationError(
                     f"{field_name} must be greater than or equal to 0"
                 )
-        if any(not _is_valid_ip_network(proxy) for proxy in self.trusted_proxies):
+        if any(not _is_valid_ip_network(proxy) for proxy in trusted_proxies):
             raise ConfigurationError(
                 "trusted_proxies must contain IP addresses or CIDR networks"
             )
@@ -130,6 +142,9 @@ class AppConfig:
         _validate_optional_header_name(self.request_id_header, "request_id_header")
         if self.docs_path is not None and self.openapi_path is None:
             raise ConfigurationError("docs_path requires openapi_path")
+        object.__setattr__(self, "allowed_hosts", allowed_hosts)
+        object.__setattr__(self, "trusted_proxies", trusted_proxies)
+        object.__setattr__(self, "mcp_allowed_origins", mcp_allowed_origins)
         self._validate_reserved_paths()
 
     @classmethod
@@ -321,7 +336,18 @@ def _environment_overrides(env: Mapping[str, str]) -> _EnvironmentOverrides:
 
 
 def _normalize_string_tuple(values: Iterable[str], field_name: str) -> tuple[str, ...]:
+    if isinstance(values, str):
+        raise ConfigurationError(
+            f"{field_name} must be an iterable of strings, not a single string"
+        )
+    if isinstance(values, (bytes, bytearray)):
+        raise ConfigurationError(f"{field_name} must contain strings, not bytes")
+    if isinstance(values, Mapping):
+        raise ConfigurationError(f"{field_name} must be an iterable of strings")
+
     normalized = tuple(values)
+    if any(not isinstance(value, str) for value in normalized):
+        raise ConfigurationError(f"{field_name} must contain only strings")
     if any(not value for value in normalized):
         raise ConfigurationError(f"{field_name} cannot contain empty values")
     return normalized

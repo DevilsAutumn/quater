@@ -6,6 +6,20 @@ This page records public release notes for Quater.
 
 Read [Stability](/en/latest/stability) before depending on the pre-release API.
 
+## 0.1.0a2
+
+This alpha tightens fail-fast validation around auth headers, CORS, and
+production-facing config.
+
+### Fixed
+
+- Added duplicate `Authorization` and `Proxy-Authorization` header validation
+  before auth hooks run.
+- Added CORS `allowed_methods` validation during configuration and included
+  `HEAD` in the default CORS method set.
+- Added validation for single-string and non-string values in list-like config
+  fields before app startup.
+
 ## 0.1.0a1
 
 This is the first alpha release shape for evaluation.

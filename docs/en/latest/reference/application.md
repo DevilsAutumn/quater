@@ -80,6 +80,10 @@ Quater(
 
 Returns: `None`. Instantiate it and register routes on the object.
 
+For list-like string settings such as `allowed_hosts`, `trusted_proxies`, and
+`mcp_allowed_origins`, pass an iterable of strings. Quater rejects a single
+plain string because Python would otherwise split it into characters.
+
 Example:
 
 ```python
@@ -275,9 +279,10 @@ Quater reads limit defaults from `QUATER_*` environment variables when you use
 `Quater()` without an explicit `config`. Constructor keyword options override
 environment values.
 
-Raises `ImproperlyConfigured` for unsupported security modes, invalid paths,
-invalid header names, invalid size settings, invalid trusted proxies, empty CSP,
-or `docs_path` without `openapi_path`.
+List-like string fields are normalized to tuples and reject single plain
+strings. Raises `ImproperlyConfigured` for unsupported security modes, invalid
+paths, invalid header names, invalid size settings, invalid trusted proxies,
+empty CSP, or `docs_path` without `openapi_path`.
 
 ## CORSConfig {#symbol-corsconfig}
 
