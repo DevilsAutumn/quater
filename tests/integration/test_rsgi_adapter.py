@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable
 from dataclasses import dataclass
 from inspect import isawaitable
+from typing import cast
 
 import pytest
 
@@ -13,6 +14,7 @@ from quater import (
     Quater,
     Request,
     Resource,
+    Response,
     StreamResponse,
     TextResponse,
 )
@@ -167,6 +169,44 @@ async def test_rsgi_maps_common_response_shapes() -> None:
     assert text_proto.response_body == b"hello"
     assert empty_proto.kind == "empty"
     assert empty_proto.status == 204
+
+
+@pytest.mark.asyncio
+async def test_rsgi_invalid_mutated_response_body_becomes_safe_500() -> None:
+    app = Quater(debug=False)
+
+    @app.get("/bad-response")
+    async def bad_response() -> Response:
+        response = Response(b"ok")
+        response.body = cast(bytes, "not bytes")
+        return response
+
+    protocol = FakeHTTPProtocol()
+
+    await call_rsgi(app, "/bad-response", protocol)
+
+    assert protocol.kind == "bytes"
+    assert protocol.status == 500
+    assert protocol.response_body == b"Internal Server Error"
+
+
+@pytest.mark.asyncio
+async def test_rsgi_invalid_mutated_status_code_becomes_safe_500() -> None:
+    app = Quater(debug=False)
+
+    @app.get("/bad-status")
+    async def bad_status() -> Response:
+        response = Response(b"ok")
+        response.status_code = 700
+        return response
+
+    protocol = FakeHTTPProtocol()
+
+    await call_rsgi(app, "/bad-status", protocol)
+
+    assert protocol.kind == "bytes"
+    assert protocol.status == 500
+    assert protocol.response_body == b"Internal Server Error"
 
 
 @pytest.mark.asyncio

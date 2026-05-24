@@ -8,8 +8,8 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
 ## 0.1.0a2
 
-This alpha tightens fail-fast validation around auth headers, CORS, and
-production-facing config.
+This alpha tightens fail-fast validation around auth headers, CORS,
+production-facing config, and adapter response safety.
 
 ### Fixed
 
@@ -21,6 +21,8 @@ production-facing config.
   fields before app startup.
 - Added malformed `Cookie` header handling that returns `400 Bad Request`.
 - Added malformed bracketed `Host` header validation before route auth runs.
+- Added response value validation before adapters write HTTP responses, so bad
+  response bodies, status codes, and stream chunks fail safely.
 
 ## 0.1.0a1
 

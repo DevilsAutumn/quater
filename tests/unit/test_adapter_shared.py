@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import cast
 
 import pytest
 
@@ -13,6 +14,7 @@ from quater.adapters._shared import (
     response_headers,
     response_status,
 )
+from quater.exceptions import ResponseConversionError
 
 
 async def streaming_chunks() -> AsyncIterator[bytes]:
@@ -20,6 +22,11 @@ async def streaming_chunks() -> AsyncIterator[bytes]:
     yield b"one"
     yield b""
     yield b"two"
+
+
+async def invalid_streaming_chunks() -> AsyncIterator[bytes]:
+    yield b"safe"
+    yield cast(bytes, "not bytes")
 
 
 def test_response_status_uses_standard_phrases_and_safe_unknown_fallback() -> None:
@@ -68,6 +75,18 @@ async def test_collect_response_body_matches_adapter_chunk_collection() -> None:
         b"one",
         b"two",
     ]
+
+
+@pytest.mark.asyncio
+async def test_stream_response_iteration_rejects_non_bytes_chunks() -> None:
+    chunks = []
+    with pytest.raises(ResponseConversionError, match="Streaming response chunks"):
+        async for chunk in iter_response_body(
+            StreamResponse(invalid_streaming_chunks())
+        ):
+            chunks.append(chunk)
+
+    assert chunks == [b"safe"]
 
 
 def test_response_headers_and_latin1_header_encoding_are_adapter_ready() -> None:

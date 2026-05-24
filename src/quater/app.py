@@ -62,7 +62,13 @@ from quater.protocol.actions import (
     response_payload,
 )
 from quater.request import Request
-from quater.response import EmptyResponse, HTMLResponse, JSONResponse, Response
+from quater.response import (
+    EmptyResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    validate_response,
+)
 from quater.router import Match, Router
 from quater.security import (
     RequestSecurityContext,
@@ -1199,12 +1205,14 @@ class Quater:
             response = add_security_headers(response, context, self.config)
             response = add_request_id_header(response, request, self.config)
             response.headers = normalize_response_headers(response.headers)
+            validate_response(response)
             return response
         except (TypeError, ValueError) as exc:
             fallback = default_exception_response(exc, debug=self.config.debug)
             fallback = add_security_headers(fallback, context, self.config)
             fallback = add_request_id_header(fallback, request, self.config)
             fallback.headers = normalize_response_headers(fallback.headers)
+            validate_response(fallback)
             return fallback
 
 

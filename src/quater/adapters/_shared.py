@@ -9,7 +9,12 @@ from typing import Protocol
 from quater.config import AppConfig
 from quater.datastructures import HeaderItems
 from quater.request import Request, RequestBody
-from quater.response import Response, StreamResponse
+from quater.response import (
+    Response,
+    StreamResponse,
+    validate_response,
+    validate_stream_chunk,
+)
 
 
 class QuaterApplication(Protocol):
@@ -23,6 +28,7 @@ class QuaterApplication(Protocol):
 
 
 def response_headers(response: Response) -> list[tuple[str, str]]:
+    validate_response(response)
     return list(response.headers)
 
 
@@ -35,10 +41,12 @@ def response_status(status_code: int) -> str:
 
 
 async def iter_response_body(response: Response) -> AsyncIterator[bytes]:
+    validate_response(response)
     if isinstance(response, StreamResponse):
         async for chunk in response.body_iterator:
-            if chunk:
-                yield chunk
+            body = validate_stream_chunk(chunk)
+            if body:
+                yield body
         return
     if response.body:
         yield response.body

@@ -5,7 +5,15 @@ from typing import Any, cast
 
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, Request, Resource, StreamResponse
+from quater import (
+    AuthContext,
+    AuthRequest,
+    Quater,
+    Request,
+    Resource,
+    Response,
+    StreamResponse,
+)
 from quater.adapters.asgi import ASGIAdapter, ASGIMessage
 
 
@@ -245,6 +253,66 @@ async def test_asgi_non_stream_response_uses_single_final_body_message() -> None
             "more_body": False,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_asgi_invalid_mutated_response_body_becomes_safe_500() -> None:
+    app = Quater(debug=False)
+
+    @app.get("/bad-response")
+    async def bad_response() -> Response:
+        response = Response(b"ok")
+        response.body = cast(bytes, "not bytes")
+        return response
+
+    sent = await call_asgi(
+        app.asgi,
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/bad-response",
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost")],
+            "client": ("127.0.0.1", 5000),
+        },
+        [{"type": "http.request", "body": b"", "more_body": False}],
+    )
+
+    body_messages = [
+        message for message in sent if message["type"] == "http.response.body"
+    ]
+    assert sent[0]["status"] == 500
+    assert response_body(sent) == b"Internal Server Error"
+    assert all(isinstance(message.get("body", b""), bytes) for message in body_messages)
+
+
+@pytest.mark.asyncio
+async def test_asgi_invalid_mutated_status_code_becomes_safe_500() -> None:
+    app = Quater(debug=False)
+
+    @app.get("/bad-status")
+    async def bad_status() -> Response:
+        response = Response(b"ok")
+        response.status_code = 700
+        return response
+
+    sent = await call_asgi(
+        app.asgi,
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/bad-status",
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost")],
+            "client": ("127.0.0.1", 5000),
+        },
+        [{"type": "http.request", "body": b"", "more_body": False}],
+    )
+
+    assert sent[0]["status"] == 500
+    assert response_body(sent) == b"Internal Server Error"
 
 
 @pytest.mark.asyncio

@@ -35,8 +35,8 @@ class Response:
         ):
             normalized_headers = (*normalized_headers, ("content-type", content_type))
 
-        self.body = body
-        self.status_code = status_code
+        self.body = _response_body(body)
+        self.status_code = _response_status_code(status_code)
         self.headers = normalized_headers
         self._finalizers: list[Callable[[], Awaitable[None]]] | None = None
 
@@ -220,6 +220,21 @@ def normalize_response(value: object) -> Response:
     )
 
 
+def validate_response(response: Response) -> None:
+    """Validate response values before adapters send them to a server."""
+
+    response.status_code = _response_status_code(response.status_code)
+    response.headers = normalize_response_headers(response.headers)
+    if not response.is_streaming:
+        response.body = _response_body(response.body)
+
+
+def validate_stream_chunk(chunk: object) -> bytes:
+    """Return a bytes chunk or raise before an adapter writes invalid data."""
+
+    return _response_body(chunk, label="Streaming response chunks")
+
+
 def _is_json_response_value(value: object) -> bool:
     if isinstance(value, dict | list | tuple | bool | int | float):
         return True
@@ -233,3 +248,21 @@ def _is_json_response_value(value: object) -> bool:
 
 def _has_header(headers: tuple[tuple[str, str], ...], key: str) -> bool:
     return any(name == key for name, _ in headers)
+
+
+def _response_body(value: object, *, label: str = "Response body") -> bytes:
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray | memoryview):
+        return bytes(value)
+    raise ResponseConversionError(f"{label} must be bytes-like")
+
+
+def _response_status_code(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ResponseConversionError("Response status_code must be an integer")
+    if value < 100 or value > 599:
+        raise ResponseConversionError(
+            "Response status_code must be between 100 and 599"
+        )
+    return value

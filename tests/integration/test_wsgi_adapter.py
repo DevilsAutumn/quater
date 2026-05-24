@@ -97,6 +97,36 @@ def test_wsgi_unknown_status_codes_use_safe_status_phrase() -> None:
     assert body == b"custom"
 
 
+def test_wsgi_invalid_mutated_response_body_becomes_safe_500() -> None:
+    app = Quater(debug=False)
+
+    @app.get("/bad-response")
+    async def bad_response() -> Response:
+        response = Response(b"ok")
+        response.body = cast(bytes, "not bytes")
+        return response
+
+    status, _, body = call_wsgi(app, base_environ(path="/bad-response"))
+
+    assert status == "500 Internal Server Error"
+    assert body == b"Internal Server Error"
+
+
+def test_wsgi_invalid_mutated_status_code_becomes_safe_500() -> None:
+    app = Quater(debug=False)
+
+    @app.get("/bad-status")
+    async def bad_status() -> Response:
+        response = Response(b"ok")
+        response.status_code = 700
+        return response
+
+    status, _, body = call_wsgi(app, base_environ(path="/bad-status"))
+
+    assert status == "500 Internal Server Error"
+    assert body == b"Internal Server Error"
+
+
 def test_wsgi_request_parts_include_query_scheme_client_and_host_fallback() -> None:
     app = Quater()
     environ = base_environ(path="/inspect")
