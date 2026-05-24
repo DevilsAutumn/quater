@@ -54,6 +54,91 @@ def response_headers(messages: list[dict[str, object]]) -> dict[str, str]:
     }
 
 
+async def call_asgi_file_lookup(
+    *,
+    path: str,
+    raw_path: bytes | None = None,
+) -> tuple[int, bytes]:
+    app = Quater()
+
+    @app.get("/files/{name}")
+    async def file(name: str) -> dict[str, str]:
+        return {"name": name}
+
+    scope: dict[str, object] = {
+        "type": "http",
+        "method": "GET",
+        "path": path,
+        "scheme": "http",
+        "query_string": b"",
+        "headers": [(b"host", b"localhost")],
+        "client": ("127.0.0.1", 5000),
+    }
+    if raw_path is not None:
+        scope["raw_path"] = raw_path
+
+    sent = await call_asgi(
+        app.asgi,
+        scope,
+        [{"type": "http.request", "body": b"", "more_body": False}],
+    )
+    status = sent[0]["status"]
+    assert isinstance(status, int)
+    return status, response_body(sent)
+
+
+@pytest.mark.asyncio
+async def test_asgi_raw_path_preserves_encoded_slash_inside_path_segment() -> None:
+    status, body = await call_asgi_file_lookup(
+        path="/files/a/b",
+        raw_path=b"/files/a%2Fb",
+    )
+
+    assert status == 200
+    assert body == b'{"name":"a%2Fb"}'
+
+
+@pytest.mark.asyncio
+async def test_asgi_raw_path_ignores_query_separator_defensively() -> None:
+    status, body = await call_asgi_file_lookup(
+        path="/wrong",
+        raw_path=b"/files/a%2Fb?debug=true",
+    )
+
+    assert status == 200
+    assert body == b'{"name":"a%2Fb"}'
+
+
+@pytest.mark.asyncio
+async def test_asgi_malformed_raw_path_falls_back_to_decoded_path() -> None:
+    status, body = await call_asgi_file_lookup(
+        path="/files/fallback",
+        raw_path=b"/files/\xff",
+    )
+
+    assert status == 200
+    assert body == b'{"name":"fallback"}'
+
+
+@pytest.mark.asyncio
+async def test_asgi_relative_raw_path_falls_back_to_decoded_path() -> None:
+    status, body = await call_asgi_file_lookup(
+        path="/files/fallback",
+        raw_path=b"files/a%2Fb",
+    )
+
+    assert status == 200
+    assert body == b'{"name":"fallback"}'
+
+
+@pytest.mark.asyncio
+async def test_asgi_path_falls_back_when_raw_path_is_not_available() -> None:
+    status, body = await call_asgi_file_lookup(path="/files/report.pdf")
+
+    assert status == 200
+    assert body == b'{"name":"report.pdf"}'
+
+
 @pytest.mark.asyncio
 async def test_asgi_multiple_body_chunks_reach_handler_without_loss() -> None:
     app = Quater()

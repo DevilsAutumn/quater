@@ -70,7 +70,7 @@ class ASGIAdapter:
     ) -> None:
         request = request_from_parts(
             method=str(scope["method"]),
-            path=str(scope.get("path", "/")),
+            path=_path_from_scope(scope),
             scheme=str(scope.get("scheme", "http")),
             headers=tuple(
                 _decode_header_pair(pair) for pair in scope.get("headers", ())
@@ -172,6 +172,22 @@ def _decode_header_part(value: bytes | str) -> str:
     if isinstance(value, bytes):
         return value.decode("latin-1")
     return value
+
+
+def _path_from_scope(scope: ASGIScope) -> str:
+    fallback = str(scope.get("path", "/") or "/")
+    raw_path = scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or not raw_path:
+        return fallback
+
+    path_bytes = raw_path.split(b"?", 1)[0]
+    for encoding in ("ascii", "utf-8"):
+        try:
+            path = path_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        return path if path.startswith("/") else fallback
+    return fallback
 
 
 async def _read_body(receive: ASGIReceive, max_body_size: int) -> bytes:
