@@ -48,3 +48,14 @@ def test_cookies_are_parsed_from_headers_lazily() -> None:
     assert request.cookies["session"] == "abc"
     assert request.cookies["theme"] == "light"
     assert request.cookies is request.cookies
+
+
+def test_malformed_cookie_header_raises_bad_request() -> None:
+    request = Request(
+        method="GET",
+        path="/",
+        headers=[("Cookie", "session=abc; $bad=x")],
+    )
+
+    with pytest.raises(BadRequestError, match="Malformed Cookie header"):
+        _ = request.cookies

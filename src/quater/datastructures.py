@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
-from http.cookies import SimpleCookie
+from http.cookies import CookieError, SimpleCookie
 from re import Pattern, compile
 from string import ascii_letters, digits
 from typing import TypeAlias
@@ -104,7 +104,10 @@ class Cookies(Mapping[str, str]):
             return cls()
 
         parsed = SimpleCookie()
-        parsed.load(value)
+        try:
+            parsed.load(value)
+        except CookieError as exc:
+            raise BadRequestError("Malformed Cookie header") from exc
         return cls({key: morsel.value for key, morsel in parsed.items()})
 
     def __getitem__(self, key: str) -> str:

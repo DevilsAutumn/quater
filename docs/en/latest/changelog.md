@@ -19,6 +19,7 @@ production-facing config.
   `HEAD` in the default CORS method set.
 - Added validation for single-string and non-string values in list-like config
   fields before app startup.
+- Added malformed `Cookie` header handling that returns `400 Bad Request`.
 
 ## 0.1.0a1
 

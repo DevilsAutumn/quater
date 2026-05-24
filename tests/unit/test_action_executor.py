@@ -284,6 +284,33 @@ async def test_action_header_and_cookie_arguments_are_available_to_handler() -> 
 
 
 @pytest.mark.asyncio
+async def test_action_cookie_arguments_reject_malformed_existing_cookie() -> None:
+    app = Quater(cli_auth=allow_auth)
+    handler_calls = 0
+
+    @app.get("/audit", cli=True, description="Read audit state.")
+    async def audit(session_id: str = Cookie(alias="session")) -> dict[str, str]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"session_id": session_id}
+
+    with pytest.raises(BadRequestError, match="Malformed Cookie header"):
+        await execute_action(
+            action_for(app, "audit"),
+            Request(
+                method="POST",
+                path="/__quater__/actions/call",
+                headers={"Cookie": "session=abc; $bad=x"},
+            ),
+            {"session_id": "sess_123"},
+            source="cli",
+            surface_auth=allow_auth,
+        )
+
+    assert handler_calls == 0
+
+
+@pytest.mark.asyncio
 async def test_action_optional_header_default_is_not_stringified() -> None:
     app = Quater(cli_auth=allow_auth)
 

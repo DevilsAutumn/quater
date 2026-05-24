@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from http.cookies import SimpleCookie
+from http.cookies import CookieError, SimpleCookie
 from inspect import Signature
 from types import UnionType
 from typing import Literal, Protocol, Union, get_args, get_origin
@@ -494,7 +494,10 @@ def _merged_cookie_header(
 ) -> str:
     jar = SimpleCookie()
     if existing:
-        jar.load(existing)
+        try:
+            jar.load(existing)
+        except CookieError as exc:
+            raise BadRequestError("Malformed Cookie header") from exc
     for name, value in cookies:
         jar[name] = value
     return "; ".join(morsel.OutputString() for morsel in jar.values())
