@@ -20,6 +20,7 @@ production-facing config.
 - Added validation for single-string and non-string values in list-like config
   fields before app startup.
 - Added malformed `Cookie` header handling that returns `400 Bad Request`.
+- Added malformed bracketed `Host` header validation before route auth runs.
 
 ## 0.1.0a1
 

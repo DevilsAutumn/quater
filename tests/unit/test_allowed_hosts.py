@@ -30,6 +30,80 @@ async def test_allowed_host_accepts_matching_host_with_port() -> None:
 @pytest.mark.parametrize(
     "host",
     (
+        "[api.example.com]",
+        "[api.example.com]:443",
+        "[api.example.com]evil.test",
+        "[api.example.com]:bad",
+        "[api.example.com]:",
+    ),
+)
+async def test_allowed_host_rejects_malformed_bracketed_hosts(host: str) -> None:
+    auth_calls = 0
+    handler_calls = 0
+
+    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    app = Quater(allowed_hosts=["api.example.com"])
+
+    @app.get("/private", auth=authenticate)
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(method="GET", path="/private", headers={"host": host})
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid Host header"
+    assert auth_calls == 0
+    assert handler_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", ("[::1]", "[::1]:8443"))
+async def test_allowed_host_accepts_bracketed_ipv6_hosts(host: str) -> None:
+    app = Quater(allowed_hosts=["::1"])
+
+    @app.get("/health")
+    async def health() -> dict[str, bool]:
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(method="GET", path="/health", headers={"host": host})
+    )
+
+    assert response.status_code == 200
+    assert response.body == b'{"ok":true}'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", ("[localhost]", "[::1]."))
+async def test_present_malformed_host_is_rejected_in_strict_default_mode(
+    host: str,
+) -> None:
+    app = Quater()
+
+    @app.get("/health")
+    async def health() -> dict[str, bool]:
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(method="GET", path="/health", headers={"host": host})
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid Host header"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    (
         "localhost",
         "localhost:8000",
         "127.0.0.1",

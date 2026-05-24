@@ -141,6 +141,11 @@ def _validate_singleton_request_headers(request: Request) -> None:
     if len(host_values) > 1 or len(authority_values) > 1:
         raise BadRequestError("Invalid Host header")
 
+    if host_values and _normalize_host(host_values[0]) is None:
+        raise BadRequestError("Invalid Host header")
+    if authority_values and _normalize_host(authority_values[0]) is None:
+        raise BadRequestError("Invalid Host header")
+
     if host_values and authority_values:
         host = _normalize_host(host_values[0])
         authority = _normalize_host(authority_values[0])
@@ -235,13 +240,23 @@ def _normalize_host(value: str | None) -> str | None:
     host = value.strip().lower()
     if not host:
         return None
-    if host.endswith("."):
-        host = host[:-1]
     if host.startswith("["):
         end = host.find("]")
         if end == -1:
             return None
-        return host[1:end]
+        remainder = host[end + 1 :]
+        if remainder and (not remainder.startswith(":") or not remainder[1:].isdigit()):
+            return None
+        literal = host[1:end]
+        try:
+            parsed = ip_address(literal)
+        except ValueError:
+            return None
+        if parsed.version != 6:
+            return None
+        return literal
+    if host.endswith("."):
+        host = host[:-1]
 
     if host.count(":") == 1:
         name, port = host.rsplit(":", 1)
