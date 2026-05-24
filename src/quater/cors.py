@@ -9,7 +9,7 @@ from quater.exceptions import ConfigurationError
 from quater.request import Request
 from quater.response import Response
 
-_DEFAULT_METHODS = ("DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT")
+_DEFAULT_METHODS = ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT")
 _HEADER_NAME_CHARS = frozenset(f"!#$%&'*+-.^_`|~{digits}{ascii_letters}")
 
 
@@ -31,10 +31,7 @@ class CORSConfig:
 
     def __post_init__(self) -> None:
         origins = _normalize_values(self.allowed_origins, "allowed_origins")
-        methods = tuple(
-            method.strip().upper()
-            for method in _normalize_values(self.allowed_methods, "allowed_methods")
-        )
+        methods = _normalize_methods(self.allowed_methods, "allowed_methods")
         allowed_headers = _normalize_header_names(
             self.allowed_headers,
             "allowed_headers",
@@ -161,6 +158,15 @@ def _normalize_values(values: tuple[str, ...], field_name: str) -> tuple[str, ..
     return normalized
 
 
+def _normalize_methods(values: tuple[str, ...], field_name: str) -> tuple[str, ...]:
+    normalized = _normalize_values(values, field_name)
+    if any(not _is_valid_token(value) for value in normalized):
+        raise ConfigurationError(
+            f"CORS {field_name} must contain valid HTTP method tokens"
+        )
+    return tuple(value.upper() for value in normalized)
+
+
 def _preflight_allowed_headers(request: Request, config: CORSConfig) -> str:
     if config.allowed_headers:
         if "*" in config.allowed_headers:
@@ -216,8 +222,8 @@ def _normalize_header_names(
 
 
 def _is_valid_header_name(value: str) -> bool:
-    return (
-        bool(value)
-        and not value.startswith(":")
-        and all(char in _HEADER_NAME_CHARS for char in value)
-    )
+    return bool(value) and not value.startswith(":") and _is_valid_token(value)
+
+
+def _is_valid_token(value: str) -> bool:
+    return bool(value) and all(char in _HEADER_NAME_CHARS for char in value)

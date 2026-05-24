@@ -205,6 +205,43 @@ def test_wildcard_origin_with_credentials_fails_configuration() -> None:
         CORSConfig(allowed_origins=("*",), allow_credentials=True)
 
 
+def test_cors_allowed_methods_are_normalized() -> None:
+    config = CORSConfig(
+        allowed_origins=("https://app.example.com",),
+        allowed_methods=("get", " PATCH ", "propfind"),
+    )
+
+    assert config.allowed_methods == ("GET", "PATCH", "PROPFIND")
+
+
+def test_cors_default_allowed_methods_include_head() -> None:
+    config = CORSConfig(allowed_origins=("https://app.example.com",))
+
+    assert "HEAD" in config.allowed_methods
+
+
+@pytest.mark.parametrize(
+    "methods",
+    (
+        ("",),
+        ("GET POST",),
+        ("GET,POST",),
+        ("GET\nX-Bad: yes",),
+        ("GET\r\nX-Bad: yes",),
+        ("GET/POST",),
+        ("GÉT",),
+    ),
+)
+def test_invalid_cors_allowed_methods_fail_configuration(
+    methods: tuple[str, ...],
+) -> None:
+    with pytest.raises(ConfigurationError, match="allowed_methods"):
+        CORSConfig(
+            allowed_origins=("https://app.example.com",),
+            allowed_methods=methods,
+        )
+
+
 @pytest.mark.parametrize(
     "headers",
     (

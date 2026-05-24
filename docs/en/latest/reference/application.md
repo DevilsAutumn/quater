@@ -288,7 +288,7 @@ Browser CORS policy. CORS is not authentication.
 ```python
 CORSConfig(
     allowed_origins: tuple[str, ...],
-    allowed_methods: tuple[str, ...] = ("DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"),
+    allowed_methods: tuple[str, ...] = ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
     allowed_headers: tuple[str, ...] = (),
     expose_headers: tuple[str, ...] = (),
     allow_credentials: bool = False,
@@ -299,14 +299,18 @@ CORSConfig(
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `allowed_origins` | `tuple[str, ...]` | required | Browser origins allowed to read responses. |
-| `allowed_methods` | `tuple[str, ...]` | all common methods | Methods advertised during preflight. |
+| `allowed_methods` | `tuple[str, ...]` | common API methods | Valid HTTP method tokens advertised during preflight. |
 | `allowed_headers` | `tuple[str, ...]` | `()` | Allowed request headers. Empty reflects sanitized requested headers. |
 | `expose_headers` | `tuple[str, ...]` | `()` | Response headers browser code may read. |
 | `allow_credentials` | `bool` | `False` | Whether browsers may send credentials. |
 | `max_age` | `int \| None` | `None` | Browser preflight cache seconds. |
 
-Raises `ImproperlyConfigured` for empty values, invalid header names, wildcard
-origins with credentials, or negative `max_age`.
+`allowed_methods` accepts standard methods and valid extension method tokens
+such as `PROPFIND`. If you expose a custom method with `route("PROPFIND", ...)`
+and browser clients call it cross-origin, add that method here too.
+
+Raises `ImproperlyConfigured` for empty values, invalid method tokens, invalid
+header names, wildcard origins with credentials, or negative `max_age`.
 
 ## __version__ {#symbol-version}
 

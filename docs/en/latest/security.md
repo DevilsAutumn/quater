@@ -210,6 +210,9 @@ app = Quater(
 
 If `allowed_headers` is empty, Quater reflects sanitized browser-requested
 headers. If you configure headers, Quater only advertises those headers.
+Quater advertises common API methods by default. If you register an
+extension method with `route("PROPFIND", ...)` and browser clients call it
+cross-origin, include that method in `allowed_methods`.
 
 MCP origin validation uses `mcp_allowed_origins` first:
 
