@@ -44,7 +44,7 @@ uvx --from quater quater actions list frustratedAI
 If the app owner gives a required Quater version, pin it:
 
 ```bash
-uvx --from quater==0.1.0a1 quater actions list frustratedAI
+uvx --from quater==0.1.0a2 quater actions list frustratedAI
 ```
 
 If `uvx` is also missing, stop and ask the user to install Quater or activate an
