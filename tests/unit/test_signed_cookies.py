@@ -32,6 +32,47 @@ def test_malformed_signed_cookie_fails_closed() -> None:
     assert signer.verify("caf\xe9.signature") is None
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",  # empty string
+        "nodotseparator",  # no separator at all
+        ".signature-only",  # empty payload
+        "payload-only.",  # empty signature
+        ".",  # both halves empty
+    ],
+)
+def test_signed_cookie_without_both_halves_is_rejected(value: str) -> None:
+    signer = SignedCookieSigner("current-secret")
+
+    assert signer.verify(value) is None
+
+
+def test_bytes_secret_round_trips() -> None:
+    signer = SignedCookieSigner(b"\x00\x01binary-secret")
+
+    signed_value = signer.sign("user_123")
+
+    assert signer.verify(signed_value) == "user_123"
+
+
+def test_empty_bytes_secret_is_rejected() -> None:
+    with pytest.raises(ConfigurationError):
+        SignedCookieSigner(b"")
+
+
+def test_bytes_fallback_secret_verifies_rotated_cookie() -> None:
+    old_signer = SignedCookieSigner(b"old-binary-secret")
+    rotated_signer = SignedCookieSigner(
+        "new-secret",
+        fallback_secrets=[b"old-binary-secret"],
+    )
+
+    old_value = old_signer.sign("user_123")
+
+    assert rotated_signer.verify(old_value) == "user_123"
+
+
 def test_rotated_cookie_secret_verifies_old_values_and_signs_with_new_secret() -> None:
     old_signer = SignedCookieSigner("old-secret")
     rotated_signer = SignedCookieSigner(

@@ -11,8 +11,32 @@ import pytest
 
 from quater.cli.errors import CLIUsageError
 from quater.cli.main import main
-from quater.cli.server import ServerOptions, serve
+from quater.cli.server import (
+    ServerOptions,
+    _load_quater_app,
+    _require_target,
+    _serve_with_granian,
+    serve,
+)
 from quater.exceptions import ImproperlyConfigured
+
+
+def server_options(**overrides: object) -> ServerOptions:
+    defaults: dict[str, object] = {
+        "target": "main:app",
+        "environment": "production",
+        "host": "127.0.0.1",
+        "port": 8000,
+        "interface": "rsgi",
+        "loop": "auto",
+        "workers": 1,
+        "reload": False,
+        "access_log": True,
+        "log_level": "info",
+        "factory": False,
+    }
+    defaults.update(overrides)
+    return ServerOptions(**defaults)  # type: ignore[arg-type]
 
 
 def write_module(tmp_path: Path, filename: str, source: str) -> None:
@@ -612,3 +636,74 @@ def test_run_allow_insecure_still_validates_routes_before_serving(
     assert "PATCH '/orders/{id}' conflicts with GET '/orders/{order_id}'" in (
         captured.err
     )
+
+
+def test_serve_with_granian_maps_options_and_starts_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import granian
+    from granian.constants import Interfaces, Loops
+    from granian.log import LogLevels
+
+    captured: dict[str, object] = {}
+
+    class FakeGranian:
+        def __init__(self, target: str, **kwargs: object) -> None:
+            captured["target"] = target
+            captured["kwargs"] = kwargs
+
+        def serve(self) -> None:
+            captured["served"] = True
+
+    monkeypatch.setattr(granian, "Granian", FakeGranian)
+
+    _serve_with_granian(
+        server_options(
+            target="main:app",
+            host="0.0.0.0",
+            port=9000,
+            interface="asgi",
+            loop="asyncio",
+            workers=3,
+            reload=True,
+            access_log=False,
+            log_level="warning",
+            factory=True,
+            working_dir=Path("/srv"),
+        )
+    )
+
+    assert captured["target"] == "main:app"
+    assert captured["served"] is True
+    kwargs = captured["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["address"] == "0.0.0.0"
+    assert kwargs["port"] == 9000
+    assert kwargs["workers"] == 3
+    assert kwargs["reload"] is True
+    assert kwargs["factory"] is True
+    assert kwargs["working_dir"] == Path("/srv")
+    assert kwargs["log_access"] is False
+    # The string literals must map onto valid Granian enum members.
+    assert kwargs["interface"] == Interfaces("asgi")
+    assert kwargs["loop"] == Loops("asyncio")
+    assert kwargs["log_level"] == LogLevels("warning")
+
+
+def test_serve_with_granian_requires_granian_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "granian", None)
+
+    with pytest.raises(CLIUsageError, match="Granian is required"):
+        _serve_with_granian(server_options())
+
+
+def test_load_quater_app_rejects_missing_target() -> None:
+    with pytest.raises(CLIUsageError, match="Could not find a Quater app"):
+        _load_quater_app(None, factory=False, working_dir=None)
+
+
+def test_require_target_rejects_missing_target() -> None:
+    with pytest.raises(CLIUsageError, match="Could not find a Quater app"):
+        _require_target(None)
