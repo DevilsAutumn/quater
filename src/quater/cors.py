@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from string import ascii_letters, digits
 
@@ -151,14 +152,30 @@ def _append_vary(
     return (*headers, ("vary", value))
 
 
-def _normalize_values(values: tuple[str, ...], field_name: str) -> tuple[str, ...]:
-    normalized = tuple(value.strip() for value in values)
-    if any(not value for value in normalized):
-        raise ConfigurationError(f"CORS {field_name} cannot contain empty values")
-    return normalized
+def _normalize_values(values: object, field_name: str) -> tuple[str, ...]:
+    if isinstance(values, str):
+        raise ConfigurationError(
+            f"CORS {field_name} must be an iterable of strings, not a single string"
+        )
+    if isinstance(values, (bytes, bytearray)):
+        raise ConfigurationError(f"CORS {field_name} must contain strings, not bytes")
+    if isinstance(values, Mapping):
+        raise ConfigurationError(f"CORS {field_name} must be an iterable of strings")
+    if not isinstance(values, Iterable):
+        raise ConfigurationError(f"CORS {field_name} must be an iterable of strings")
+
+    normalized: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            raise ConfigurationError(f"CORS {field_name} must contain only strings")
+        stripped = value.strip()
+        if not stripped:
+            raise ConfigurationError(f"CORS {field_name} cannot contain empty values")
+        normalized.append(stripped)
+    return tuple(normalized)
 
 
-def _normalize_methods(values: tuple[str, ...], field_name: str) -> tuple[str, ...]:
+def _normalize_methods(values: object, field_name: str) -> tuple[str, ...]:
     normalized = _normalize_values(values, field_name)
     if any(not _is_valid_token(value) for value in normalized):
         raise ConfigurationError(
@@ -195,7 +212,7 @@ def _requested_headers(request: Request) -> str:
 
 
 def _normalize_header_names(
-    values: tuple[str, ...],
+    values: object,
     field_name: str,
     *,
     allow_wildcard: bool,
@@ -203,7 +220,7 @@ def _normalize_header_names(
 ) -> tuple[str, ...]:
     normalized: list[str] = []
     seen: set[str] = set()
-    for value in values:
+    for value in _normalize_values(values, field_name):
         name = value.strip().lower()
         display_name = name if lowercase else value.strip()
         if allow_wildcard and name == "*":

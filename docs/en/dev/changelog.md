@@ -22,6 +22,8 @@ production-facing config, and adapter response safety.
   before auth hooks run.
 - Added CORS `allowed_methods` validation during configuration and included
   `HEAD` in the default CORS method set.
+- Added validation for single-string, bytes, mapping, and non-string values in
+  CORS list-like config fields before app startup.
 - Changed ASGI path extraction to preserve encoded path segments from
   `raw_path` when servers provide it.
 - Added validation for single-string and non-string values in list-like config

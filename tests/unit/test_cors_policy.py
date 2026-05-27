@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import cast
+
 import pytest
 
 from quater import Quater, Request
@@ -218,6 +221,134 @@ def test_cors_default_allowed_methods_include_head() -> None:
     config = CORSConfig(allowed_origins=("https://app.example.com",))
 
     assert "HEAD" in config.allowed_methods
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"allowed_origins": "https://app.example.com"},
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_methods": "POST",
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_headers": "authorization",
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "expose_headers": "x-request-id",
+        },
+    ),
+)
+def test_cors_string_collection_fields_fail_early(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="must be an iterable of strings, not a single string",
+    ):
+        CORSConfig(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"allowed_origins": cast(tuple[str, ...], b"https://app.example.com")},
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_methods": cast(tuple[str, ...], b"POST"),
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_headers": cast(tuple[str, ...], bytearray(b"authorization")),
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "expose_headers": cast(tuple[str, ...], b"x-request-id"),
+        },
+    ),
+)
+def test_cors_bytes_collection_fields_fail_early(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ConfigurationError, match="must contain strings, not bytes"):
+        CORSConfig(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"allowed_origins": cast(Iterable[str], {"https://app.example.com": "yes"})},
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_methods": cast(Iterable[str], {"POST": "yes"}),
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_headers": cast(Iterable[str], {"authorization": "yes"}),
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "expose_headers": cast(Iterable[str], {"x-request-id": "yes"}),
+        },
+    ),
+)
+def test_cors_mapping_collection_fields_fail_early(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ConfigurationError, match="must be an iterable of strings"):
+        CORSConfig(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"allowed_origins": 123},
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_methods": 123,
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_headers": 123,
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "expose_headers": 123,
+        },
+    ),
+)
+def test_cors_non_iterable_collection_fields_fail_early(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ConfigurationError, match="must be an iterable of strings"):
+        CORSConfig(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"allowed_origins": [cast(str, 123)]},
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_methods": [cast(str, 123)],
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "allowed_headers": [cast(str, 123)],
+        },
+        {
+            "allowed_origins": ("https://app.example.com",),
+            "expose_headers": [cast(str, 123)],
+        },
+    ),
+)
+def test_cors_non_string_collection_items_fail_early(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ConfigurationError, match="must contain only strings"):
+        CORSConfig(**kwargs)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
