@@ -1,5 +1,21 @@
 # Quater
 
+<p align="left">
+  <a href="https://github.com/DevilsAutumn/quater/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/DevilsAutumn/quater/actions/workflows/ci.yml/badge.svg?branch=main">
+  </a>
+  <a href="https://codecov.io/gh/DevilsAutumn/quater">
+    <img alt="Coverage" src="https://codecov.io/gh/DevilsAutumn/quater/branch/main/graph/badge.svg">
+  </a>
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
+  <a href="https://github.com/DevilsAutumn/quater/blob/main/LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/DevilsAutumn/quater">
+  </a>
+  <a href="https://quater.devilsautumn.com/en/dev/">
+    <img alt="Docs" src="https://img.shields.io/badge/docs-quater.devilsautumn.com-blue">
+  </a>
+</p>
+
 Most backend frameworks were designed for one main job: serve data to a
 frontend, then let humans click through that frontend to get work done.
 
