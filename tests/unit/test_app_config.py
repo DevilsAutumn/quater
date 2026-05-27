@@ -13,9 +13,94 @@ from quater.request import Request
 from quater.response import Response
 from quater.typing import AuthContext, AuthRequest
 
+_OPTIONAL_STRING_CONFIG_FIELDS = (
+    "content_security_policy",
+    "docs_path",
+    "openapi_path",
+    "mcp_docs_path",
+    "request_id_header",
+)
+_SIZE_CONFIG_FIELDS = (
+    "max_body_size",
+    "max_form_field_size",
+    "max_file_size",
+    "upload_spool_size",
+    "max_tool_response_size",
+    "max_action_response_size",
+)
+_COUNT_CONFIG_FIELDS = ("max_form_parts",)
+_LIMIT_CONFIG_FIELDS = (*_SIZE_CONFIG_FIELDS, *_COUNT_CONFIG_FIELDS)
+
 
 async def allow_mcp_auth(ctx: AuthRequest) -> AuthContext | None:
     return AuthContext(subject="mcp")
+
+
+def _quater_with_optional_string_config(field_name: str, value: object) -> Quater:
+    if field_name == "content_security_policy":
+        return Quater(content_security_policy=cast(str | None, value))
+    if field_name == "docs_path":
+        return Quater(docs_path=cast(str | None, value))
+    if field_name == "openapi_path":
+        return Quater(openapi_path=cast(str | None, value))
+    if field_name == "mcp_docs_path":
+        return Quater(mcp_docs_path=cast(str | None, value))
+    if field_name == "request_id_header":
+        return Quater(request_id_header=cast(str | None, value))
+    raise AssertionError(f"Unknown config field: {field_name}")
+
+
+def _app_config_with_optional_string_config(
+    field_name: str,
+    value: object,
+) -> AppConfig:
+    if field_name == "content_security_policy":
+        return AppConfig(content_security_policy=cast(str | None, value))
+    if field_name == "docs_path":
+        return AppConfig(docs_path=cast(str | None, value))
+    if field_name == "openapi_path":
+        return AppConfig(openapi_path=cast(str | None, value))
+    if field_name == "mcp_docs_path":
+        return AppConfig(mcp_docs_path=cast(str | None, value))
+    if field_name == "request_id_header":
+        return AppConfig(request_id_header=cast(str | None, value))
+    raise AssertionError(f"Unknown config field: {field_name}")
+
+
+def _quater_with_limit_config(field_name: str, value: object) -> Quater:
+    if field_name == "max_body_size":
+        return Quater(max_body_size=cast(int | str, value))
+    if field_name == "max_form_parts":
+        return Quater(max_form_parts=cast(int, value))
+    if field_name == "max_form_field_size":
+        return Quater(max_form_field_size=cast(int | str, value))
+    if field_name == "max_file_size":
+        return Quater(max_file_size=cast(int | str, value))
+    if field_name == "upload_spool_size":
+        return Quater(upload_spool_size=cast(int | str, value))
+    if field_name == "max_tool_response_size":
+        return Quater(max_tool_response_size=cast(int | str, value))
+    if field_name == "max_action_response_size":
+        return Quater(max_action_response_size=cast(int | str, value))
+    raise AssertionError(f"Unknown config field: {field_name}")
+
+
+def _app_config_with_limit_config(field_name: str, value: object) -> AppConfig:
+    if field_name == "max_body_size":
+        return AppConfig(max_body_size=cast(int, value))
+    if field_name == "max_form_parts":
+        return AppConfig(max_form_parts=cast(int, value))
+    if field_name == "max_form_field_size":
+        return AppConfig(max_form_field_size=cast(int, value))
+    if field_name == "max_file_size":
+        return AppConfig(max_file_size=cast(int, value))
+    if field_name == "upload_spool_size":
+        return AppConfig(upload_spool_size=cast(int, value))
+    if field_name == "max_tool_response_size":
+        return AppConfig(max_tool_response_size=cast(int, value))
+    if field_name == "max_action_response_size":
+        return AppConfig(max_action_response_size=cast(int, value))
+    raise AssertionError(f"Unknown config field: {field_name}")
 
 
 def test_app_config_copies_mutable_inputs() -> None:
@@ -94,6 +179,54 @@ def test_direct_app_config_string_tuple_fields_fail_early() -> None:
         match="allowed_hosts must be an iterable of strings",
     ):
         AppConfig(allowed_hosts=cast(tuple[str, ...], "api.example.com"))
+
+
+@pytest.mark.parametrize("field_name", _OPTIONAL_STRING_CONFIG_FIELDS)
+def test_non_string_optional_config_overrides_fail_with_configuration_error(
+    field_name: str,
+) -> None:
+    with pytest.raises(ConfigurationError, match=field_name):
+        _quater_with_optional_string_config(field_name, 123)
+
+
+@pytest.mark.parametrize("field_name", _OPTIONAL_STRING_CONFIG_FIELDS)
+def test_direct_app_config_non_string_optional_values_fail_with_configuration_error(
+    field_name: str,
+) -> None:
+    with pytest.raises(ConfigurationError, match=field_name):
+        _app_config_with_optional_string_config(field_name, 123)
+
+
+@pytest.mark.parametrize("field_name", _LIMIT_CONFIG_FIELDS)
+def test_bool_limit_config_overrides_fail_with_configuration_error(
+    field_name: str,
+) -> None:
+    with pytest.raises(ConfigurationError, match=field_name):
+        _quater_with_limit_config(field_name, True)
+
+
+@pytest.mark.parametrize("field_name", _LIMIT_CONFIG_FIELDS)
+def test_direct_app_config_bool_limit_values_fail_with_configuration_error(
+    field_name: str,
+) -> None:
+    with pytest.raises(ConfigurationError, match=field_name):
+        _app_config_with_limit_config(field_name, True)
+
+
+@pytest.mark.parametrize("field_name", _LIMIT_CONFIG_FIELDS)
+def test_non_numeric_limit_config_overrides_fail_with_configuration_error(
+    field_name: str,
+) -> None:
+    with pytest.raises(ConfigurationError, match=field_name):
+        _quater_with_limit_config(field_name, object())
+
+
+@pytest.mark.parametrize("field_name", _LIMIT_CONFIG_FIELDS)
+def test_direct_app_config_non_numeric_limit_values_fail_with_configuration_error(
+    field_name: str,
+) -> None:
+    with pytest.raises(ConfigurationError, match=field_name):
+        _app_config_with_limit_config(field_name, object())
 
 
 def test_app_config_is_immutable_after_creation() -> None:

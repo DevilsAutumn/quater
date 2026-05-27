@@ -112,21 +112,33 @@ class AppConfig:
         )
         if self.security not in {"strict", "relaxed", "off"}:
             raise ConfigurationError(f"Unsupported security mode: {self.security!r}")
-        if self.max_body_size < 0:
-            raise ConfigurationError("max_body_size must be greater than or equal to 0")
-        if self.max_form_parts < 1:
-            raise ConfigurationError("max_form_parts must be greater than 0")
-        for field_name in (
+        max_body_size = _validate_direct_size(self.max_body_size, "max_body_size")
+        max_form_parts = _validate_direct_count(self.max_form_parts, "max_form_parts")
+        max_form_field_size = _validate_direct_size(
+            self.max_form_field_size,
             "max_form_field_size",
-            "max_file_size",
+        )
+        max_file_size = _validate_direct_size(self.max_file_size, "max_file_size")
+        upload_spool_size = _validate_direct_size(
+            self.upload_spool_size,
             "upload_spool_size",
+        )
+        max_tool_response_size = _validate_direct_size(
+            self.max_tool_response_size,
             "max_tool_response_size",
+        )
+        max_action_response_size = _validate_direct_size(
+            self.max_action_response_size,
             "max_action_response_size",
+        )
+        for field_name in (
+            "content_security_policy",
+            "docs_path",
+            "openapi_path",
+            "mcp_docs_path",
+            "request_id_header",
         ):
-            if getattr(self, field_name) < 0:
-                raise ConfigurationError(
-                    f"{field_name} must be greater than or equal to 0"
-                )
+            _validate_optional_string(getattr(self, field_name), field_name)
         if any(not _is_valid_ip_network(proxy) for proxy in trusted_proxies):
             raise ConfigurationError(
                 "trusted_proxies must contain IP addresses or CIDR networks"
@@ -144,6 +156,17 @@ class AppConfig:
             raise ConfigurationError("docs_path requires openapi_path")
         object.__setattr__(self, "allowed_hosts", allowed_hosts)
         object.__setattr__(self, "trusted_proxies", trusted_proxies)
+        object.__setattr__(self, "max_body_size", max_body_size)
+        object.__setattr__(self, "max_form_parts", max_form_parts)
+        object.__setattr__(self, "max_form_field_size", max_form_field_size)
+        object.__setattr__(self, "max_file_size", max_file_size)
+        object.__setattr__(self, "upload_spool_size", upload_spool_size)
+        object.__setattr__(self, "max_tool_response_size", max_tool_response_size)
+        object.__setattr__(
+            self,
+            "max_action_response_size",
+            max_action_response_size,
+        )
         object.__setattr__(self, "mcp_allowed_origins", mcp_allowed_origins)
         self._validate_reserved_paths()
 
@@ -282,13 +305,19 @@ class AppConfig:
             seen[path] = field_name
 
 
-def parse_size(value: MaxBodySize, *, field_name: str) -> int:
+def parse_size(value: object, *, field_name: str) -> int:
     """Parse byte sizes such as ``"2mb"`` into integer bytes."""
 
+    if isinstance(value, bool):
+        raise ConfigurationError(f"{field_name} must not be a boolean")
     if isinstance(value, int):
         if value < 0:
             raise ConfigurationError(f"{field_name} must be greater than or equal to 0")
         return value
+    if not isinstance(value, str):
+        raise ConfigurationError(
+            f"{field_name} must be integer bytes or a string like '2mb'"
+        )
 
     normalized = value.strip().lower()
     if not normalized:
@@ -305,19 +334,23 @@ def parse_size(value: MaxBodySize, *, field_name: str) -> int:
     if not digits or any(char.isspace() for char in unit) or unit not in _SIZE_UNITS:
         allowed = ", ".join(sorted(_SIZE_UNITS))
         raise ConfigurationError(
-            f"{field_name} must be bytes or a string like '2mb' ({allowed})"
+            f"{field_name} must be integer bytes or a string like '2mb' ({allowed})"
         )
 
     return int(digits) * _SIZE_UNITS[unit]
 
 
-def parse_count(value: int | str, *, field_name: str) -> int:
+def parse_count(value: object, *, field_name: str) -> int:
     """Parse positive integer count settings."""
 
+    if isinstance(value, bool):
+        raise ConfigurationError(f"{field_name} must not be a boolean")
     if isinstance(value, int):
         if value < 1:
             raise ConfigurationError(f"{field_name} must be greater than 0")
         return value
+    if not isinstance(value, str):
+        raise ConfigurationError(f"{field_name} must be a positive integer")
 
     normalized = value.strip()
     if not normalized:
@@ -357,6 +390,31 @@ def _normalize_string_tuple(values: Iterable[str], field_name: str) -> tuple[str
     if any(not value for value in normalized):
         raise ConfigurationError(f"{field_name} cannot contain empty values")
     return normalized
+
+
+def _validate_direct_size(value: object, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ConfigurationError(f"{field_name} must not be a boolean")
+    if not isinstance(value, int):
+        raise ConfigurationError(f"{field_name} must be an integer")
+    if value < 0:
+        raise ConfigurationError(f"{field_name} must be greater than or equal to 0")
+    return value
+
+
+def _validate_direct_count(value: object, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ConfigurationError(f"{field_name} must not be a boolean")
+    if not isinstance(value, int):
+        raise ConfigurationError(f"{field_name} must be an integer")
+    if value < 1:
+        raise ConfigurationError(f"{field_name} must be greater than 0")
+    return value
+
+
+def _validate_optional_string(value: object, field_name: str) -> None:
+    if value is not None and not isinstance(value, str):
+        raise ConfigurationError(f"{field_name} must be str or None")
 
 
 def _override_path(

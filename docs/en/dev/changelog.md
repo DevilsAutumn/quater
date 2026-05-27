@@ -26,6 +26,8 @@ production-facing config, and adapter response safety.
   `raw_path` when servers provide it.
 - Added validation for single-string and non-string values in list-like config
   fields before app startup.
+- Added validation for non-string optional config fields and boolean or
+  non-numeric limit settings before app startup.
 - Added malformed `Cookie` header handling that returns `400 Bad Request`.
 - Added malformed bracketed `Host` header validation before route auth runs.
 - Added response value validation before adapters write HTTP responses, so bad
