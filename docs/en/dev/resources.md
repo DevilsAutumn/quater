@@ -21,10 +21,12 @@ Quater keeps those values explicit:
 
 - Long-lived objects live on `app.state`.
 - Per-request values use `Resource`.
-- Routes opt in with `inject={...}`.
+- Routes opt in by naming the `Resource`, either in the decorator's
+  `inject={...}` map or in the parameter's type annotation.
 
-Quater does not build a hidden dependency graph. A reader can inspect the route
-decorator and know which handler parameters come from the app.
+Quater does not build a hidden dependency graph. A reader can see every injected
+parameter at the route — in the decorator's `inject` map or in the handler
+signature — and know which values come from the app.
 
 ## Resource Lifecycle
 
@@ -156,6 +158,77 @@ The injected `session` does not appear in:
 
 That keeps app-owned objects away from untrusted caller input.
 
+## Two Ways To Wire A Resource
+
+A `Resource` is bound to a handler parameter by name. You can express that
+binding in two places. Both produce the same binding, and both keep the
+parameter out of every caller-facing schema.
+
+### In the decorator (`inject={...}`)
+
+The `inject` map keys each resource to a parameter name:
+
+```python
+@app.post("/orders", inject={"session": db_session})
+async def create_order(order: CreateOrder, session: DatabaseSession) -> dict[str, str]:
+    ...
+```
+
+The parameter (`session: DatabaseSession`) is a plain typed parameter; the
+decorator says where its value comes from. This is the only form that a
+[`RouteGroup`](#groups) can share across several routes, so prefer it when a
+whole feature needs the same resource.
+
+### In the type annotation (`Annotated[T, resource]`)
+
+Put the `Resource` in the parameter's annotation. The parameter type is still
+`T`; the resource rides along as annotation metadata that Quater reads at route
+compilation:
+
+```python
+@app.post("/orders")
+async def create_order(
+    order: CreateOrder,
+    session: Annotated[DatabaseSession, db_session],
+) -> dict[str, str]:
+    ...
+```
+
+This keeps the value and its provider next to the parameter, and it lets you
+define a reusable alias once and share it across handlers — the same shape you
+may know from other frameworks:
+
+```python
+from typing import Annotated
+
+SessionDep = Annotated[DatabaseSession, db_session]
+
+
+@app.get("/orders/{order_id}")
+async def get_order(order_id: str, session: SessionDep) -> dict[str, str]:
+    ...
+
+
+@app.post("/orders")
+async def create_order(order: CreateOrder, session: SessionDep) -> dict[str, str]:
+    ...
+```
+
+Because the annotation type stays `DatabaseSession` and the parameter has no
+default, this form type-checks cleanly under strict tools with no cast or
+`# type: ignore`.
+
+Define the `Resource` (and any `Annotated` alias) at module scope so Quater can
+resolve the annotation when it compiles the route.
+
+### Rules
+
+- Declare a resource in **one** place per parameter. Naming the same parameter in
+  both `inject={...}` and its annotation is rejected at route compilation.
+- A `Resource` cannot go in a parameter's **default** value
+  (`session: DatabaseSession = db_session`). Use `inject={...}` or the
+  annotation instead; the default form is rejected with a clear error.
+
 ## Groups
 
 Use a [`RouteGroup`](/en/dev/reference/application#symbol-routegroup) when
@@ -223,6 +296,18 @@ The generated MCP and CLI schemas include `order_id`, not `session`.
 `Duplicate injected parameter: session`
 : A group and a route both define `session` with different `Resource` objects.
   Use the same object or rename one parameter.
+
+`Injected parameter 'session' is declared both in inject= and in its type annotation`
+: A parameter names the same resource in the decorator `inject` map and in its
+  `Annotated[...]` metadata. Keep one.
+
+`Resource for 'session' must be declared in inject= or in the type annotation (Annotated[T, resource]), not as a default value`
+: A `Resource` was placed in a parameter's default value. Move it into the
+  `inject` map or the parameter's annotation.
+
+`Only one resource is supported in a type annotation`
+: A parameter's `Annotated[...]` metadata lists more than one `Resource`. Use a
+  single resource per parameter.
 
 ## Also See
 

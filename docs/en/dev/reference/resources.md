@@ -29,7 +29,8 @@ Resource(
 | `scope` | `ResourceScope` | `"request"` | Lifetime. Only `"request"` exists today. |
 | `name` | `str \| None` | `None` | Name used in resource error messages. |
 
-Returns: `None`. Use the instance in a route `inject={...}` map.
+Returns: `None`. Bind the instance to a handler parameter either through a route
+`inject={...}` map or in the parameter's `Annotated[...]` type metadata.
 
 Example:
 
@@ -61,6 +62,24 @@ Expected response:
   "session": "db-session"
 }
 ```
+
+Equivalently, carry the resource in the parameter's `Annotated[...]` metadata,
+which also lets you reuse one alias across handlers:
+
+```python
+from typing import Annotated
+
+SessionDep = Annotated[str, db_session]
+
+
+@app.get("/orders/{order_id}")
+async def get_order(order_id: str, session: SessionDep) -> dict[str, str]:
+    return {"order_id": order_id, "session": session}
+```
+
+A parameter may name a resource in `inject` or in its annotation, but not both,
+and a `Resource` cannot be used as a parameter default. See
+[Two ways to wire a resource](/en/dev/resources#two-ways-to-wire-a-resource).
 
 ## Provider Forms
 
@@ -97,6 +116,17 @@ finishes.
 
 `Resource provider 'db_session' yielded more than once`
 : Yield one value, then cleanup after it.
+
+`Injected parameter 'session' is declared both in inject= and in its type annotation`
+: A parameter names the same resource in `inject` and in its `Annotated[...]`
+  metadata. Keep one.
+
+`Resource for 'session' must be declared in inject= or in the type annotation (Annotated[T, resource]), not as a default value`
+: A `Resource` was used as a parameter default. Move it to `inject` or the
+  annotation.
+
+`Only one resource is supported in a type annotation`
+: A parameter's `Annotated[...]` metadata lists more than one `Resource`.
 
 ## Also See
 

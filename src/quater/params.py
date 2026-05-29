@@ -172,13 +172,25 @@ def build_handler_plan(
                 f"Unsupported parameter kind for {name!r}: {parameter.kind!s}"
             )
 
-        annotation, annotation_marker = _annotation_and_marker(
+        annotation, annotation_marker, annotation_resource = _annotation_and_markers(
             type_hints.get(name, parameter.annotation)
         )
         raw_default, default_marker = _default_and_marker(parameter.default)
+        if isinstance(raw_default, Resource):
+            raise RouteBindingError(
+                f"Resource for {name!r} must be declared in inject= or in the "
+                "type annotation (Annotated[T, resource]), not as a default value"
+            )
+        resource = resources.get(name)
+        if annotation_resource is not None:
+            if resource is not None:
+                raise RouteBindingError(
+                    f"Injected parameter {name!r} is declared both in inject= "
+                    "and in its type annotation"
+                )
+            resource = annotation_resource
         marker = _resolve_marker(name, annotation_marker, default_marker)
         default = _resolve_default(name, raw_default, marker)
-        resource = resources.get(name)
         source = _parameter_source(
             name,
             annotation,
@@ -479,24 +491,30 @@ def _allows_none(annotation: object) -> bool:
     return type(None) in get_args(annotation)
 
 
-def _annotation_and_marker(
+def _annotation_and_markers(
     annotation: object,
-) -> tuple[object, ParameterMarker | None]:
+) -> tuple[object, ParameterMarker | None, Resource | None]:
     if get_origin(annotation) is not Annotated:
-        return annotation, None
+        return annotation, None, None
 
     args = get_args(annotation)
     if not args:
-        return annotation, None
+        return annotation, None, None
 
     marker: ParameterMarker | None = None
+    resource: Resource | None = None
     for metadata in args[1:]:
-        if not isinstance(metadata, ParameterMarker):
-            continue
-        if marker is not None:
-            raise RouteBindingError("Only one parameter marker is supported")
-        marker = metadata
-    return args[0], marker
+        if isinstance(metadata, ParameterMarker):
+            if marker is not None:
+                raise RouteBindingError("Only one parameter marker is supported")
+            marker = metadata
+        elif isinstance(metadata, Resource):
+            if resource is not None:
+                raise RouteBindingError(
+                    "Only one resource is supported in a type annotation"
+                )
+            resource = metadata
+    return args[0], marker, resource
 
 
 def _default_and_marker(value: object) -> tuple[object, ParameterMarker | None]:

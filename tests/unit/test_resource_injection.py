@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
 from contextlib import AsyncExitStack, asynccontextmanager
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 import pytest
 
@@ -469,3 +469,82 @@ async def test_action_arguments_cannot_supply_injected_values() -> None:
             source="cli",
             surface_auth=allow_auth,
         )
+
+
+_annotation_events: list[str] = []
+
+
+async def _annotation_session_provider(
+    request: Request,
+) -> AsyncIterator[FakeSession]:
+    _annotation_events.append(f"open:{request.path}")
+    try:
+        yield FakeSession("primary")
+    finally:
+        _annotation_events.append(f"close:{request.path}")
+
+
+_annotation_session = Resource(_annotation_session_provider)
+# A reusable alias that carries both the value type and its provider.
+SessionDep = Annotated[FakeSession, _annotation_session]
+
+
+@pytest.mark.asyncio
+async def test_resource_in_annotation_resolves_and_cleans_up() -> None:
+    _annotation_events.clear()
+    app = Quater()
+
+    @app.get("/orders")
+    async def list_orders(session: SessionDep) -> dict[str, str]:
+        _annotation_events.append(f"handler:{session.label}")
+        return {"session": session.label}
+
+    async with TestClient(app) as client:
+        response = await client.get("/orders")
+
+    assert response.body == b'{"session":"primary"}'
+    assert _annotation_events == ["open:/orders", "handler:primary", "close:/orders"]
+
+
+def test_annotation_resource_is_excluded_from_schemas() -> None:
+    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+
+    @app.get(
+        "/orders/{order_id}",
+        tool=True,
+        cli=True,
+        description="Fetch one order.",
+    )
+    async def get_order(order_id: str, session: SessionDep) -> dict[str, str]:
+        return {"id": order_id, "session": session.label}
+
+    tool = build_tool_registry(app.routes).get("get_order")
+    assert tool is not None
+    assert tool.input_schema["properties"] == {"order_id": {"type": "string"}}
+
+    action = action_for(app, "get_order")
+    assert action.input_schema["properties"] == {"order_id": {"type": "string"}}
+
+
+def test_resource_declared_in_inject_and_annotation_is_rejected() -> None:
+    app = Quater()
+
+    @app.get("/orders", inject={"session": _annotation_session})
+    async def list_orders(session: SessionDep) -> dict[str, str]:
+        return {"session": session.label}
+
+    with pytest.raises(RouteBindingError, match="both in inject="):
+        app.compile_routes()
+
+
+def test_resource_in_default_slot_is_rejected() -> None:
+    app = Quater()
+
+    @app.get("/orders")
+    async def list_orders(
+        session: FakeSession = _annotation_session,  # type: ignore[assignment]
+    ) -> dict[str, str]:
+        return {"session": session.label}
+
+    with pytest.raises(RouteBindingError, match="not as a default value"):
+        app.compile_routes()

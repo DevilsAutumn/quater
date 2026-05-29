@@ -11,6 +11,18 @@ This page records public release notes for Quater.
 
 Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
+## 0.1.0a3
+
+### Added
+
+- Added support for declaring a `Resource` in a parameter's `Annotated[...]`
+  type metadata (for example `session: Annotated[Session, db_session]`) as an
+  alternative to the decorator `inject={...}` map. This allows reusable
+  `Annotated` aliases shared across handlers, type-checks with no cast, and
+  produces the same binding — excluded from caller-facing schemas — as `inject`.
+  Declaring a parameter's resource in both places, or as a parameter default, is
+  rejected during route compilation.
+
 ## 0.1.0a2
 
 This alpha tightens fail-fast validation around auth headers, CORS,
