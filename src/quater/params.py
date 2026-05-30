@@ -19,7 +19,12 @@ from typing import (
 from quater._finalize import add_request_finalizer
 from quater._parameters import ParameterMarker
 from quater.core import Handler
-from quater.dependencies import Resource, ResourceMap
+from quater.dependencies import (
+    Resource,
+    ResourceMap,
+    resolve_resource,
+    validate_resource,
+)
 from quater.exceptions import BadRequestError, RequestJSONError, RouteBindingError
 from quater.request import Request
 from quater.response import Response
@@ -224,6 +229,9 @@ def build_handler_plan(
         )
     _validate_all_resources_are_used(resources, seen_names)
     _validate_parameter_collisions(parameters)
+    for bound_parameter in parameters:
+        if bound_parameter.source == "resource" and bound_parameter.resource:
+            validate_resource(bound_parameter.resource)
     return HandlerPlan(handler=handler, parameters=tuple(parameters))
 
 
@@ -685,11 +693,7 @@ async def _bind_resource_parameter(
     if resource is None:
         raise RuntimeError("Injected parameter is missing its resource")
     scope = request.resources
-    cache = scope.cache
-    cache_key = id(resource)
-    if cache_key not in cache:
-        cache[cache_key] = await resource.resolve(request, scope.stack())
-    return cache[cache_key]
+    return await resolve_resource(resource, request, scope.cache, scope.stack)
 
 
 def _normalize_resources(inject: ResourceMap | None) -> dict[str, Resource]:

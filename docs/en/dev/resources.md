@@ -154,6 +154,54 @@ async def session_resource(request: Request) -> AsyncIterator[DatabaseSession]:
         yield session
 ```
 
+## Resources That Depend On Resources
+
+A provider can ask for other resources, the same way a handler does — with
+`Annotated[T, resource]`. Quater resolves each dependency first, once, from the
+request's shared scope, and passes it in. The classic case is a current-user
+resource that needs the database session to look the user up:
+
+```python
+from typing import Annotated
+
+from quater import Request, Resource
+
+db_session = Resource(session_resource, name="session")
+SessionDep = Annotated[DatabaseSession, db_session]
+
+
+async def current_user_provider(
+    request: Request,
+    session: SessionDep,
+) -> User:
+    user = await find_user(session, request.headers.get("authorization"))
+    if user is None:
+        raise UnauthorizedError
+    return user
+
+
+current_user = Resource(current_user_provider, name="current_user")
+```
+
+Because the session comes from the shared scope, the session opened to look up
+the user is the *same* session a handler injects directly — one connection for
+the whole request.
+
+It stays explicit on purpose: a provider only receives a resource you point at
+through its annotation. Nothing is guessed from a bare type. A provider
+parameter that is neither named `request` nor annotated with a resource is
+rejected when routes compile.
+
+The dependency graph is checked at startup, not on the first request:
+
+- A dependency cycle (a resource that needs itself, directly or through others)
+  fails when routes compile.
+- A provider parameter that can't be resolved fails when routes compile.
+
+Dependencies are private to the provider: a resource and everything it depends
+on stay out of OpenAPI, MCP, and CLI schemas. The session never shows up as a
+tool input.
+
 ## Route Usage
 
 ```python
@@ -298,11 +346,21 @@ The generated MCP and CLI schemas include `order_id`, not `session`.
 : Do not combine `Resource` injection with `Path`, `Query`, `Body`, `Header`, or
   `Cookie`.
 
-`Resource provider parameter must be named 'request' or typed as Request`
-: Rename the provider argument to `request` or annotate it as `Request`.
+`Resource provider 'current_user' parameter 'mystery' could not be resolved: name it 'request' or annotate it with Annotated[T, resource]`
+: A provider parameter is neither named `request` nor annotated with a resource.
+  Name it `request`, annotate it `Annotated[T, some_resource]`, or remove it.
+
+`Resource dependency cycle detected: a -> b -> a`
+: A resource depends on itself, directly or through others. Break the loop.
+
+`Resource provider parameter 'request' cannot be both the request and a resource`
+: A parameter is named `request` and also annotated with a resource. Pick one.
+
+`Resource providers may accept the request only once`
+: A provider lists more than one request parameter. Keep a single one.
 
 `Resource providers cannot use *args or **kwargs`
-: Give the provider either zero parameters or one request parameter.
+: Give the provider explicit parameters: `request` and/or resource dependencies.
 
 `Resource provider 'db_session' did not yield a value`
 : A generator provider must yield exactly one value.

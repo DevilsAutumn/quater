@@ -236,12 +236,9 @@ def test_resource_rejects_invalid_provider_configuration() -> None:
     def uses_varargs(*args: object) -> FakeSession:
         return FakeSession(str(len(args)))
 
-    def uses_two_parameters(request: Request, other: object) -> FakeSession:
-        return FakeSession(f"{request.path}:{other!r}")
-
-    def uses_untyped_context(ctx: object) -> FakeSession:
-        return FakeSession(str(ctx))
-
+    # Provider parameters that are neither the request nor a resource dependency
+    # are rejected when routes compile (see test_resource_dependencies), not at
+    # construction — so a provider can carry resource dependencies.
     with pytest.raises(ConfigurationError, match="scope must be 'request'"):
         Resource(provider, scope=cast(Any, "application"))
 
@@ -250,12 +247,6 @@ def test_resource_rejects_invalid_provider_configuration() -> None:
 
     with pytest.raises(ConfigurationError, match=r"\*args or \*\*kwargs"):
         Resource(uses_varargs)
-
-    with pytest.raises(ConfigurationError, match="only one parameter"):
-        Resource(uses_two_parameters)
-
-    with pytest.raises(ConfigurationError, match="named 'request' or typed as Request"):
-        Resource(uses_untyped_context)
 
 
 @pytest.mark.asyncio

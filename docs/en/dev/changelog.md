@@ -22,6 +22,13 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   produces the same binding — excluded from caller-facing schemas — as `inject`.
   Declaring a parameter's resource in both places, or as a parameter default, is
   rejected during route compilation.
+- Added support for resources that depend on other resources. A `Resource`
+  provider can now declare parameters annotated with `Annotated[T, other]`, the
+  same way a handler does; Quater resolves each dependency first, once, from the
+  request's shared scope, and passes it in. Dependencies stay private to the
+  provider — they never appear in OpenAPI, MCP, or CLI schemas. The dependency
+  graph is validated when routes compile: dependency cycles and provider
+  parameters that are neither the request nor a resource fail at startup.
 
 ### Changed
 

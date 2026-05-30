@@ -12,7 +12,7 @@ from contextlib import (
     contextmanager,
 )
 from dataclasses import dataclass, field
-from typing import Literal, cast, get_type_hints
+from typing import Annotated, Literal, cast, get_args, get_origin, get_type_hints
 
 from quater.exceptions import ConfigurationError
 from quater.request import Request
@@ -20,6 +20,21 @@ from quater.request import Request
 ResourceScope = Literal["request"]
 ResourceProvider = Callable[..., object]
 ResourceMap = Mapping[str, "Resource"]
+StackFactory = Callable[[], AsyncExitStack]
+
+# Cache markers: a resource that has not been resolved, and one whose
+# resolution is in progress (used to catch dependency cycles at resolve time).
+_UNRESOLVED = object()
+_RESOLVING = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _ProviderParam:
+    """One parameter of a resource provider: the request, or another resource."""
+
+    name: str
+    resource: Resource | None
+    keyword_only: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,33 +44,42 @@ class Resource:
     Providers may return a value, an awaitable value, a context manager, an
     async context manager, or yield one value from a generator. Generator and
     context-manager providers are cleaned up after the handler finishes.
+
+    A provider may also depend on other resources: declare them as parameters
+    annotated with ``Annotated[T, other_resource]``, exactly like a handler.
+    Quater resolves those dependencies first — once, from the request's shared
+    scope — and passes them in. The dependency graph is validated when routes
+    compile, so cycles and unresolvable parameters fail at startup.
     """
 
     provider: ResourceProvider
     scope: ResourceScope = "request"
     name: str | None = None
-    _request_parameter: str | None = field(init=False, repr=False, compare=False)
-    _request_keyword_only: bool = field(init=False, repr=False, compare=False)
+    _plan: tuple[_ProviderParam, ...] | None = field(
+        init=False, repr=False, compare=False, default=None
+    )
+    _validated: bool = field(init=False, repr=False, compare=False, default=False)
 
     def __post_init__(self) -> None:
         if self.scope != "request":
             raise ConfigurationError("Resource scope must be 'request'")
         if not callable(self.provider):
             raise TypeError("Resource provider must be callable")
-
-        request_parameter, keyword_only = _provider_request_parameter(self.provider)
-        object.__setattr__(self, "_request_parameter", request_parameter)
-        object.__setattr__(self, "_request_keyword_only", keyword_only)
+        _reject_variadic_parameters(self.provider)
 
     async def resolve(
         self,
         request: Request,
         stack: AsyncExitStack,
     ) -> object:
-        """Resolve the resource for one handler call."""
+        """Resolve the resource once, entering cleanup into the given stack.
 
-        result = self._call_provider(request)
-        return await _resolve_provider_result(result, stack, name=self.display_name)
+        Each call uses a fresh dependency cache. Handler binding goes through
+        :func:`resolve_resource` with the request's shared cache instead, so a
+        resource reused across a request resolves exactly once.
+        """
+
+        return await resolve_resource(self, request, {}, lambda: stack)
 
     @property
     def display_name(self) -> str:
@@ -64,90 +88,181 @@ class Resource:
         provider_name = getattr(self.provider, "__name__", None)
         return provider_name if isinstance(provider_name, str) else "resource"
 
-    def _call_provider(self, request: Request) -> object:
-        request_parameter = self._request_parameter
-        if request_parameter is None:
-            return self.provider()
-        if self._request_keyword_only:
-            return self.provider(**{request_parameter: request})
-        return self.provider(request)
 
-
-def _provider_request_parameter(
-    provider: ResourceProvider,
-) -> tuple[str | None, bool]:
+def _reject_variadic_parameters(provider: ResourceProvider) -> None:
     try:
         signature = inspect.signature(provider)
     except (TypeError, ValueError) as exc:
         raise ConfigurationError(
             "Resource provider signature could not be inspected"
         ) from exc
-
-    parameters = tuple(signature.parameters.values())
-    if any(
-        parameter.kind
-        in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
-        for parameter in parameters
-    ):
-        raise ConfigurationError("Resource providers cannot use *args or **kwargs")
-
-    accepted = {
-        inspect.Parameter.POSITIONAL_ONLY,
-        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        inspect.Parameter.KEYWORD_ONLY,
-    }
-    parameters = tuple(
-        parameter for parameter in parameters if parameter.kind in accepted
-    )
-    if not parameters:
-        return None, False
-    if len(parameters) > 1:
-        raise ConfigurationError(
-            "Resource providers may accept only one parameter: request"
-        )
-
-    parameter = parameters[0]
-    annotation = _provider_annotation(provider, parameter.name, parameter.annotation)
-    if parameter.name != "request" and annotation is not Request:
-        raise ConfigurationError(
-            "Resource provider parameter must be named 'request' or typed as Request"
-        )
-    return parameter.name, parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    for parameter in signature.parameters.values():
+        if parameter.kind in {
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        }:
+            raise ConfigurationError("Resource providers cannot use *args or **kwargs")
 
 
-def _provider_annotation(
-    provider: ResourceProvider,
-    name: str,
-    fallback: object,
-) -> object:
+def _provider_hints(provider: ResourceProvider) -> Mapping[str, object]:
     try:
-        return get_type_hints(provider).get(name, fallback)
+        return get_type_hints(provider, include_extras=True)
     except (NameError, TypeError):
-        annotations = getattr(provider, "__annotations__", {})
-        if isinstance(annotations, Mapping):
-            return annotations.get(name, fallback)
-        return fallback
+        return {}
+
+
+def _resource_from_annotation(annotation: object) -> Resource | None:
+    if get_origin(annotation) is not Annotated:
+        return None
+    found: Resource | None = None
+    for metadata in get_args(annotation)[1:]:
+        if isinstance(metadata, Resource):
+            if found is not None:
+                raise ConfigurationError(
+                    "Only one resource is supported in a type annotation"
+                )
+            found = metadata
+    return found
+
+
+def _build_plan(resource: Resource) -> tuple[_ProviderParam, ...]:
+    provider = resource.provider
+    signature = inspect.signature(provider)
+    hints = _provider_hints(provider)
+    plan: list[_ProviderParam] = []
+    seen_request = False
+    # Variadic parameters are already rejected when the Resource is constructed.
+    for parameter in signature.parameters.values():
+        annotation = hints.get(parameter.name, parameter.annotation)
+        dependency = _resource_from_annotation(annotation)
+        is_request = parameter.name == "request" or annotation is Request
+        keyword_only = parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        if dependency is not None:
+            if is_request:
+                raise ConfigurationError(
+                    f"Resource provider parameter {parameter.name!r} cannot be both "
+                    "the request and a resource"
+                )
+            plan.append(_ProviderParam(parameter.name, dependency, keyword_only))
+        elif is_request:
+            if seen_request:
+                raise ConfigurationError(
+                    "Resource providers may accept the request only once"
+                )
+            seen_request = True
+            plan.append(_ProviderParam(parameter.name, None, keyword_only))
+        else:
+            raise ConfigurationError(
+                f"Resource provider {resource.display_name!r} parameter "
+                f"{parameter.name!r} could not be resolved: name it 'request' or "
+                "annotate it with Annotated[T, resource]"
+            )
+    return tuple(plan)
+
+
+def _ensure_plan(resource: Resource) -> tuple[_ProviderParam, ...]:
+    plan = resource._plan
+    if plan is None:
+        plan = _build_plan(resource)
+        object.__setattr__(resource, "_plan", plan)
+    return plan
+
+
+def validate_resource(
+    resource: Resource,
+    _path: list[Resource] | None = None,
+) -> None:
+    """Validate a resource and its dependencies at route compile time.
+
+    Builds each provider's plan (rejecting unresolvable parameters) and walks
+    the dependency graph depth-first to reject cycles before the first request.
+    """
+
+    if resource._validated:
+        return
+    if _path is None:
+        _path = []
+    for index, entry in enumerate(_path):
+        if entry is resource:
+            chain = [*_path[index:], resource]
+            names = " -> ".join(item.display_name for item in chain)
+            raise ConfigurationError(f"Resource dependency cycle detected: {names}")
+    _path.append(resource)
+    for parameter in _ensure_plan(resource):
+        if parameter.resource is not None:
+            validate_resource(parameter.resource, _path)
+    _path.pop()
+    object.__setattr__(resource, "_validated", True)
+
+
+async def resolve_resource(
+    resource: Resource,
+    request: Request,
+    cache: dict[int, object],
+    get_stack: StackFactory,
+) -> object:
+    """Resolve a resource and its dependencies, caching by resource identity.
+
+    Dependencies resolve first and share ``cache``, so a resource reused across
+    a request is built once. ``get_stack`` is called only when a value actually
+    needs cleanup, so resolving plain values opens no exit stack.
+    """
+
+    key = id(resource)
+    cached = cache.get(key, _UNRESOLVED)
+    if cached is _RESOLVING:
+        raise ConfigurationError(
+            f"Resource dependency cycle detected at {resource.display_name!r}"
+        )
+    if cached is not _UNRESOLVED:
+        return cached
+    cache[key] = _RESOLVING
+    try:
+        args: list[object] = []
+        kwargs: dict[str, object] = {}
+        for parameter in _ensure_plan(resource):
+            if parameter.resource is None:
+                value: object = request
+            else:
+                value = await resolve_resource(
+                    parameter.resource, request, cache, get_stack
+                )
+            if parameter.keyword_only:
+                kwargs[parameter.name] = value
+            else:
+                args.append(value)
+        result = resource.provider(*args, **kwargs)
+        resolved = await _resolve_provider_result(
+            result, get_stack, name=resource.display_name
+        )
+    except BaseException:
+        cache.pop(key, None)
+        raise
+    cache[key] = resolved
+    return resolved
 
 
 async def _resolve_provider_result(
     result: object,
-    stack: AsyncExitStack,
+    get_stack: StackFactory,
     *,
     name: str,
 ) -> object:
     if inspect.isasyncgen(result):
-        return await stack.enter_async_context(_async_generator_context(result, name))
+        return await get_stack().enter_async_context(
+            _async_generator_context(result, name)
+        )
     if inspect.isgenerator(result):
-        return stack.enter_context(_generator_context(result, name))
+        return get_stack().enter_context(_generator_context(result, name))
     if _is_async_context_manager(result):
         async_manager = cast(AbstractAsyncContextManager[object], result)
-        return await stack.enter_async_context(async_manager)
+        return await get_stack().enter_async_context(async_manager)
     if _is_context_manager(result):
         sync_manager = cast(AbstractContextManager[object], result)
-        return stack.enter_context(sync_manager)
+        return get_stack().enter_context(sync_manager)
     if inspect.isawaitable(result):
         awaited = await result
-        return await _resolve_provider_result(awaited, stack, name=name)
+        return await _resolve_provider_result(awaited, get_stack, name=name)
     return result
 
 
@@ -211,4 +326,11 @@ def _is_context_manager(value: object) -> bool:
     )
 
 
-__all__ = ["Resource", "ResourceMap", "ResourceProvider", "ResourceScope"]
+__all__ = [
+    "Resource",
+    "ResourceMap",
+    "ResourceProvider",
+    "ResourceScope",
+    "resolve_resource",
+    "validate_resource",
+]
