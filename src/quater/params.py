@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
-from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from types import UnionType
 from typing import (
@@ -62,8 +61,6 @@ class HandlerPlan:
         path_params: Mapping[str, object],
         *,
         include_resources: bool = True,
-        resource_stack: AsyncExitStack | None = None,
-        resource_cache: dict[int, object] | None = None,
     ) -> dict[str, object]:
         kwargs: dict[str, object] = {}
         for parameter in self.parameters:
@@ -74,13 +71,9 @@ class HandlerPlan:
                     continue
                 if parameter.resource is None:
                     raise RuntimeError("Injected parameter is missing its resource")
-                if resource_stack is None or resource_cache is None:
-                    raise RuntimeError("Resource binding requires a resource stack")
                 kwargs[parameter.name] = await _bind_resource_parameter(
                     parameter,
                     request,
-                    stack=resource_stack,
-                    cache=resource_cache,
                 )
             elif parameter.source == "path":
                 kwargs[parameter.name] = path_params[parameter.request_name]
@@ -103,14 +96,11 @@ class HandlerPlan:
         if not any(parameter.source == "resource" for parameter in self.parameters):
             return await self.handler(**await self.bind(request, path_params))
 
-        async with AsyncExitStack() as stack:
-            kwargs = await self.bind(
-                request,
-                path_params,
-                resource_stack=stack,
-                resource_cache={},
-            )
+        try:
+            kwargs = await self.bind(request, path_params)
             return await self.handler(**kwargs)
+        finally:
+            await request._aclose_resources()
 
     async def call_response(
         self,
@@ -124,20 +114,15 @@ class HandlerPlan:
                 await self.handler(**await self.bind(request, path_params))
             )
 
-        stack = AsyncExitStack()
         try:
-            kwargs = await self.bind(
-                request,
-                path_params,
-                resource_stack=stack,
-                resource_cache={},
-            )
+            kwargs = await self.bind(request, path_params)
             response = normalize_response(await self.handler(**kwargs))
         except BaseException:
-            await stack.aclose()
+            await request._aclose_resources()
             raise
 
-        add_request_finalizer(request, stack.aclose)
+        if request.has_open_resources:
+            add_request_finalizer(request, request._aclose_resources)
         return response
 
 
@@ -695,16 +680,15 @@ def _request_name_collision_key(
 async def _bind_resource_parameter(
     parameter: BoundParameter,
     request: Request,
-    *,
-    stack: AsyncExitStack,
-    cache: dict[int, object],
 ) -> object:
     resource = parameter.resource
     if resource is None:
         raise RuntimeError("Injected parameter is missing its resource")
+    scope = request.resources
+    cache = scope.cache
     cache_key = id(resource)
     if cache_key not in cache:
-        cache[cache_key] = await resource.resolve(request, stack)
+        cache[cache_key] = await resource.resolve(request, scope.stack())
     return cache[cache_key]
 
 

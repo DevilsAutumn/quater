@@ -49,6 +49,23 @@ flowchart TB
 Cleanup runs after response creation. For streaming responses, Quater keeps the
 resource alive until the response body has been consumed by the adapter.
 
+### One scope per request
+
+Every request gets a single resource scope: one place that opens the values it
+needs, caches them, and cleans them up. Two things follow from that.
+
+First, the same `Resource` resolves once per request. If two parameters — or a
+handler and, later, the rest of the request — ask for the same `Resource`
+object, they get the same instance. A `Resource` that opens a database session
+opens **one** session per request, not one per parameter.
+
+Second, the scope is strictly per request. Nothing opened for one request is
+ever visible to another, and when the request finishes, every resource it
+opened is torn down once, in the reverse of the order it was opened. If a later
+resource fails to open, the ones already open are still cleaned up.
+
+The scope is lazy: a request whose handler injects nothing never creates one.
+
 ## A Runnable Example
 
 ```python

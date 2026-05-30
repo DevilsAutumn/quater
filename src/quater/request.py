@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from quater._state import State
@@ -25,6 +26,42 @@ class _BodyReadFailure:
 
     def __init__(self, exception: Exception) -> None:
         self.exception = exception
+
+
+class _ResourceScope:
+    """One per-request place where injected resources are opened and cached.
+
+    Holds the exit stack that owns every resource's cleanup and a cache keyed
+    by ``id(resource)`` so the same :class:`~quater.dependencies.Resource`
+    reused across auth and the handler resolves exactly once. The exit stack is
+    created lazily on first use, so a request that touches no resources never
+    allocates one, and teardown unwinds every resource in reverse order.
+    """
+
+    __slots__ = ("cache", "_stack")
+
+    def __init__(self) -> None:
+        self.cache: dict[int, object] = {}
+        self._stack: AsyncExitStack | None = None
+
+    @property
+    def is_open(self) -> bool:
+        return self._stack is not None
+
+    def stack(self) -> AsyncExitStack:
+        stack = self._stack
+        if stack is None:
+            stack = AsyncExitStack()
+            self._stack = stack
+        return stack
+
+    async def aclose(self) -> None:
+        stack = self._stack
+        if stack is None:
+            return
+        self._stack = None
+        self.cache.clear()
+        await stack.aclose()
 
 
 class Request:
@@ -58,6 +95,8 @@ class Request:
         "_raw_headers",
         "_raw_query_string",
         "_query",
+        "_resource_scope",
+        "_scope_source",
         "_state",
     )
 
@@ -103,6 +142,8 @@ class Request:
         self._json_cache: Any = _UNSET
         self._form_cache: FormData | object = _UNSET
         self._state: State | None = None
+        self._resource_scope: _ResourceScope | None = None
+        self._scope_source: Request | None = None
 
     @property
     def headers(self) -> Headers:
@@ -137,6 +178,38 @@ class Request:
             state = State()
             self._state = state
         return state
+
+    @property
+    def resources(self) -> _ResourceScope:
+        """The per-request scope that opens and caches injected resources."""
+
+        scope = self._resource_scope
+        if scope is None:
+            source = self._scope_source
+            scope = source.resources if source is not None else _ResourceScope()
+            self._resource_scope = scope
+        return scope
+
+    @property
+    def has_open_resources(self) -> bool:
+        scope = self._resource_scope
+        return scope is not None and scope.is_open
+
+    def _adopt_resource_scope(self, other: Request) -> None:
+        """Share another request's resource scope.
+
+        Gives the auth request and the handler request a single scope so a
+        resource opened by one is reused (and torn down once) by the other. The
+        link is lazy: neither side allocates a scope until something actually
+        resolves a resource, so requests that inject nothing stay scope-free.
+        """
+
+        self._scope_source = other
+
+    async def _aclose_resources(self) -> None:
+        scope = self._resource_scope
+        if scope is not None:
+            await scope.aclose()
 
     async def body(self) -> bytes:
         cached = self._body_cache

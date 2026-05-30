@@ -750,6 +750,9 @@ class Quater:
                     )
                     await self._authenticate_route(match.route.definition, request)
         except Exception as exc:
+            # Auth or routing may have opened resources on the request scope
+            # before failing; tear them down in reverse order.
+            await request._aclose_resources()
             response = default_exception_response(exc, debug=self.config.debug)
             return await self._finalize_request(
                 response,

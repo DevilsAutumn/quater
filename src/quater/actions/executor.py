@@ -204,14 +204,19 @@ async def prepare_action_call(
     if request.auth is not None and authenticated_by is not None:
         surface_authenticated = authenticated_by is surface_auth
 
-    if surface_auth is not None and not surface_authenticated:
-        await authenticate_request(surface_auth, auth_request)
-        request.auth = auth_request.auth
+    try:
+        if surface_auth is not None and not surface_authenticated:
+            await authenticate_request(surface_auth, auth_request)
+            request.auth = auth_request.auth
 
-    route_auth = action.route.auth
-    if route_auth is not None:
-        await authenticate_request(route_auth, auth_request)
-        request.auth = auth_request.auth
+        route_auth = action.route.auth
+        if route_auth is not None:
+            await authenticate_request(route_auth, auth_request)
+            request.auth = auth_request.auth
+    except BaseException:
+        # Auth may have opened resources on the shared scope; tear them down.
+        await auth_request._aclose_resources()
+        raise
 
     action_request = _request_with_action_headers(
         auth_request,
@@ -221,6 +226,10 @@ async def prepare_action_call(
         headers=parts.headers,
         cookies=parts.cookies,
     )
+    # Auth and the handler share one per-request scope: a session opened to
+    # check the token is the same session the handler resolves.
+    if action_request is not auth_request:
+        action_request._adopt_resource_scope(auth_request)
 
     bound_arguments = await action.handler_plan.bind(
         action_request,

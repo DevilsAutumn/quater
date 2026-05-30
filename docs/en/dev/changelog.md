@@ -23,6 +23,17 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   Declaring a parameter's resource in both places, or as a parameter default, is
   rejected during route compilation.
 
+### Changed
+
+- Changed request handling to resolve every injected `Resource` through a
+  single per-request scope. The same `Resource` now opens once per request — one
+  database session serves the whole request — and is torn down once, in reverse
+  order, even when a resource fails to open partway through. The scope is lazy:
+  a request that injects nothing never allocates one, and nothing opened for one
+  request is ever visible to another. The MCP and CLI paths now share that one
+  scope between authentication and the handler instead of building separate
+  request objects.
+
 ## 0.1.0a2
 
 This alpha tightens fail-fast validation around auth headers, CORS,
