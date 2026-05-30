@@ -22,7 +22,7 @@ from quater.response import (
     StreamResponse,
     TextResponse,
 )
-from quater.testing import MCPTestClient, TestClient, TestResponse
+from quater.testing import CliTestClient, MCPTestClient, TestClient, TestResponse
 from quater.tools.audit import ToolAuditEvent
 from quater.typing import ActionApproval, ApprovalRequest, AuthContext, AuthRequest
 
@@ -60,6 +60,7 @@ __all__ = [
     "SignedCookieSigner",
     "State",
     "StreamResponse",
+    "CliTestClient",
     "MCPTestClient",
     "TestClient",
     "TestResponse",

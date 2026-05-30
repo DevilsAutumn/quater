@@ -102,8 +102,8 @@ PAGES: tuple[ReferencePage, ...] = (
     ReferencePage(
         slug="testing",
         title="Testing",
-        description="In-process HTTP and MCP test clients.",
-        symbols=("TestClient", "TestResponse", "MCPTestClient"),
+        description="In-process HTTP, MCP, and CLI test clients.",
+        symbols=("TestClient", "TestResponse", "MCPTestClient", "CliTestClient"),
     ),
 )
 
@@ -622,6 +622,23 @@ MCP_TOOLS_CALL_OPTIONS: tuple[tuple[str, str, str], ...] = (
     ("approval_token", "str | None", "Approval token for protected tools."),
     ("meta", "Mapping[str, object] | None", "Optional MCP `_meta` payload."),
     ("protocol_version", "str", "MCP protocol version header."),
+    ("headers", "HeaderItems | Mapping[str, str] | None", "Extra request headers."),
+)
+
+CLI_TEST_CLIENT_OPTIONS: tuple[tuple[str, str, str], ...] = (
+    ("client", "TestClient", "HTTP test client used for CLI action requests."),
+)
+
+CLI_CALL_OPTIONS: tuple[tuple[str, str, str], ...] = (
+    ("action", "str", "Action name to call."),
+    ("arguments", "Mapping[str, object] | None", "Action arguments."),
+    ("token", "str | None", "Bearer token used for CLI auth."),
+    (
+        "dry_run",
+        "bool",
+        "Return the preflight payload instead of running the handler.",
+    ),
+    ("approval_token", "str | None", "Approval token for protected actions."),
     ("headers", "HeaderItems | Mapping[str, str] | None", "Extra request headers."),
 )
 
@@ -1695,7 +1712,7 @@ def render_testing(package: Any) -> str:
             "For examples, read the [Testing guide](/en/dev/testing).",
             "",
             "```python",
-            "from quater import MCPTestClient, TestClient, TestResponse",
+            "from quater import CliTestClient, MCPTestClient, TestClient, TestResponse",
             "```",
             "",
         ]
@@ -1814,6 +1831,52 @@ def render_testing(package: Any) -> str:
             "tools_call",
             "`tools_call()` parameters",
             MCP_TOOLS_CALL_OPTIONS,
+        )
+    )
+    symbol_intro(
+        lines,
+        package,
+        "CliTestClient",
+        "Remote-action helper bound to a [`TestClient`](#symbol-testclient).",
+        [
+            "Use `client.cli` in tests. It calls actions and reads the action",
+            "manifest through the same remote-action endpoints as the Quater CLI.",
+        ],
+    )
+    lines.extend(signature_block(class_signature(package, "CliTestClient")))
+    lines.extend(
+        validated_option_table(
+            package,
+            "CliTestClient",
+            None,
+            "Constructor parameters",
+            CLI_TEST_CLIENT_OPTIONS,
+        )
+    )
+    lines.extend(
+        [
+            "Common methods:",
+            "",
+            "| Method | Use it for |",
+            "| --- | --- |",
+            "| `call(action, arguments, ...)` | Call an exposed CLI action. |",
+            "| `manifest(...)` | Read the action manifest. |",
+            "",
+            "Both methods return the raw [`TestResponse`](#symbol-testresponse). A",
+            "successful action body is the `{ok, status_code, body}` envelope, and a",
+            "`dry_run=True` call returns the preflight payload instead of running the",
+            "handler.",
+            "",
+        ]
+    )
+    lines.extend(signature_block(method_signature(package, "CliTestClient", "call")))
+    lines.extend(
+        validated_option_table(
+            package,
+            "CliTestClient",
+            "call",
+            "`call()` parameters",
+            CLI_CALL_OPTIONS,
         )
     )
     lines.extend(

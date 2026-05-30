@@ -27,7 +27,7 @@ FileValue: TypeAlias = (
 FilesInput: TypeAlias = Mapping[str, FileValue] | Sequence[tuple[str, FileValue]]
 JSONRPCID: TypeAlias = str | int
 
-__all__ = ["MCPTestClient", "TestClient", "TestResponse"]
+__all__ = ["CliTestClient", "MCPTestClient", "TestClient", "TestResponse"]
 
 _MCP_PATH = "/mcp"
 _MCP_PROTOCOL_VERSION = "2025-11-25"
@@ -79,6 +79,7 @@ class TestClient:
     __test__: ClassVar[bool] = False
     __slots__ = (
         "app",
+        "cli",
         "mcp",
         "_client",
         "_cookies",
@@ -111,6 +112,7 @@ class TestClient:
         self._cookies = dict(cookies or {})
         self._started = False
         self.mcp = MCPTestClient(self)
+        self.cli = CliTestClient(self)
 
     async def __aenter__(self) -> TestClient:
         await self.startup()
@@ -454,6 +456,79 @@ class MCPTestClient:
             headers=request_headers,
             content=dumps_json(payload),
         )
+
+
+class CliTestClient:
+    """Remote-action helper for testing Quater CLI actions.
+
+    Access it as ``client.cli`` from ``TestClient``. It calls actions and reads
+    the action manifest through the same remote-action endpoints a real Quater
+    CLI client uses (see ``quater.cli.client``), so tests exercise the CLI
+    surface without a socket. Methods return the raw ``TestResponse`` — the
+    success envelope is ``{"ok", "status_code", "body"}`` and a ``dry_run`` call
+    returns the preflight payload instead of running the handler.
+    """
+
+    __test__: ClassVar[bool] = False
+    __slots__ = ("_client",)
+
+    def __init__(self, client: TestClient) -> None:
+        self._client = client
+
+    async def call(
+        self,
+        action: str,
+        arguments: Mapping[str, object] | None = None,
+        *,
+        token: str | None = None,
+        dry_run: bool = False,
+        approval_token: str | None = None,
+        headers: HeaderItems | Mapping[str, str] | None = None,
+    ) -> TestResponse:
+        from quater.protocol.actions import ACTIONS_RPC_PATH
+        from quater.serialization import dumps_json
+
+        payload: dict[str, object] = {
+            "action": action,
+            "arguments": dict(arguments or {}),
+            "dry_run": dry_run,
+        }
+        if approval_token is not None:
+            payload["approval_token"] = approval_token
+
+        return await self._client.post(
+            ACTIONS_RPC_PATH,
+            headers=self._headers(token, headers, json=True),
+            content=dumps_json(payload),
+        )
+
+    async def manifest(
+        self,
+        *,
+        token: str | None = None,
+        headers: HeaderItems | Mapping[str, str] | None = None,
+    ) -> TestResponse:
+        from quater.protocol.actions import ACTIONS_MANIFEST_PATH
+
+        return await self._client.get(
+            ACTIONS_MANIFEST_PATH,
+            headers=self._headers(token, headers, json=False),
+        )
+
+    @staticmethod
+    def _headers(
+        token: str | None,
+        extra: HeaderItems | Mapping[str, str] | None,
+        *,
+        json: bool,
+    ) -> dict[str, str]:
+        request_headers: dict[str, str] = {"accept": "application/json"}
+        if json:
+            request_headers["content-type"] = "application/json"
+        if token is not None:
+            request_headers["authorization"] = f"Bearer {token}"
+        request_headers.update(Headers(extra or ()))
+        return request_headers
 
 
 def _request_target(path: str, params: QueryParams | None) -> tuple[str, str]:

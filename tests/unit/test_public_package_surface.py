@@ -20,6 +20,7 @@ from quater import (
     AuthContext,
     AuthRequest,
     Body,
+    CliTestClient,
     Cookie,
     CORSConfig,
     File,
@@ -114,6 +115,7 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.ImproperlyConfigured is ImproperlyConfigured
     assert quater.SignedCookieSigner is SignedCookieSigner
     assert quater.State is State
+    assert quater.CliTestClient is CliTestClient
     assert quater.MCPTestClient is MCPTestClient
     assert quater.TestClient is TestClient
     assert quater.TestResponse is TestResponse

@@ -249,6 +249,56 @@ async def test_test_client_mcp_helpers_cover_initialize_list_and_call() -> None:
 
 
 @pytest.mark.asyncio
+async def test_test_client_cli_helpers_cover_call_dry_run_and_manifest() -> None:
+    handler_calls = 0
+
+    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+        if ctx.headers.get("authorization") != "Bearer cli-token":
+            return None
+        return AuthContext(subject="cli")
+
+    app = Quater(cli_auth=authenticate)
+
+    @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+    async def get_user(id: int, request: Request) -> dict[str, object]:
+        nonlocal handler_calls
+        handler_calls += 1
+        assert request.auth is not None
+        return {"id": id, "subject": request.auth.subject}
+
+    client = TestClient(app)
+
+    # Auth runs before the handler: an unauthenticated call is rejected.
+    unauthorized = await client.cli.call("get_user", {"id": 7})
+    assert unauthorized.status_code == 401
+    assert handler_calls == 0
+
+    # An authenticated call runs the handler and returns the action envelope.
+    call = await client.cli.call("get_user", {"id": 7}, token="cli-token")
+    assert call.status_code == 200
+    envelope = call.json()
+    assert envelope["ok"] is True
+    assert envelope["status_code"] == 200
+    assert envelope["body"] == {"id": 7, "subject": "cli"}
+    assert handler_calls == 1
+
+    # A dry run validates without running the handler.
+    dry_run = await client.cli.call(
+        "get_user", {"id": 7}, token="cli-token", dry_run=True
+    )
+    preflight = dry_run.json()
+    assert preflight["ok"] is True
+    assert preflight["dry_run"] is True
+    assert preflight["action"] == "get_user"
+    assert handler_calls == 1
+
+    # The manifest lists the CLI action.
+    manifest = await client.cli.manifest(token="cli-token")
+    assert manifest.status_code == 200
+    assert [action["name"] for action in manifest.json()["actions"]] == ["get_user"]
+
+
+@pytest.mark.asyncio
 async def test_test_client_mcp_helper_preserves_origin_rejection() -> None:
     async def authenticate(ctx: AuthRequest) -> AuthContext | None:
         return AuthContext(subject="mcp")

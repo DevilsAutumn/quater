@@ -1,6 +1,7 @@
 # Testing Reference
 
-This page documents `TestClient`, `MCPTestClient`, and `TestResponse`.
+This page documents `TestClient`, `TestResponse`, `MCPTestClient`, and
+`CliTestClient`.
 
 ## Prerequisites
 
@@ -8,7 +9,7 @@ Read [Testing Quater Apps](/en/dev/testing). The clients are async and work
 well with [pytest-asyncio](https://pytest-asyncio.readthedocs.io/).
 
 ```python
-from quater import MCPTestClient, TestClient, TestResponse
+from quater import CliTestClient, MCPTestClient, TestClient, TestResponse
 ```
 
 ## TestClient {#symbol-testclient}
@@ -141,6 +142,43 @@ tools_call(
     headers: HeaderItems | Mapping[str, str] | None = None,
 ) -> TestResponse
 ```
+
+## CliTestClient {#symbol-clitestclient}
+
+Added in `0.1.0a3`.
+
+Remote-action helper bound to a `TestClient`. Use `client.cli` in most tests. It
+calls actions and reads the action manifest through the same remote-action
+endpoints as the Quater CLI.
+
+```python
+CliTestClient(client: TestClient) -> None
+```
+
+Methods:
+
+| Method | Return | Description |
+| --- | --- | --- |
+| `call(action, arguments, ...)` | [`TestResponse`](#symbol-testresponse) | Calls an exposed CLI action. |
+| `manifest(...)` | [`TestResponse`](#symbol-testresponse) | Reads the action manifest. |
+
+`call()` signature:
+
+```python
+call(
+    action: str,
+    arguments: Mapping[str, object] | None = None,
+    *,
+    token: str | None = None,
+    dry_run: bool = False,
+    approval_token: str | None = None,
+    headers: HeaderItems | Mapping[str, str] | None = None,
+) -> TestResponse
+```
+
+Both methods return the raw `TestResponse`. A successful action body is the
+`{ok, status_code, body}` envelope; a `dry_run=True` call returns the preflight
+payload instead of running the handler.
 
 ## What Can Go Wrong
 

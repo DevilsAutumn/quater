@@ -29,6 +29,14 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   provider — they never appear in OpenAPI, MCP, or CLI schemas. The dependency
   graph is validated when routes compile: dependency cycles and provider
   parameters that are neither the request nor a resource fail at startup.
+- Added real-database integration tests for the resource lifecycle — async and
+  sync sessions, transaction commit and rollback, and one session shared per
+  request — across HTTP, MCP, and CLI, on a reusable SQLAlchemy/SQLite test
+  harness.
+- Added a `CliTestClient`, reachable as `client.cli` on the in-process
+  `TestClient`, with `call()` and `manifest()` helpers for the CLI action
+  surface. HTTP, MCP (`client.mcp`), and CLI now each have a first-class test
+  helper.
 
 ### Changed
 
