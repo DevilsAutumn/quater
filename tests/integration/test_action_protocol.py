@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from quater import AuthConfig, AuthContext, Quater, Request, Response
+from quater import AuthConfig, AuthContext, Quater, Request, Response, TextResponse
 from quater.protocol.actions import (
     ACTIONS_MANIFEST_PATH,
     ACTIONS_RPC_PATH,
@@ -227,6 +227,97 @@ async def test_remote_action_rpc_auth_sees_cli_http_context() -> None:
     assert seen[0].context.entrypoint == "server"
     # Remote CLI now reaches MCP parity: auth sees the action name before binding.
     assert seen[0].context.action_name == "get_user"
+
+
+@pytest.mark.asyncio
+async def test_remote_action_runs_global_middleware_once_on_real_handler() -> None:
+    events: list[str] = []
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
+
+    @app.before_request
+    async def global_before(request: Request) -> Response | None:
+        events.append(
+            f"before:{request.path}:{request.context.source}:"
+            f"{request.context.action_name}"
+        )
+        return None
+
+    @app.after_response
+    async def global_after(request: Request, response: Response) -> Response:
+        events.append(f"after:{request.path}:{response.body.decode()}")
+        return TextResponse("after saw handler response")
+
+    @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+    async def get_user(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    status, body = await action_rpc(
+        app,
+        {"action": "get_user", "arguments": {"id": 7}},
+    )
+
+    assert status == 200
+    assert body == {
+        "ok": True,
+        "status_code": 200,
+        "body": "after saw handler response",
+    }
+    assert events == [
+        "before:/users/7:cli:get_user",
+        'after:/users/7:{"id":7}',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remote_action_uses_global_exception_handler_for_handler_errors() -> None:
+    secret = "database password is secret"
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
+
+    @app.exception_handler(RuntimeError)
+    async def handle_runtime_error(
+        request: Request,
+        exc: Exception,
+    ) -> Response | None:
+        assert request.context.source == "cli"
+        assert request.context.action_name == "danger"
+        return TextResponse("mapped by global handler", status_code=418)
+
+    @app.post("/danger", cli=True, description="Run dangerous action.")
+    async def danger() -> dict[str, bool]:
+        raise RuntimeError(secret)
+
+    status, body = await action_rpc(app, {"action": "danger", "arguments": {}})
+
+    assert status == 418
+    assert body == {
+        "ok": False,
+        "status_code": 418,
+        "body": "mapped by global handler",
+    }
+    assert secret not in json.dumps(body)
+
+
+@pytest.mark.asyncio
+async def test_remote_action_keeps_unhandled_global_middleware_errors_clean() -> None:
+    secret = "middleware secret"
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
+
+    @app.after_response
+    async def broken_after(request: Request, response: Response) -> Response:
+        raise RuntimeError(secret)
+
+    @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+    async def get_user(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    status, body = await action_rpc(
+        app,
+        {"action": "get_user", "arguments": {"id": 7}},
+    )
+
+    assert status == 500
+    assert body["error"] == {"code": "action_failed", "message": "Action call failed"}
+    assert secret not in json.dumps(body)
 
 
 @pytest.mark.asyncio

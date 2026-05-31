@@ -255,16 +255,50 @@ async def audit_call(
     return response
 ```
 
-Attach middleware globally or on a route:
+Prefer attaching middleware globally when it describes application-wide
+behavior:
 
 ```python
 app.before_request(require_request_id)
+app.after_response(add_timing_header)
+app.around_request(audit_call)
 
 
-@app.get("/orders/{order_id}", after=[add_timing_header], around=[audit_call])
+@app.get("/orders/{order_id}")
 async def get_order(order_id: str) -> dict[str, str]:
     return {"order_id": order_id}
 ```
+
+You can also attach middleware to a route when only that operation needs it:
+
+```python
+async def add_export_headers(request: Request, response: Response) -> Response:
+    response.headers = (
+        *response.headers,
+        ("content-disposition", 'attachment; filename="orders.csv"'),
+    )
+    return response
+
+
+@app.get("/exports/orders.csv", after=[add_export_headers])
+async def export_orders() -> Response:
+    return Response(b"id,total\nord_1001,42\n", content_type="text/csv")
+```
+
+If a route needs a value such as a tenant, loaded model, verified webhook
+secret, or database session, prefer a `Resource` instead of a route-specific
+`before` hook. Use route-specific middleware hooks for one-off response shaping
+or operation-specific wrapping.
+
+Global `before` and `around` middleware run outside route-specific middleware.
+Route-specific `after` middleware runs before global `after` middleware.
+
+Global middleware applies to the real handler on every surface. For MCP
+`tools/call` and CLI actions, `after` and `around` middleware see the handler
+response before Quater wraps it in JSON-RPC or the action RPC payload. If a
+global middleware only makes sense for HTTP responses, check
+`request.context.source == "api"` before changing cookies, redirects, HTML, or
+HTTP-only headers.
 
 ## Exception Handlers
 

@@ -153,6 +153,7 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
                 request,
                 arguments,
                 source="cli",
+                global_stack=app._middleware,
                 approval_hook=app.action_approval,
                 approval_token=approval_token,
                 debug=app.config.debug,

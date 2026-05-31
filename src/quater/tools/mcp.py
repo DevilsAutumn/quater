@@ -11,6 +11,7 @@ from quater._finalize import move_response_finalizers, run_response_finalizers
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
 from quater.config import AppConfig
 from quater.exceptions import BadRequestError, HTTPError, RequestJSONError
+from quater.middleware import MiddlewareStack
 from quater.request import Request
 from quater.response import (
     EmptyResponse,
@@ -106,6 +107,7 @@ async def handle_mcp_request(
     request: Request,
     registry: ToolRegistry,
     *,
+    global_stack: MiddlewareStack | None = None,
     approval_hook: ActionApproval | None = None,
     audit_hook: AuditHook | None = None,
     debug: bool = False,
@@ -155,6 +157,7 @@ async def handle_mcp_request(
             request_id,
             payload.get("params"),
             registry,
+            global_stack=global_stack,
             approval_hook=approval_hook,
             audit_hook=audit_hook,
             debug=debug,
@@ -231,6 +234,7 @@ async def _handle_tools_call(
     params: object,
     registry: ToolRegistry,
     *,
+    global_stack: MiddlewareStack | None,
     approval_hook: ActionApproval | None,
     audit_hook: AuditHook | None,
     debug: bool,
@@ -260,6 +264,7 @@ async def _handle_tools_call(
             name,
             arguments,
             tool,
+            global_stack=global_stack,
             approval_hook=approval_hook,
             approval_token=approval_token,
             audit_hook=audit_hook,
@@ -281,6 +286,7 @@ async def _call_tool_with_audit(
     arguments: Mapping[object, object],
     tool: ToolDefinition,
     *,
+    global_stack: MiddlewareStack | None,
     approval_hook: ActionApproval | None,
     approval_token: str | None,
     audit_hook: AuditHook | None,
@@ -294,6 +300,7 @@ async def _call_tool_with_audit(
         response = await tool.call(
             request,
             typed_arguments,
+            global_stack=global_stack,
             approval_hook=approval_hook,
             approval_token=approval_token,
             debug=debug,

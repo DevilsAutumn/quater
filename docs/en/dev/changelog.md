@@ -63,6 +63,15 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   opt out with `public=True` (every exposed surface) or `public=["mcp", ...]`
   (named surfaces). Remote CLI now reads the action name before auth, matching
   MCP. ([#54](https://github.com/DevilsAutumn/quater/issues/54))
+- Changed global middleware and exception handlers to wrap the real route
+  handler on HTTP, MCP tools, and CLI actions. MCP `tools/call` and CLI action
+  calls now run global `before`, `around`, `after`, and exception handlers
+  around the handler response before Quater creates the JSON-RPC or action RPC
+  envelope. Remote CLI no longer runs global middleware on the outer RPC wrapper,
+  avoiding double execution. **Migration note:** HTTP-shaped global middleware
+  such as cookies, redirects, HTML pages, or browser-only headers should check
+  `request.context.source` and skip `"mcp"`/`"cli"` when needed.
+  ([#55](https://github.com/DevilsAutumn/quater/issues/55))
 
 ### Removed
 

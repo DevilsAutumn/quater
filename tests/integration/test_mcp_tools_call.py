@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import cast
 
 import msgspec
 import pytest
 
-from quater import AuthConfig, AuthContext, HTTPError, Quater, Request, Response
+from quater import (
+    AuthConfig,
+    AuthContext,
+    HTTPError,
+    Quater,
+    Request,
+    Response,
+    TextResponse,
+)
 from quater.tools.mcp import MAX_TOOL_RESPONSE_BYTES
 from quater.typing import ApprovalRequest
 
@@ -162,6 +170,125 @@ async def test_tools_call_escapes_rendered_request_path_parameters() -> None:
         == '{"name":"reports/2026 draft","path":"/files/reports%2F2026%20draft"}'
     )
     assert result["isError"] is False
+
+
+@pytest.mark.asyncio
+async def test_tools_call_runs_global_middleware_around_handler_response() -> None:
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
+    events: list[str] = []
+
+    @app.before_request
+    async def global_before(request: Request) -> Response | None:
+        events.append(
+            f"global_before:{request.path}:{request.context.source}:"
+            f"{request.context.tool_name}"
+        )
+        return None
+
+    async def route_before(request: Request) -> Response | None:
+        events.append(
+            f"route_before:{request.path}:{request.context.source}:"
+            f"{request.context.tool_name}"
+        )
+        return None
+
+    @app.around_request
+    async def global_around(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        events.append(f"global_around_before:{request.path}")
+        response = await call_next(request)
+        events.append(f"global_around_after:{response.body.decode()}")
+        return response
+
+    async def route_after(request: Request, response: Response) -> Response:
+        events.append(f"route_after:{request.path}:{response.body.decode()}")
+        return response
+
+    @app.after_response
+    async def global_after(request: Request, response: Response) -> Response:
+        events.append(f"global_after:{request.path}:{response.body.decode()}")
+        return TextResponse("after saw handler response")
+
+    @app.get(
+        "/users/{id:int}",
+        tool=True,
+        description="Fetch one user.",
+        before=[route_before],
+        after=[route_after],
+    )
+    async def get_user(id: int) -> dict[str, int]:
+        events.append("handler")
+        return {"id": id}
+
+    status, body = await mcp_call(app, name="get_user", arguments={"id": 7})
+
+    assert status == 200
+    assert body["result"] == {
+        "content": [{"type": "text", "text": "after saw handler response"}],
+        "isError": False,
+    }
+    assert events == [
+        "global_before:/users/7:mcp:get_user",
+        "route_before:/users/7:mcp:get_user",
+        "global_around_before:/users/7",
+        "handler",
+        'global_around_after:{"id":7}',
+        'route_after:/users/7:{"id":7}',
+        'global_after:/users/7:{"id":7}',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tools_call_uses_global_exception_handler_for_handler_errors() -> None:
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
+    secret = "database token leaked"
+
+    @app.exception_handler(RuntimeError)
+    async def handle_runtime_error(
+        request: Request,
+        exc: Exception,
+    ) -> Response | None:
+        assert request.context.source == "mcp"
+        assert request.context.tool_name == "boom"
+        return TextResponse("mapped by global handler", status_code=418)
+
+    @app.get("/boom", tool=True, description="Raise a handler error.")
+    async def boom() -> dict[str, bool]:
+        raise RuntimeError(secret)
+
+    status, body = await mcp_call(app, name="boom", arguments={})
+
+    assert status == 200
+    assert body["result"] == {
+        "content": [{"type": "text", "text": "mapped by global handler"}],
+        "isError": True,
+    }
+    assert secret not in json.dumps(body)
+
+
+@pytest.mark.asyncio
+async def test_tools_call_keeps_unhandled_global_middleware_errors_clean() -> None:
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
+    secret = "middleware secret"
+
+    @app.after_response
+    async def broken_after(request: Request, response: Response) -> Response:
+        raise RuntimeError(secret)
+
+    @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
+    async def get_user(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    status, body = await mcp_call(app, name="get_user", arguments={"id": 7})
+
+    assert status == 200
+    assert body["result"] == {
+        "content": [{"type": "text", "text": "Tool call failed"}],
+        "isError": True,
+    }
+    assert secret not in json.dumps(body)
 
 
 @pytest.mark.asyncio

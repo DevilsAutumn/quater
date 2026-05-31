@@ -395,6 +395,67 @@ def test_cli_call_executes_action_with_typed_body(
     }
 
 
+def test_cli_call_runs_global_middleware_on_local_action_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_app(
+        tmp_path,
+        """
+        from quater import (
+            AuthConfig,
+            AuthContext,
+            Quater,
+            Request,
+            Response,
+            TextResponse,
+        )
+
+        events: list[str] = []
+
+        async def cli_auth(ctx: Request) -> AuthContext | None:
+            return AuthContext(subject="cli")
+
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
+
+        @app.after_response
+        async def global_after(request: Request, response: Response) -> Response:
+            events.append(f"{request.path}:{response.body.decode()}")
+            return TextResponse("after saw handler response")
+
+        @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+        async def get_user(id: int) -> dict[str, int]:
+            return {"id": id}
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    code = main(
+        [
+            "--app",
+            "sample:app",
+            "--json",
+            "call",
+            "get_user",
+            "--id",
+            "7",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out) == {
+        "ok": True,
+        "status_code": 200,
+        "body": "after saw handler response",
+    }
+
+    sample = importlib.import_module("sample")
+
+    assert sample.events == ['/users/7:{"id":7}']
+
+
 def test_cli_call_rejects_empty_approval_token(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from quater.core import RouteDefinition
+from quater.core import _SKIP_GLOBAL_MIDDLEWARE_METADATA, RouteDefinition
 from quater.exceptions import RouteConflictError
 from quater.middleware import MiddlewareStack, RouteHandler, compile_middleware_pipeline
 from quater.params import HandlerPlan, build_handler_plan
@@ -212,13 +212,19 @@ class Router:
         ) -> Response:
             return await handler_plan.call_response(request, path_params)
 
+        route_global_middleware = (
+            MiddlewareStack()
+            if route.metadata.get(_SKIP_GLOBAL_MIDDLEWARE_METADATA) is True
+            else global_middleware
+        )
+
         return CompiledRoute(
             definition=route,
             pattern=pattern,
             handler_plan=handler_plan,
             pipeline=compile_middleware_pipeline(
                 endpoint,
-                global_stack=global_middleware,
+                global_stack=route_global_middleware,
                 route_stack=route.middleware,
                 debug=debug,
             ),

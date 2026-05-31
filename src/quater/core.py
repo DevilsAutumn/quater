@@ -15,6 +15,7 @@ Handler: TypeAlias = Callable[..., Awaitable[object]]
 PublicSurfaces: TypeAlias = "bool | Iterable[str]"
 
 _SURFACE_SET: frozenset[RequestSource] = frozenset(SURFACES)
+_SKIP_GLOBAL_MIDDLEWARE_METADATA = "quater_skip_global_middleware"
 
 
 @dataclass(slots=True, frozen=True)

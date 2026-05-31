@@ -87,6 +87,7 @@ async def execute_action(
     arguments: Mapping[str, object],
     *,
     source: ActionExecutionSource,
+    global_stack: MiddlewareStack | None = None,
     approval_hook: ActionApproval | None = None,
     approval_token: str | None = None,
     debug: bool = False,
@@ -110,7 +111,7 @@ async def execute_action(
 
     pipeline = compile_middleware_pipeline(
         endpoint,
-        global_stack=MiddlewareStack(),
+        global_stack=global_stack or MiddlewareStack(),
         route_stack=action.route.middleware,
         debug=debug,
         handle_unhandled_exceptions=False,

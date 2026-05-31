@@ -29,6 +29,7 @@ from quater.config import (
     docs_asset_paths,
 )
 from quater.core import (
+    _SKIP_GLOBAL_MIDDLEWARE_METADATA,
     Handler,
     PublicSurfaces,
     RouteDefinition,
@@ -787,6 +788,7 @@ class Quater:
                 self._compiled_tool_registry(),
                 approval_hook=self.action_approval,
                 audit_hook=self.mcp_audit,
+                global_stack=self._middleware,
                 debug=self.config.debug,
                 max_response_size=self.config.max_tool_response_size,
             )
@@ -902,6 +904,7 @@ class Quater:
                         "include_in_openapi": False,
                         "quater_builtin": "actions_call",
                         _AUTH_SURFACE_METADATA: "cli",
+                        _SKIP_GLOBAL_MIDDLEWARE_METADATA: True,
                     },
                 )
             )
@@ -1038,6 +1041,7 @@ class Quater:
                 request,
                 cast(Mapping[str, object], arguments),
                 source="cli",
+                global_stack=self._middleware,
                 approval_hook=self.action_approval,
                 approval_token=approval_token,
                 debug=self.config.debug,

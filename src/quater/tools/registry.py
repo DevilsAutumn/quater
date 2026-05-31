@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from quater.actions.executor import execute_action
 from quater.core import RouteDefinition
 from quater.exceptions import ConfigurationError
+from quater.middleware import MiddlewareStack
 from quater.params import HandlerPlan, build_handler_plan
 from quater.request import Request
 from quater.response import Response
@@ -31,6 +32,7 @@ class ToolDefinition:
         request: Request,
         arguments: Mapping[str, object],
         *,
+        global_stack: MiddlewareStack | None = None,
         approval_hook: ActionApproval | None = None,
         approval_token: str | None = None,
         debug: bool = False,
@@ -40,6 +42,7 @@ class ToolDefinition:
             request,
             arguments,
             source="mcp",
+            global_stack=global_stack,
             approval_hook=approval_hook,
             approval_token=approval_token,
             debug=debug,
