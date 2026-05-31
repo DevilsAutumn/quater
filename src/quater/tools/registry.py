@@ -14,7 +14,7 @@ from quater.response import Response
 from quater.routing import RoutePattern, parse_route_pattern
 from quater.tools.descriptions import resolve_tool_description
 from quater.tools.schema import tool_input_schema
-from quater.typing import ActionApproval, Authenticate
+from quater.typing import ActionApproval
 
 
 @dataclass(slots=True, frozen=True)
@@ -31,7 +31,6 @@ class ToolDefinition:
         request: Request,
         arguments: Mapping[str, object],
         *,
-        authenticated_by: Authenticate | None = None,
         approval_hook: ActionApproval | None = None,
         approval_token: str | None = None,
         debug: bool = False,
@@ -41,7 +40,6 @@ class ToolDefinition:
             request,
             arguments,
             source="mcp",
-            authenticated_by=authenticated_by,
             approval_hook=approval_hook,
             approval_token=approval_token,
             debug=debug,

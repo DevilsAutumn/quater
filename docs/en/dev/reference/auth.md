@@ -12,63 +12,72 @@ Quater only defines when they run and what they receive.
 from quater import (
     ActionApproval,
     ApprovalRequest,
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     HTTPError,
     ImproperlyConfigured,
     SignedCookieSigner,
 )
 ```
 
-## AuthRequest {#symbol-authrequest}
+## AuthConfig {#symbol-authconfig}
 
-Added in `0.1.0a1`.
+Added in `0.1.0a3`.
 
-Input passed to auth hooks.
+One authenticator bound to one or more request surfaces. Pass a list to
+`Quater(auth=[...])`; exactly one runs per request, chosen by source.
 
 ```python
-AuthRequest(
-    method: str,
-    path: str,
-    headers: Mapping[str, str] = <empty read-only mapping>,
-    context: RequestContext = RequestContext(),
-)
+AuthConfig(authenticator: Authenticator, *, surfaces: Iterable[str], name: str | None = None)
 ```
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `method` | `str` | required | Method being accessed. |
-| `path` | `str` | required | Path being accessed. |
-| `headers` | `Mapping[str, str]` | empty read-only mapping | Normalized headers. Header names are lowercase. |
-| `context` | [`RequestContext`](./request#symbol-requestcontext) | `RequestContext()` | Source, entrypoint, request id, tool, and action metadata. |
+| `authenticator` | [`Authenticator`](#symbol-authenticator) | required | Receives the `Request`; use `await request.resolve(SessionDep)` after cheap checks when auth needs a resource. |
+| `surfaces` | `Iterable[str]` | required | Surfaces this covers: any of `"api"`, `"mcp"`, `"cli"`. Each surface may be covered by at most one `AuthConfig`. |
+| `name` | `str \| None` | `None` | Optional name used in diagnostics. |
 
-MCP and CLI surface auth receive the surface request first. Route `auth=`
-receives a second `AuthRequest` for the actual route when the route declares
-auth.
+```python
+from quater import AuthConfig, AuthContext, Quater, Request
+
+
+async def authenticate(request: Request) -> AuthContext | None:
+    if request.headers.get("authorization") != "Bearer demo-token":
+        return None
+    return AuthContext(subject="user_123")
+
+
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["api", "mcp", "cli"])])
+```
 
 ## AuthContext {#symbol-authcontext}
 
-Added in `0.1.0a1`.
+Added in `0.1.0a1`. `payload` added in `0.1.0a3`.
 
-Authenticated identity returned by auth hooks.
+Authenticated identity returned by an authenticator.
 
 ```python
-AuthContext(subject: str, metadata: Mapping[str, object] = {})
+AuthContext(
+    subject: str,
+    metadata: Mapping[str, object] = {},
+    payload: object = None,
+)
 ```
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `subject` | `str` | required | Stable user, service, or agent id. |
 | `metadata` | `Mapping[str, object]` | empty read-only mapping | Small request-scoped values your app wants to carry. |
+| `payload` | `object` | `None` | An app object the authenticator already loaded (for example the `User` row), read back by a handler through a resource with no second query. Quater never inspects it. |
 
 Example:
 
 ```python
-from quater import AuthContext, AuthRequest
+from quater import AuthContext, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer demo-token":
+async def authenticate(request: Request) -> AuthContext | None:
+    if request.headers.get("authorization") != "Bearer demo-token":
         return None
     return AuthContext(subject="user_123")
 ```
@@ -109,18 +118,22 @@ ActionApproval = Callable[[ApprovalRequest], Awaitable[bool]]
 
 Return `True` to allow execution. Return `False` to deny it.
 
-## Authenticate {#symbol-authenticate}
+## Authenticator {#symbol-authenticator}
 
-Added in `0.1.0a1`.
+Added in `0.1.0a3`.
 
-Callable type for auth hooks.
+Callable type for an authenticator. It receives the `Request`; resource
+parameters are rejected so no-token requests can fail before opening a database
+session. Use `await request.resolve(SessionDep)` after cheap checks when auth
+needs a request-scoped resource, where `SessionDep` is the same
+`Annotated[T, resource]` alias the handler injects.
 
 ```python
-Authenticate = Callable[[AuthRequest], Awaitable[AuthContext | None]]
+Authenticator = Callable[[Request], Awaitable[AuthContext | None]]
 ```
 
-Return `AuthContext` to allow the request. Return `None` to deny it. Returning
-any other type is treated as unauthorized.
+Return `AuthContext` to allow the request. Return `None` to deny it (raising
+`HTTPError` works too). Returning any other type is treated as unauthorized.
 
 ## HTTPError {#symbol-httperror}
 

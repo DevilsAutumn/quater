@@ -3,22 +3,26 @@ from __future__ import annotations
 from typing import Any, assert_type
 
 from quater import (
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     MCPTestClient,
     Quater,
+    Request,
     TestClient,
     TestResponse,
 )
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer token":
         return None
     return AuthContext(subject="test")
 
 
-app = Quater(mcp_auth=authenticate, mcp_allowed_origins=["https://client.example"])
+app = Quater(
+    auth=[AuthConfig(authenticate, surfaces=["mcp"])],
+    mcp_allowed_origins=["https://client.example"],
+)
 
 
 @app.get("/health", tool=True, description="Check application health.")

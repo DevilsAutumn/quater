@@ -42,16 +42,16 @@ uv add quater
 Create `main.py`:
 
 ```python
-from quater import AuthContext, AuthRequest, HTTPError, Quater, Request
+from quater import AuthConfig, AuthContext, HTTPError, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer demo-token":
         return None
     return AuthContext(subject="cust_123")
 
 
-app = Quater(mcp_auth=authenticate, cli_auth=authenticate)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp", "cli"])])
 
 ORDERS: dict[str, dict[str, object]] = {
     "ord_1001": {"id": "ord_1001", "status": "paid", "total": 42.5}
@@ -67,7 +67,6 @@ async def health() -> dict[str, bool]:
     "/orders/{order_id}",
     tool=True,
     cli=True,
-    auth=authenticate,
     description="Fetch one order by id.",
 )
 async def get_order(order_id: str, request: Request) -> dict[str, object]:
@@ -284,11 +283,11 @@ in this release.
 : Set `QUATER_APP=main:app`, pass `--app main:app`, or use `quater dev main.py`
   for server startup.
 
-`MCP tools require mcp_auth`
-: Add `mcp_auth=authenticate` before declaring a route with `tool=True`.
+`No AuthConfig covers the 'mcp' surface; its routes are unauthenticated` (startup warning)
+: An MCP tool has no `AuthConfig` covering `mcp`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["mcp"])`, or open it deliberately with `public=["mcp"]`.
 
-`CLI actions require cli_auth`
-: Add `cli_auth=authenticate` before declaring a route with `cli=True`.
+`No AuthConfig covers the 'cli' surface; its routes are unauthenticated` (startup warning)
+: A CLI action has no `AuthConfig` covering `cli`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["cli"])`, or open it deliberately with `public=["cli"]`.
 
 `Missing required query parameter: page`
 : Send the query parameter or give the handler parameter a default.
@@ -309,5 +308,5 @@ in this release.
   handler rules.
 - [Actions and CLI](/en/dev/actions): use dry-run, approval, remotes, and
   machine-readable output.
-- [MCP](/en/dev/mcp): understand `mcp_auth`, tool schemas, and MCP errors.
+- [MCP](/en/dev/mcp): understand per-surface auth, tool schemas, and MCP errors.
 - [Testing](/en/dev/testing): test this app without opening a port.

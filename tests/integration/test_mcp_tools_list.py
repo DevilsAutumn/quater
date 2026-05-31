@@ -4,10 +4,10 @@ import json
 
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
-async def allow_mcp_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_mcp_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="mcp")
 
 
@@ -36,7 +36,7 @@ def require_object(value: object) -> dict[str, object]:
 
 @pytest.mark.asyncio
 async def test_tools_list_exposes_only_tool_routes() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/internal")
     async def internal() -> dict[str, bool]:

@@ -7,7 +7,12 @@ from dataclasses import replace
 from typing import Any, TypeVar
 
 from quater.actions.descriptions import resolve_action_description
-from quater.core import Handler, RouteDefinition
+from quater.core import (
+    Handler,
+    PublicSurfaces,
+    RouteDefinition,
+    normalize_public,
+)
 from quater.dependencies import Resource, ResourceMap
 from quater.exceptions import ConfigurationError
 from quater.middleware import (
@@ -22,7 +27,6 @@ from quater.tools.descriptions import (
     normalize_route_description,
     resolve_tool_description,
 )
-from quater.typing import AuthContext, Authenticate, AuthRequest
 
 HandlerT = TypeVar("HandlerT", bound=Handler)
 
@@ -36,7 +40,6 @@ class RouteGroup:
     """
 
     __slots__ = (
-        "auth",
         "inject",
         "metadata",
         "middleware",
@@ -52,7 +55,6 @@ class RouteGroup:
         prefix: str = "",
         *,
         tags: Iterable[str] = (),
-        auth: Authenticate | None = None,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -68,7 +70,6 @@ class RouteGroup:
         if group_tags:
             group_metadata["tags"] = group_tags
 
-        self.auth = auth
         self.inject = _normalize_inject(inject)
         self.metadata = group_metadata
         self.middleware = MiddlewareStack.from_parts(
@@ -120,7 +121,7 @@ class RouteGroup:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -156,7 +157,12 @@ class RouteGroup:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=normalize_public(
+                public,
+                tool=tool,
+                cli=cli,
+                route_name=route_name,
+            ),
             inject=_normalize_inject(inject),
             metadata=dict(metadata or {}),
             middleware=MiddlewareStack.from_parts(
@@ -179,7 +185,7 @@ class RouteGroup:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -199,7 +205,7 @@ class RouteGroup:
                 tool=tool,
                 cli=cli,
                 needs_approval=needs_approval,
-                auth=auth,
+                public=public,
                 inject=inject,
                 metadata=metadata,
                 before=before,
@@ -220,7 +226,7 @@ class RouteGroup:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -236,7 +242,7 @@ class RouteGroup:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -254,7 +260,7 @@ class RouteGroup:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -270,7 +276,7 @@ class RouteGroup:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -288,7 +294,7 @@ class RouteGroup:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -304,7 +310,7 @@ class RouteGroup:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -322,7 +328,7 @@ class RouteGroup:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -338,7 +344,7 @@ class RouteGroup:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -356,7 +362,7 @@ class RouteGroup:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: Mapping[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -372,7 +378,7 @@ class RouteGroup:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -387,7 +393,6 @@ class RouteGroup:
                 prefix="",
                 inject={},
                 metadata={},
-                auth=None,
                 middleware=MiddlewareStack(),
             )
         )
@@ -398,20 +403,17 @@ class RouteGroup:
         prefix: str,
         inject: Mapping[str, Resource],
         metadata: Mapping[str, Any],
-        auth: Authenticate | None,
         middleware: MiddlewareStack,
     ) -> Iterator[RouteDefinition]:
         group_prefix = _join_prefix(prefix, self.prefix)
         group_inject = _merge_inject(inject, self.inject)
         group_metadata = _merge_metadata(metadata, self.metadata)
-        group_auth = _compose_auth(auth, self.auth)
         group_middleware = merge_middleware_stack(middleware, self.middleware)
 
         for route in self._routes:
             yield replace(
                 route,
                 path=_join_route_path(group_prefix, route.path),
-                auth=_compose_auth(group_auth, route.auth),
                 inject=_merge_inject(group_inject, route.inject),
                 metadata=_merge_metadata(group_metadata, route.metadata),
                 middleware=merge_middleware_stack(group_middleware, route.middleware),
@@ -422,7 +424,6 @@ class RouteGroup:
                 prefix=group_prefix,
                 inject=group_inject,
                 metadata=group_metadata,
-                auth=group_auth,
                 middleware=group_middleware,
             )
 
@@ -599,27 +600,6 @@ def _merge_tags(
         seen.add(tag)
         tags.append(tag)
     return tuple(tags)
-
-
-def _compose_auth(
-    parent: Authenticate | None,
-    child: Authenticate | None,
-) -> Authenticate | None:
-    if parent is None:
-        return child
-    if child is None:
-        return parent
-
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-        parent_context = await parent(ctx)
-        if parent_context is None:
-            return None
-        child_context = await child(ctx)
-        if child_context is None:
-            return None
-        return child_context
-
-    return authenticate
 
 
 __all__ = ["RouteGroup"]

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
-from quater import Quater
+from quater import AuthConfig, Quater, Request
 from quater.actions import registry as action_registry_module
 from quater.actions.registry import ActionRegistry, build_action_registry
 from quater.core import RouteDefinition
 from quater.exceptions import ConfigurationError
-from quater.typing import ApprovalRequest, AuthContext, AuthRequest
+from quater.typing import ApprovalRequest, AuthContext
 
 
-async def allow_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject=ctx.context.source)
 
 
@@ -18,18 +20,24 @@ async def approve_action(ctx: ApprovalRequest) -> bool:
     return ctx.token == "approved"
 
 
-def test_cli_actions_require_cli_auth() -> None:
+def test_cli_actions_without_a_cli_auth_are_allowed_but_warned(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     app = Quater()
 
-    with pytest.raises(ConfigurationError, match="CLI actions require cli_auth"):
+    @app.post("/invoices/{id:int}/paid", cli=True, description="Mark paid.")
+    async def mark_paid(id: int) -> dict[str, int]:
+        return {"id": id}
 
-        @app.post("/invoices/{id:int}/paid", cli=True, description="Mark paid.")
-        async def mark_paid(id: int) -> dict[str, int]:
-            return {"id": id}
+    with caplog.at_level(logging.WARNING, logger="quater"):
+        app.compile_routes()
+
+    assert app._compiled_action_registry().get("mark_paid") is not None
+    assert any("'cli' surface" in record.message for record in caplog.records)
 
 
 def test_cli_actions_must_define_a_description() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     with pytest.raises(ConfigurationError, match="non-empty description"):
 
@@ -39,7 +47,7 @@ def test_cli_actions_must_define_a_description() -> None:
 
 
 def test_cli_action_description_can_come_from_handler_docstring() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     @app.post("/invoices/{id:int}/paid", cli=True)
     async def mark_paid(id: int) -> dict[str, int]:
@@ -64,7 +72,7 @@ def test_approval_requires_an_action_surface() -> None:
 
 
 def test_approval_required_actions_need_approval_hook() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     with pytest.raises(
         ConfigurationError,
@@ -83,8 +91,7 @@ def test_approval_required_actions_need_approval_hook() -> None:
 
 def test_action_registry_exposes_cli_and_tool_routes() -> None:
     app = Quater(
-        cli_auth=allow_auth,
-        mcp_auth=allow_auth,
+        auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])],
         action_approval=approve_action,
     )
 
@@ -112,7 +119,7 @@ def test_action_registry_exposes_cli_and_tool_routes() -> None:
 
 
 def test_duplicate_action_names_fail_when_registry_is_built() -> None:
-    app = Quater(cli_auth=allow_auth, mcp_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     @app.get("/users/{id:int}", cli=True, name="lookup", description="Find a user.")
     async def lookup_user(id: int) -> dict[str, int]:
@@ -127,7 +134,7 @@ def test_duplicate_action_names_fail_when_registry_is_built() -> None:
 
 
 def test_externally_callable_routes_need_a_stable_name() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     class CallableHandler:
         async def __call__(self) -> dict[str, bool]:
@@ -146,7 +153,7 @@ def test_externally_callable_routes_need_a_stable_name() -> None:
 def test_app_compiles_dirty_action_registry_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
     registry_builds = 0
     original_build_action_registry = action_registry_module.build_action_registry
 
@@ -168,7 +175,7 @@ def test_app_compiles_dirty_action_registry_once(
 
 
 def test_action_registry_recompile_keeps_http_router_current() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     @app.get("/health")
     async def health() -> dict[str, bool]:

@@ -7,8 +7,8 @@ from typing import Any
 import msgspec
 
 from quater import (
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     BytesResponse,
     HTTPError,
     Quater,
@@ -23,8 +23,8 @@ class UserIn(msgspec.Struct):
     tags: list[str] = msgspec.field(default_factory=list)
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer benchmark-token":
+async def authenticate(request: Request) -> AuthContext | None:
+    if request.headers.get("authorization") != "Bearer benchmark-token":
         return None
     return AuthContext(subject="benchmark-user")
 
@@ -32,6 +32,7 @@ async def authenticate(ctx: AuthRequest) -> AuthContext | None:
 app = Quater(
     allowed_hosts=["127.0.0.1", "localhost"],
     max_body_size="4mb",
+    auth=[AuthConfig(authenticate, surfaces=["api"])],
 )
 
 
@@ -56,27 +57,27 @@ def compute_payload(iterations: int) -> dict[str, object]:
     }
 
 
-@app.get("/ping")
+@app.get("/ping", public=True)
 async def ping() -> dict[str, bool]:
     return {"ok": True}
 
 
-@app.get("/health")
+@app.get("/health", public=True)
 async def health() -> dict[str, object]:
     return {"ok": True, "service": "no-db-benchmark"}
 
 
-@app.get("/json")
+@app.get("/json", public=True)
 async def json_response(size: int = Query(default=10)) -> dict[str, object]:
     return json_payload(size)
 
 
-@app.post("/echo")
+@app.post("/echo", public=True)
 async def echo(request: Request) -> dict[str, Any]:
     return {"body": await request.json()}
 
 
-@app.post("/users", auth=authenticate)
+@app.post("/users")
 async def create_user(user: UserIn, request: Request) -> dict[str, object]:
     if request.auth is None:
         raise HTTPError("Unauthorized", status_code=401)
@@ -88,18 +89,18 @@ async def create_user(user: UserIn, request: Request) -> dict[str, object]:
     }
 
 
-@app.get("/bytes")
+@app.get("/bytes", public=True)
 async def bytes_response(size: int = Query(default=1024)) -> BytesResponse:
     bounded = max(1, min(size, 1024 * 1024))
     return BytesResponse(b"x" * bounded)
 
 
-@app.get("/compute")
+@app.get("/compute", public=True)
 async def compute(iterations: int = Query(default=10_000)) -> dict[str, object]:
     return compute_payload(iterations)
 
 
-@app.get("/wait")
+@app.get("/wait", public=True)
 async def wait(delay_ms: int = Query(default=25)) -> dict[str, int]:
     bounded = max(0, min(delay_ms, 5000))
     await asyncio.sleep(bounded / 1000)

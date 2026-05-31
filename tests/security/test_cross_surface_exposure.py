@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from quater import Quater, Request, Resource, TestClient
+from quater import AuthConfig, Quater, Request, Resource, TestClient
 
 from .helpers import (
     allow_auth,
@@ -24,7 +24,7 @@ class PrivateSession:
 
 @pytest.mark.asyncio
 async def test_http_routes_are_not_exposed_to_mcp_or_cli_without_opt_in() -> None:
-    app = Quater(mcp_auth=surface_token_auth, cli_auth=surface_token_auth)
+    app = Quater(auth=[AuthConfig(surface_token_auth, surfaces=["mcp", "cli"])])
 
     @app.get("/internal")
     async def internal() -> dict[str, bool]:
@@ -93,7 +93,7 @@ async def test_external_schemas_do_not_expose_request_or_resource_parameters() -
     async def session_provider() -> AsyncIterator[PrivateSession]:
         yield PrivateSession("primary")
 
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     @app.get(
         "/orders/{order_id}",
@@ -146,7 +146,7 @@ async def test_external_schemas_do_not_expose_request_or_resource_parameters() -
 @pytest.mark.asyncio
 async def test_action_argument_overposting_is_rejected_before_handler_runs() -> None:
     calls = 0
-    app = Quater(cli_auth=surface_token_auth)
+    app = Quater(auth=[AuthConfig(surface_token_auth, surfaces=["cli"])])
 
     @app.get("/orders/{order_id}", cli=True, description="Read one order.")
     async def get_order(order_id: str) -> dict[str, str]:

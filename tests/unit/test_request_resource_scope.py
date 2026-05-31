@@ -8,6 +8,7 @@ torn down once in reverse order, and never leaks between requests.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Annotated
 
 import pytest
 
@@ -191,6 +192,88 @@ async def test_adopted_scope_is_shared_so_a_resource_resolves_once() -> None:
     assert calls == 1
 
     await auth_request._aclose_resources()
+
+
+@pytest.mark.asyncio
+async def test_request_resolve_uses_the_shared_scope_cache_and_teardown() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[FakeSession]:
+        events.append("open")
+        try:
+            yield FakeSession("primary")
+        finally:
+            events.append("close")
+
+    request = Request(method="GET", path="/orders")
+    resource = Resource(provider)
+    SessionDep = Annotated[FakeSession, resource]
+
+    first = await request.resolve(SessionDep)
+    second = await request.resolve(SessionDep)
+
+    assert first is second
+    assert events == ["open"]
+
+    await request._aclose_resources()
+
+    assert events == ["open", "close"]
+
+
+@pytest.mark.asyncio
+async def test_request_resolve_accepts_raw_resource_for_compatibility() -> None:
+    async def provider() -> FakeSession:
+        return FakeSession("primary")
+
+    request = Request(method="GET", path="/orders")
+    resource = Resource(provider)
+
+    resolved = await request.resolve(resource)
+
+    assert isinstance(resolved, FakeSession)
+    assert resolved.label == "primary"
+
+
+@pytest.mark.asyncio
+async def test_request_resolve_rejects_annotation_without_resource() -> None:
+    request = Request(method="GET", path="/orders")
+    SessionDep = Annotated[FakeSession, "documentation-only"]
+
+    with pytest.raises(
+        TypeError,
+        match=r"Resource or Annotated\[T, Resource\]",
+    ):
+        await request.resolve(SessionDep)
+
+
+@pytest.mark.asyncio
+async def test_request_resolve_rejects_plain_type_without_resource() -> None:
+    request = Request(method="GET", path="/orders")
+
+    with pytest.raises(
+        TypeError,
+        match=r"Resource or Annotated\[T, Resource\]",
+    ):
+        await request.resolve(FakeSession)
+
+
+@pytest.mark.asyncio
+async def test_request_resolve_rejects_annotation_with_multiple_resources() -> None:
+    async def first_provider() -> FakeSession:
+        return FakeSession("first")
+
+    async def second_provider() -> FakeSession:
+        return FakeSession("second")
+
+    request = Request(method="GET", path="/orders")
+    SessionDep = Annotated[
+        FakeSession,
+        Resource(first_provider),
+        Resource(second_provider),
+    ]
+
+    with pytest.raises(TypeError, match="only one Resource"):
+        await request.resolve(SessionDep)
 
 
 @pytest.mark.asyncio

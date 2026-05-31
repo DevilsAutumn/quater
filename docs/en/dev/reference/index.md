@@ -23,7 +23,7 @@ Public symbols:
 | Request | [`Request`](./request#symbol-request), [`State`](./request#symbol-state), [`FormData`](./request#symbol-formdata), [`UploadFile`](./request#symbol-uploadfile) |
 | Resources | [`Resource`](./resources#symbol-resource) |
 | Responses | [`Response`](./responses#symbol-response), [`JSONResponse`](./responses#symbol-jsonresponse), [`TextResponse`](./responses#symbol-textresponse), [`HTMLResponse`](./responses#symbol-htmlresponse), [`BytesResponse`](./responses#symbol-bytesresponse), [`StreamResponse`](./responses#symbol-streamresponse), [`RedirectResponse`](./responses#symbol-redirectresponse), [`EmptyResponse`](./responses#symbol-emptyresponse) |
-| Auth | [`AuthRequest`](./auth#symbol-authrequest), [`AuthContext`](./auth#symbol-authcontext), [`ApprovalRequest`](./auth#symbol-approvalrequest), [`ActionApproval`](./auth#symbol-actionapproval), [`HTTPError`](./auth#symbol-httperror), [`ImproperlyConfigured`](./auth#symbol-improperlyconfigured), [`SignedCookieSigner`](./auth#symbol-signedcookiesigner) |
+| Auth | [`AuthConfig`](./auth#symbol-authconfig), [`AuthContext`](./auth#symbol-authcontext), [`ApprovalRequest`](./auth#symbol-approvalrequest), [`ActionApproval`](./auth#symbol-actionapproval), [`HTTPError`](./auth#symbol-httperror), [`ImproperlyConfigured`](./auth#symbol-improperlyconfigured), [`SignedCookieSigner`](./auth#symbol-signedcookiesigner) |
 | Observability | [`AccessLogEvent`](./observability#symbol-accesslogevent), [`AccessLogHook`](./observability#symbol-accessloghook), [`ToolAuditEvent`](./observability#symbol-toolauditevent) |
 | Testing | [`TestClient`](./testing#symbol-testclient), [`MCPTestClient`](./testing#symbol-mcptestclient), [`TestResponse`](./testing#symbol-testresponse) |
 

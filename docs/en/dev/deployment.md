@@ -70,8 +70,8 @@ Before going live:
 - Keep reload off.
 - Choose a worker count for your CPU and database pool.
 - Decide whether `/docs` and `/openapi.json` should stay public.
-- Configure `mcp_auth` before exposing MCP tools.
-- Configure `cli_auth` before exposing CLI actions.
+- Cover the `mcp` surface with an `AuthConfig` before exposing MCP tools.
+- Cover the `cli` surface with an `AuthConfig` before exposing CLI actions.
 - Configure `trusted_proxies` only for proxies you control.
 - Use HTTPS at the edge.
 
@@ -180,7 +180,7 @@ quater dev --working-dir ./apps/store main:app
 | Variable | Used by | Default | Effect |
 | --- | --- | --- | --- |
 | `QUATER_APP` | local CLI and server commands | unset | App import path when `--app` or target is omitted. |
-| `QUATER_TOKEN` | local CLI actions | unset | Bearer token for local `cli_auth`. |
+| `QUATER_TOKEN` | local CLI actions | unset | Bearer token for the local `cli` `AuthConfig`. |
 | `QUATER_HOME` | remote CLI config | `~/.quater` | Directory for `remotes.json`. |
 | `QUATER_ENV` | server startup | set by `quater dev` or `quater run` | `development` or `production` during server startup. |
 | `QUATER_MAX_BODY_SIZE` | app config | `2mb` | Maximum request body size. |

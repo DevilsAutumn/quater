@@ -7,8 +7,8 @@ from typing import Annotated, Any, cast
 import pytest
 
 from quater import (
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     JSONResponse,
     Quater,
     Query,
@@ -30,7 +30,7 @@ class FakeSession:
         self.label = label
 
 
-async def allow_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject=ctx.context.source)
 
 
@@ -334,7 +334,7 @@ def test_tool_and_action_schemas_do_not_expose_injected_values() -> None:
     async def provider() -> FakeSession:
         return FakeSession("primary")
 
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     @app.get(
         "/orders/{order_id}",
@@ -366,7 +366,7 @@ async def test_cli_action_resolves_injected_resources_at_execution_time() -> Non
         finally:
             events.append(f"close:{request.context.source}")
 
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     @app.get(
         "/orders/{order_id}",
@@ -382,7 +382,6 @@ async def test_cli_action_resolves_injected_resources_at_execution_time() -> Non
         Request(method="POST", path="/__quater__/actions/call"),
         {"order_id": "ord_1"},
         source="cli",
-        surface_auth=allow_auth,
     )
     assert result.path == "/orders/ord_1"
     assert events == []
@@ -392,7 +391,6 @@ async def test_cli_action_resolves_injected_resources_at_execution_time() -> Non
         Request(method="POST", path="/__quater__/actions/call"),
         {"order_id": "ord_1"},
         source="cli",
-        surface_auth=allow_auth,
     )
 
     assert response.body == b'{"id":"ord_1","session":"primary"}'
@@ -411,7 +409,7 @@ async def test_mcp_tool_resolves_injected_resources_at_execution_time() -> None:
         finally:
             events.append(f"close:{request.context.source}")
 
-    app = Quater(mcp_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp"])])
 
     @app.get(
         "/orders/{order_id}",
@@ -441,7 +439,7 @@ async def test_action_arguments_cannot_supply_injected_values() -> None:
     async def provider() -> FakeSession:
         return FakeSession("primary")
 
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     @app.get(
         "/orders/{order_id}",
@@ -458,7 +456,6 @@ async def test_action_arguments_cannot_supply_injected_values() -> None:
             Request(method="POST", path="/__quater__/actions/call"),
             {"order_id": "ord_1", "session": "fake"},
             source="cli",
-            surface_auth=allow_auth,
         )
 
 
@@ -498,7 +495,7 @@ async def test_resource_in_annotation_resolves_and_cleans_up() -> None:
 
 
 def test_annotation_resource_is_excluded_from_schemas() -> None:
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     @app.get(
         "/orders/{order_id}",

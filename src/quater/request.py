@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, Any, TypeAlias, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    TypeAlias,
+    TypeVar,
+    cast,
+    get_args,
+    get_origin,
+    overload,
+)
 
 from quater._state import State
 from quater.datastructures import Cookies, HeaderItems, Headers, QueryParams
@@ -13,10 +23,12 @@ from quater.typing import AuthContext, RequestContext
 
 if TYPE_CHECKING:
     from quater.app import Quater
+    from quater.dependencies import Resource
     from quater.formdata import FormData
 
 BodyReader: TypeAlias = Callable[[], Awaitable[bytes]]
 RequestBody: TypeAlias = bytes | BodyReader | None
+T = TypeVar("T")
 
 _UNSET = object()
 
@@ -190,6 +202,28 @@ class Request:
             self._resource_scope = scope
         return scope
 
+    @overload
+    async def resolve(self, dependency: type[T]) -> T: ...
+
+    @overload
+    async def resolve(self, dependency: Resource) -> object: ...
+
+    async def resolve(self, dependency: type[T] | Resource) -> T | object:
+        """Resolve a request-scoped resource lazily from this request.
+
+        Auth code uses this when it needs a resource after cheap request checks
+        have passed. Pass either the raw ``Resource`` or the handler's
+        ``Annotated[T, resource]`` alias. The value comes from the same cache
+        and exit stack used by handler injection, so resolving here and
+        injecting the same resource later opens it once and tears it down once.
+        """
+
+        from quater.dependencies import resolve_resource
+
+        resource = _resource_from_dependency(dependency)
+        scope = self.resources
+        return await resolve_resource(resource, self, scope.cache, scope.stack)
+
     @property
     def has_open_resources(self) -> bool:
         scope = self._resource_scope
@@ -272,3 +306,25 @@ def _coerce_body_reader(body: RequestBody) -> BodyReader:
         return read_bytes
 
     return body
+
+
+def _resource_from_dependency(dependency: object) -> Resource:
+    from quater.dependencies import Resource
+
+    if isinstance(dependency, Resource):
+        return dependency
+
+    if get_origin(dependency) is Annotated:
+        found: Resource | None = None
+        for metadata in get_args(dependency)[1:]:
+            if isinstance(metadata, Resource):
+                if found is not None:
+                    raise TypeError(
+                        "request.resolve() accepts only one Resource in an "
+                        "Annotated dependency"
+                    )
+                found = metadata
+        if found is not None:
+            return found
+
+    raise TypeError("request.resolve() requires a Resource or Annotated[T, Resource]")

@@ -31,8 +31,9 @@ That keeps application logic in one place instead of spreading it across API
 routes, tool wrappers, scripts, and internal-only shortcuts.
 
 Direct backend access does not mean broad backend access. Quater keeps each
-surface behind its own boundary: `mcp_auth` protects MCP, `cli_auth` protects
-CLI, and route `auth=` protects the handler itself.
+surface behind its own boundary: one `AuthConfig` per surface identifies the
+caller, and handler/service code decides whether that caller can run the
+operation.
 
 Read [Why Quater Exists](/en/dev/why-quater) for the full problem statement
 and design motivation.
@@ -86,46 +87,44 @@ flowchart TB
     router["Router<br/>native route matcher"]
     before["Before middleware<br/>your code"]
     surface["Surface check<br/>HTTP, MCP, or CLI"]
-    surface_auth["Surface auth<br/>mcp_auth or cli_auth"]
-    route_auth["Route auth<br/>auth hook"]
+    surface_auth["Per-surface AuthConfig<br/>one authenticator, by source"]
     bind["Bind parameters<br/>path, query, body, resources"]
+    authorize["Authorize<br/>roles, ownership, domain rules"]
     handler["Handler<br/>your code"]
     after["After middleware<br/>your code"]
     serialize["Serialize<br/>response or msgspec JSON"]
     response_out["Response out<br/>framework"]
 
     request_in --> adapter --> checks --> router --> before --> surface
-    surface -->|HTTP| route_auth
-    surface -->|MCP or CLI| surface_auth --> route_auth
-    route_auth --> bind --> handler --> after --> serialize --> response_out
+    surface --> surface_auth --> bind --> authorize --> handler --> after --> serialize --> response_out
 ```
 
 Route groups do not add another router at request time. Quater flattens group
-prefixes, middleware, auth, metadata, and resources when routes compile.
+prefixes, middleware, metadata, and resources when routes compile.
 
-HTTP requests go from the route to route `auth=`. MCP and remote CLI requests
-run their surface auth first, then the same route `auth=` if the route has one.
+Every protected request runs the AuthConfig for the surface it entered through.
+Authorization stays in your handler or service so it can use the loaded domain
+data.
 
 ## One Handler, Three Surfaces
 
 ```python
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer demo-token":
         return None
     return AuthContext(subject="demo-user")
 
 
-app = Quater(mcp_auth=authenticate, cli_auth=authenticate)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp", "cli"])])
 
 
 @app.get(
     "/orders/{order_id}",
     tool=True,
     cli=True,
-    auth=authenticate,
     description="Fetch one order by id.",
 )
 async def get_order(order_id: str, request: Request) -> dict[str, object]:
@@ -165,8 +164,8 @@ The three surfaces converge on the same handler, but auth does not collapse:
 ```mermaid
 flowchart LR
     api["HTTP caller"] --> api_auth["Route auth"] --> handler["Handler"]
-    mcp["MCP caller"] --> mcp_auth["mcp_auth"] --> mcp_route["Route auth"] --> handler
-    cli["CLI caller"] --> cli_auth["cli_auth"] --> cli_route["Route auth"] --> handler
+    mcp["MCP caller"] --> mcp_auth["mcp AuthConfig"] --> handler
+    cli["CLI caller"] --> cli_auth["cli AuthConfig"] --> handler
 ```
 
 ## Reading Path
@@ -190,11 +189,11 @@ flowchart LR
 
 ## What Can Go Wrong
 
-`MCP tools require mcp_auth`
-: Add `mcp_auth=...` to `Quater(...)` before declaring `tool=True` routes.
+`No AuthConfig covers the 'mcp' surface; its routes are unauthenticated` (startup warning)
+: An MCP tool has no `AuthConfig` covering `mcp`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["mcp"])`, or open it deliberately with `public=["mcp"]`.
 
-`CLI actions require cli_auth`
-: Add `cli_auth=...` before declaring `cli=True` routes.
+`No AuthConfig covers the 'cli' surface; its routes are unauthenticated` (startup warning)
+: A CLI action has no `AuthConfig` covering `cli`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["cli"])`, or open it deliberately with `public=["cli"]`.
 
 `needs_approval requires tool=True or cli=True`
 : Use `needs_approval=True` only on routes exposed as MCP tools or CLI actions.

@@ -4,11 +4,11 @@ import json
 
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, Request, __version__
+from quater import AuthConfig, AuthContext, Quater, Request, __version__
 from quater.tools.mcp import LATEST_PROTOCOL_VERSION
 
 
-async def allow_mcp_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_mcp_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="mcp")
 
 
@@ -55,7 +55,7 @@ def require_object(value: object) -> dict[str, object]:
 
 @pytest.mark.asyncio
 async def test_initialize_negotiates_protocol_and_declares_tool_capability() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     status, _, body = await mcp_post(
         app,
@@ -125,7 +125,7 @@ async def test_initialized_notification_returns_accepted_without_body() -> None:
 
 @pytest.mark.asyncio
 async def test_cursor_style_startup_sequence_can_list_tools_after_initialize() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:
@@ -301,7 +301,7 @@ async def test_unknown_notifications_are_accepted_without_executing_anything() -
 @pytest.mark.asyncio
 async def test_tools_call_rejects_invalid_params_without_handler_execution() -> None:
     calls = 0
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:

@@ -39,23 +39,22 @@ knowledge to read request and response examples.
 ## One View, Three Ways To Call It
 
 ```python
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer demo-token":
+async def authenticate(request: Request) -> AuthContext | None:
+    if request.headers.get("authorization") != "Bearer demo-token":
         return None
     return AuthContext(subject="demo-user")
 
 
-app = Quater(mcp_auth=authenticate, cli_auth=authenticate)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["api", "mcp", "cli"])])
 
 
 @app.get(
     "/orders/{order_id}",
     tool=True,
     cli=True,
-    auth=authenticate,
     description="Fetch one order by id.",
 )
 async def get_order(order_id: str, request: Request) -> dict[str, object]:

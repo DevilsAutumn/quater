@@ -3,6 +3,7 @@
 from quater._parameters import Body, Cookie, File, Form, Header, Path, Query
 from quater._state import State
 from quater.app import Quater
+from quater.auth import AuthConfig
 from quater.config import AppConfig
 from quater.cookies import SignedCookieSigner
 from quater.cors import CORSConfig
@@ -24,7 +25,7 @@ from quater.response import (
 )
 from quater.testing import CliTestClient, MCPTestClient, TestClient, TestResponse
 from quater.tools.audit import ToolAuditEvent
-from quater.typing import ActionApproval, ApprovalRequest, AuthContext, AuthRequest
+from quater.typing import ActionApproval, ApprovalRequest, AuthContext
 
 __version__ = "0.1.0a2"
 
@@ -34,8 +35,8 @@ __all__ = [
     "AccessLogHook",
     "AppConfig",
     "ApprovalRequest",
+    "AuthConfig",
     "AuthContext",
-    "AuthRequest",
     "Body",
     "BytesResponse",
     "CORSConfig",

@@ -49,23 +49,23 @@ without losing safety, structure, or ownership of the application logic.
 ## A Small App
 
 ```python
-from quater import AuthContext, AuthRequest, HTTPError, Quater, Request
+from quater import AuthConfig, AuthContext, HTTPError, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != "Bearer admin-token":
+async def authenticate(request: Request) -> AuthContext | None:
+    if request.headers.get("authorization") != "Bearer admin-token":
         return None
     return AuthContext(subject="admin")
 
 
-app = Quater(mcp_auth=authenticate, cli_auth=authenticate)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["api", "mcp", "cli"])])
 
 ORDERS: dict[str, dict[str, object]] = {
     "ord_1001": {"id": "ord_1001", "status": "paid", "total": 42.5}
 }
 
 
-@app.get("/health")
+@app.get("/health", public=True)
 async def health() -> dict[str, bool]:
     return {"ok": True}
 
@@ -74,7 +74,6 @@ async def health() -> dict[str, bool]:
     "/orders/{order_id}",
     tool=True,
     cli=True,
-    auth=authenticate,
     description="Fetch one order by id.",
 )
 async def get_order(order_id: str, request: Request) -> dict[str, object]:
@@ -188,10 +187,8 @@ flowchart TB
     remote_cli["Remote CLI action\nquater call store get_order"]
     adapter["Server adapter\nRSGI / ASGI / WSGI"]
     checks["Framework checks\nhost, body limit, CORS, request id"]
-    router["Route metadata\nmethod, path, auth, resources"]
-    mcp_surface_auth["MCP auth\nmcp_auth"]
-    cli_surface_auth["CLI auth\ncli_auth"]
-    route_auth["Route auth\nauth="]
+    router["Route metadata\nmethod, path, public, resources"]
+    auth["Per-surface Auth\none authenticator, by source,\nsharing the request scope"]
     handler["Your handler\nget_order(...)"]
     response["Serialized response\nJSON, text, bytes, stream"]
 
@@ -203,10 +200,10 @@ flowchart TB
     remote_cli --> adapter
     adapter --> checks
     checks --> router
-    router -->|HTTP| route_auth
-    router -->|MCP| mcp_surface_auth --> route_auth
-    router -->|remote CLI| cli_surface_auth --> route_auth
-    route_auth --> handler
+    router -->|HTTP api| auth
+    router -->|MCP| auth
+    router -->|remote CLI| auth
+    auth --> handler
     handler --> response
 ```
 
@@ -223,7 +220,7 @@ capability, not as three products you have to maintain.
   audit hooks.
 - **For AI agents:** `cli=True` exposes selected routes as local or remote CLI
   actions with discovery, dry-run, approval hooks, and JSON output for scripts.
-- **For the app itself:** route auth, resources, `app.state`, lifespan hooks,
+- **For the app itself:** auth context, resources, `app.state`, lifespan hooks,
   and serialization stay attached to the handler instead of drifting into
   wrappers.
 - **For performance:** the request path stays deliberately small with

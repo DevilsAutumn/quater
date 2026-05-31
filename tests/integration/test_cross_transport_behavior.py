@@ -7,10 +7,10 @@ from typing import Any, cast
 
 import pytest
 
-from quater import Quater, Request
+from quater import AuthConfig, Quater, Request
 from quater.adapters.asgi import ASGIMessage
 from quater.adapters.wsgi import WSGIEnvironment
-from quater.typing import AuthContext, AuthRequest
+from quater.typing import AuthContext
 
 
 class RSGIHeaders:
@@ -266,17 +266,20 @@ async def test_app_object_is_callable_for_all_http_transports() -> None:
 
 
 def make_app(auth_subjects: list[str], handler_calls: list[str]) -> Quater:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         subject = ctx.headers.get("authorization")
         if subject is None:
             return None
         auth_subjects.append(subject)
         return AuthContext(subject=subject)
 
-    app = Quater(allowed_hosts=["api.example.com"])
+    app = Quater(
+        allowed_hosts=["api.example.com"],
+        auth=[AuthConfig(authenticate, surfaces=["api"])],
+    )
     app.state.transport_marker = "shared"
 
-    @app.get("/me", auth=authenticate)
+    @app.get("/me")
     async def me(request: Request) -> dict[str, str]:
         assert request.app is app
         assert request.app.state.transport_marker == "shared"

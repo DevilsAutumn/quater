@@ -25,7 +25,7 @@ from quater import (
     AppConfig,
     ApprovalRequest,
     AuthContext,
-    AuthRequest,
+    AuthConfig,
     Body,
     BytesResponse,
     CORSConfig,
@@ -87,17 +87,17 @@ Important constructor options:
 - `cors`: browser CORS policy.
 - `max_form_parts`, `max_file_size`, and response-size options: request and
   tool/action limits. These can also come from deployment environment variables.
-- `mcp_auth`: surface auth for MCP. Required when any route has `tool=True`.
-- `cli_auth`: surface auth for CLI actions. Required when any route has
-  `cli=True`.
+- `auth`: list of per-surface `AuthConfig` objects; one runs per request, by source. A
+  surface with no covering `AuthConfig` leaves its routes open (logged at startup).
 - `action_approval`: required when any exposed route has `needs_approval=True`.
 - `access_logger`: receives structured access events.
 
 See [Application Reference](/en/dev/reference/application) for every option,
 type, default, and exception.
 
-Surface auth does not replace route `auth=`. Use route or group auth for
-handlers that should not be public HTTP endpoints.
+Surface auth identifies the caller. Put roles, ownership, and other
+authorization checks in the handler or service where the domain data is
+available.
 
 ## Routes
 

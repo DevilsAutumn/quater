@@ -18,14 +18,14 @@ def test_cli_lists_local_actions_as_json(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             if ctx.headers.get("authorization") == "Bearer secret":
                 return AuthContext(subject="cli")
             return None
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int) -> dict[str, int]:
@@ -68,14 +68,14 @@ def test_cli_reads_local_app_and_token_from_environment(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             if ctx.headers.get("authorization") == "Bearer secret":
                 return AuthContext(subject="cli")
             return None
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int) -> dict[str, int]:
@@ -109,14 +109,14 @@ def test_cli_token_argument_overrides_environment_token(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             if ctx.headers.get("authorization") == "Bearer explicit":
                 return AuthContext(subject="cli")
             return None
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int) -> dict[str, int]:
@@ -151,12 +151,12 @@ def test_cli_rejects_empty_environment_token(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return AuthContext(subject="cli")
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/health", cli=True, description="Read health.")
         async def health() -> dict[str, bool]:
@@ -183,7 +183,7 @@ def test_cli_reports_app_import_syntax_error_with_source_location(
     write_app(
         tmp_path,
         """
-        from quater import Quater
+        from quater import AuthConfig, Quater, Request
 
         app = Quater(
             allowed_hosts=[*],
@@ -212,12 +212,12 @@ def test_cli_searches_local_actions_as_compact_results(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return AuthContext(subject="cli")
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int) -> dict[str, int]:
@@ -262,17 +262,17 @@ def test_cli_describes_local_action_usage(
         tmp_path,
         """
         import msgspec
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
         class CreateUser(msgspec.Struct):
             name: str
             age: int
             newsletter: bool = False
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return AuthContext(subject="cli")
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.post("/users", cli=True, description="Create one user.")
         async def create_user(user: CreateUser) -> dict[str, object]:
@@ -320,12 +320,12 @@ def test_cli_actions_are_protected_by_cli_auth(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return None
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int) -> dict[str, int]:
@@ -351,18 +351,18 @@ def test_cli_call_executes_action_with_typed_body(
         tmp_path,
         """
         import msgspec
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
         class CreateUser(msgspec.Struct):
             name: str
             age: int
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             if ctx.headers.get("authorization") == "Bearer secret":
                 return AuthContext(subject="cli")
             return None
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.post("/users", cli=True, description="Create one user.")
         async def create_user(user: CreateUser) -> dict[str, object]:
@@ -403,15 +403,18 @@ def test_cli_call_rejects_empty_approval_token(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return AuthContext(subject="cli")
 
         async def approve(ctx) -> bool:
             return True
 
-        app = Quater(cli_auth=cli_auth, action_approval=approve)
+        app = Quater(
+            auth=[AuthConfig(cli_auth, surfaces=["cli"])],
+            action_approval=approve,
+        )
 
         @app.post(
             "/users/{id:int}/lock",
@@ -451,11 +454,11 @@ def test_cli_call_auth_sees_local_entrypoint_context(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater, Request
+        from quater import AuthConfig, AuthContext, Quater, Request
 
         seen_contexts: list[tuple[str, str, str | None]] = []
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             seen_contexts.append((
                 ctx.context.source,
                 ctx.context.entrypoint,
@@ -465,7 +468,7 @@ def test_cli_call_auth_sees_local_entrypoint_context(
                 return AuthContext(subject="cli")
             return None
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int, request: Request) -> dict[str, object]:
@@ -515,14 +518,14 @@ def test_cli_dry_run_validates_but_does_not_call_handler(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
         calls = 0
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return AuthContext(subject="cli")
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int) -> dict[str, int]:
@@ -566,14 +569,14 @@ def test_cli_call_requires_cli_auth_before_handler_runs(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
         calls = 0
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return None
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
         async def get_user(id: int) -> dict[str, int]:
@@ -604,12 +607,12 @@ def test_cli_call_cannot_execute_non_cli_routes(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return AuthContext(subject="cli")
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.get("/health")
         async def health() -> dict[str, bool]:
@@ -637,12 +640,12 @@ def test_cli_handler_errors_do_not_leak_details(
     write_app(
         tmp_path,
         """
-        from quater import AuthContext, AuthRequest, Quater
+        from quater import AuthConfig, AuthContext, Quater, Request
 
-        async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+        async def cli_auth(ctx: Request) -> AuthContext | None:
             return AuthContext(subject="cli")
 
-        app = Quater(cli_auth=cli_auth)
+        app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
         @app.post("/danger", cli=True, description="Run dangerous action.")
         async def danger() -> dict[str, bool]:

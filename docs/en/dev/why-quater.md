@@ -78,13 +78,13 @@ default model is opt-in. You choose which operations become tools or actions.
 
 ## What Can Go Wrong
 
-`MCP tools require mcp_auth`
-: Quater refuses to expose tools without MCP transport auth. Add
-`mcp_auth=...` to `Quater(...)`.
+`No AuthConfig covers the 'mcp' surface; its routes are unauthenticated` (startup warning)
+: An MCP tool has no `AuthConfig` covering `mcp`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["mcp"])`, or open it deliberately with `public=["mcp"]`.
+an `AuthConfig` covering `"mcp"` to `Quater(auth=[...])`.
 
-`CLI actions require cli_auth`
-: Quater refuses to expose CLI actions without CLI transport auth. Add
-`cli_auth=...` to `Quater(...)`.
+`No AuthConfig covers the 'cli' surface; its routes are unauthenticated` (startup warning)
+: A CLI action has no `AuthConfig` covering `cli`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["cli"])`, or open it deliberately with `public=["cli"]`.
+an `AuthConfig` covering `"cli"` to `Quater(auth=[...])`.
 
 ## Also See
 

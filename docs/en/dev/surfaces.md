@@ -32,7 +32,7 @@ flowchart TB
     http["HTTP API\nnormal request"]
     mcp["MCP tool\nagent call"]
     cli["CLI action\nlocal or remote"]
-    surface_auth["surface auth\nmcp_auth or cli_auth"]
+    surface_auth["per-surface AuthConfig\none authenticator, by source"]
     route["route\nmetadata and route auth"]
     handler["handler\nyour code"]
 
@@ -45,23 +45,22 @@ flowchart TB
 ## One Route, Three Access Paths
 
 ```python
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer demo-token":
         return None
     return AuthContext(subject="cust_123")
 
 
-app = Quater(mcp_auth=authenticate, cli_auth=authenticate)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp", "cli"])])
 
 
 @app.get(
     "/orders/{order_id}",
     tool=True,
     cli=True,
-    auth=authenticate,
     description="Fetch one order by id.",
 )
 async def get_order(order_id: str, request: Request) -> dict[str, object]:
@@ -110,11 +109,11 @@ against a hosted app.
 
 ## What Can Go Wrong
 
-`MCP tools require mcp_auth`
-: Add `mcp_auth=...` before declaring any `tool=True` route.
+`No AuthConfig covers the 'mcp' surface; its routes are unauthenticated` (startup warning)
+: An MCP tool has no `AuthConfig` covering `mcp`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["mcp"])`, or open it deliberately with `public=["mcp"]`.
 
-`CLI actions require cli_auth`
-: Add `cli_auth=...` before declaring any `cli=True` route.
+`No AuthConfig covers the 'cli' surface; its routes are unauthenticated` (startup warning)
+: A CLI action has no `AuthConfig` covering `cli`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["cli"])`, or open it deliberately with `public=["cli"]`.
 
 `needs_approval requires tool=True or cli=True`
 : Approval only applies to operations exposed outside normal HTTP.

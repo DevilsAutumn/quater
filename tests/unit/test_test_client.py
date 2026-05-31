@@ -4,8 +4,16 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from quater import JSONResponse, Quater, Request, Response, StreamResponse, TestClient
-from quater.typing import AuthContext, AuthRequest
+from quater import (
+    AuthConfig,
+    JSONResponse,
+    Quater,
+    Request,
+    Response,
+    StreamResponse,
+    TestClient,
+)
+from quater.typing import AuthContext
 
 
 @pytest.mark.asyncio
@@ -208,13 +216,13 @@ async def test_test_client_collects_streaming_responses() -> None:
 
 @pytest.mark.asyncio
 async def test_test_client_mcp_helpers_cover_initialize_list_and_call() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         if ctx.headers.get("authorization") != "Bearer mcp-token":
             return None
         return AuthContext(subject="mcp")
 
     app = Quater(
-        mcp_auth=authenticate,
+        auth=[AuthConfig(authenticate, surfaces=["mcp"])],
         mcp_allowed_origins=["https://client.example"],
     )
 
@@ -252,12 +260,12 @@ async def test_test_client_mcp_helpers_cover_initialize_list_and_call() -> None:
 async def test_test_client_cli_helpers_cover_call_dry_run_and_manifest() -> None:
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         if ctx.headers.get("authorization") != "Bearer cli-token":
             return None
         return AuthContext(subject="cli")
 
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
     async def get_user(id: int, request: Request) -> dict[str, object]:
@@ -268,7 +276,7 @@ async def test_test_client_cli_helpers_cover_call_dry_run_and_manifest() -> None
 
     client = TestClient(app)
 
-    # Auth runs before the handler: an unauthenticated call is rejected.
+    # AuthConfig runs before the handler: an unauthenticated call is rejected.
     unauthorized = await client.cli.call("get_user", {"id": 7})
     assert unauthorized.status_code == 401
     assert handler_calls == 0
@@ -300,10 +308,10 @@ async def test_test_client_cli_helpers_cover_call_dry_run_and_manifest() -> None
 
 @pytest.mark.asyncio
 async def test_test_client_mcp_helper_preserves_origin_rejection() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="mcp")
 
-    app = Quater(mcp_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])])
 
     @app.get("/ping", tool=True, description="Ping.")
     async def ping() -> dict[str, bool]:

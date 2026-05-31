@@ -10,8 +10,8 @@ through the action executor — a different teardown path than HTTP route
 dispatch — so "the session opened, the write committed/rolled back, the session
 closed" has to be proven there too, not just inferred from the HTTP case.
 
-Auth here is a plain token check (MCP and CLI require a surface authenticator);
-the session is resolved for the handler, not the authenticator. Auth using the
+AuthConfig here is a plain token check (MCP and CLI require a surface authenticator);
+the session is resolved for the handler, not the authenticator. AuthConfig using the
 shared session is #54, not this issue.
 """
 
@@ -25,7 +25,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quater import AuthContext, AuthRequest, Quater, Request, Resource, TestClient
+from quater import AuthConfig, AuthContext, Quater, Request, Resource, TestClient
 from tests.support.database import (
     Database,
     Order,
@@ -37,7 +37,7 @@ from tests.support.database import (
 TOKEN = "surface-token"
 
 
-async def _allow(ctx: AuthRequest) -> AuthContext | None:
+async def _allow(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") == f"Bearer {TOKEN}":
         return AuthContext(subject="surface-user")
     return None
@@ -63,7 +63,7 @@ SURFACES = ["api", "mcp", "cli"]
 
 
 def _app_with_db(database: Database, events: list[str]) -> Quater:
-    app = Quater(mcp_auth=_allow, cli_auth=_allow)
+    app = Quater(auth=[AuthConfig(_allow, surfaces=["mcp", "cli"])])
     install_async_db(app, database)
     app.state.db_events = events
     return app

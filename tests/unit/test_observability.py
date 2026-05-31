@@ -4,16 +4,16 @@ import json
 
 import pytest
 
-from quater import AccessLogEvent, AuthContext, AuthRequest, Quater, Request, TestClient
+from quater import AccessLogEvent, AuthConfig, AuthContext, Quater, Request, TestClient
 from quater.protocol.actions import ACTIONS_RPC_PATH
 from quater.typing import RequestContext
 
 
-async def allow_mcp(ctx: AuthRequest) -> AuthContext | None:
+async def allow_mcp(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="mcp")
 
 
-async def allow_cli(ctx: AuthRequest) -> AuthContext | None:
+async def allow_cli(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="cli")
 
 
@@ -154,7 +154,9 @@ async def test_mcp_tool_call_keeps_mcp_source_tool_name_and_request_id() -> None
     async def log_access(event: AccessLogEvent) -> None:
         events.append(event)
 
-    app = Quater(mcp_auth=allow_mcp, access_logger=log_access)
+    app = Quater(
+        auth=[AuthConfig(allow_mcp, surfaces=["mcp"])], access_logger=log_access
+    )
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int, request: Request) -> dict[str, object]:
@@ -200,7 +202,9 @@ async def test_remote_cli_action_keeps_context_and_request_id() -> None:
     async def log_access(event: AccessLogEvent) -> None:
         events.append(event)
 
-    app = Quater(cli_auth=allow_cli, access_logger=log_access)
+    app = Quater(
+        auth=[AuthConfig(allow_cli, surfaces=["cli"])], access_logger=log_access
+    )
 
     @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
     async def get_user(id: int, request: Request) -> dict[str, object]:

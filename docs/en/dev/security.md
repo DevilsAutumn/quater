@@ -15,8 +15,8 @@ and [MCP](/en/dev/mcp) if your app exposes tools or actions.
 
 ## Security Model
 
-Quater checks unsafe request properties before user code runs. Auth then runs at
-the surface and route levels.
+Quater checks unsafe request properties before user code runs. Auth then runs once
+for the request's surface; authorization stays in your handler or service code.
 
 ```mermaid
 flowchart TB
@@ -25,16 +25,16 @@ flowchart TB
     api["HTTP route"]
     mcp["MCP tool"]
     cli["CLI action"]
-    mcpauth["your code: mcp_auth"]
-    cliauth["your code: cli_auth"]
-    routeauth["your code: auth="]
+    apiauth["per-surface AuthConfig (api)"]
+    mcpauth["per-surface AuthConfig (mcp)"]
+    cliauth["per-surface AuthConfig (cli)"]
     approval["your code: approval hook"]
     handler["your code: handler"]
 
     request --> checks
-    checks --> api --> routeauth --> handler
-    checks --> mcp --> mcpauth --> routeauth --> approval --> handler
-    checks --> cli --> cliauth --> routeauth --> approval --> handler
+    checks --> api --> apiauth --> handler
+    checks --> mcp --> mcpauth --> approval --> handler
+    checks --> cli --> cliauth --> approval --> handler
 ```
 
 Quater does not ship a user system. Your auth hooks decide who the caller is and
@@ -42,22 +42,22 @@ what scopes they have.
 
 ## Auth
 
-An auth hook receives `AuthRequest` and returns `AuthContext` or `None`:
+An authenticator receives the `Request` and returns `AuthContext` or `None`:
 
 ```python
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer demo-token":
         return None
     return AuthContext(subject="user_123", metadata={"scope": "orders:read"})
 
 
-app = Quater()
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
 
-@app.get("/me", auth=authenticate)
+@app.get("/me")
 async def me(request: Request) -> dict[str, str]:
     assert request.auth is not None
     return {"subject": request.auth.subject}
@@ -70,19 +70,31 @@ Missing or rejected auth returns:
 Unauthorized
 ```
 
-Routes without `auth=` are public HTTP routes. If the route also has
-`tool=True`, MCP still requires `mcp_auth` at the transport layer. If the route
-also has `cli=True`, CLI still requires `cli_auth`.
+Routes are protected by default on every surface they are exposed on, by the one
+`AuthConfig` that covers each surface. A route is reachable without auth only where you
+mark it `public` (`public=True` for every exposed surface, or `public=["mcp", ...]`
+for named ones).
 
-::: warning Protect the handler, not only the surface
-Surface auth protects MCP or CLI entrypoints. It does not protect the normal
-HTTP endpoint for the same route. Add route `auth=` or group `auth=` for every
-sensitive handler.
+::: warning A route is only as safe as its weakest surface
+A route exposed on several surfaces is gated by each surface's `AuthConfig`
+independently. Keep every exposed surface's authenticator strong, and reach for
+`public` deliberately — making an agent surface public is logged loudly at
+startup.
+:::
+
+::: tip Reject before you open the pool
+Check the cheap thing first. An authenticator that reads only the `Request`
+header rejects a no-token request before any database session opens, so a
+bad-token flood can't drain the connection pool. When auth needs the database,
+call `await request.resolve(SessionDep)` only after the token/header shape has
+passed cheap validation, where `SessionDep` is the same `Annotated[T, resource]`
+alias the handler injects. Authenticator resource parameters are rejected at
+startup because they would open resources too early.
 :::
 
 ## Surface Auth
 
-`mcp_auth` protects:
+The `mcp` `AuthConfig` protects:
 
 - `POST /mcp`
 - `GET /mcp/docs`
@@ -90,17 +102,16 @@ sensitive handler.
 - `tools/list`
 - `tools/call`
 
-`cli_auth` protects:
+The `cli` `AuthConfig` protects:
 
 - local action discovery
 - local action execution
 - `GET /.well-known/quater-actions.json`
 - `POST /__quater__/actions/call`
 
-Route `auth=` protects the handler after the surface is accepted. If you reuse
-the same function for surface and route auth, Quater still runs both calls. The
-surface call sees the transport path, while route auth sees the actual route
-path being executed.
+Route-level `auth=` no longer exists. Put identity checks in the surface
+`AuthConfig`; put roles, ownership, and other authorization checks in the handler
+or service where the domain data is available.
 
 ## Approval
 
@@ -224,7 +235,7 @@ MCP origin validation uses `mcp_allowed_origins` first:
 ```python
 app = Quater(
     mcp_allowed_origins=["https://client.example"],
-    mcp_auth=authenticate,
+    auth=[AuthConfig(authenticate, surfaces=["mcp"])],
 )
 ```
 

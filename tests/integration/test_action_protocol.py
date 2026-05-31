@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, Request, Response
+from quater import AuthConfig, AuthContext, Quater, Request, Response
 from quater.protocol.actions import (
     ACTIONS_MANIFEST_PATH,
     ACTIONS_RPC_PATH,
@@ -13,7 +13,7 @@ from quater.protocol.actions import (
 from quater.typing import ApprovalRequest
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer cli":
         return None
     return AuthContext(subject="cli-user")
@@ -61,7 +61,7 @@ async def test_remote_action_endpoints_are_absent_without_cli_actions() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_action_manifest_requires_cli_auth() -> None:
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:
@@ -75,7 +75,7 @@ async def test_remote_action_manifest_requires_cli_auth() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_action_manifest_lists_only_cli_actions() -> None:
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.get("/internal")
     async def internal() -> dict[str, bool]:
@@ -103,15 +103,15 @@ async def test_remote_action_manifest_lists_only_cli_actions() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_action_manifest_auth_sees_cli_http_context() -> None:
-    seen: list[AuthRequest] = []
+    seen: list[Request] = []
 
-    async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+    async def cli_auth(ctx: Request) -> AuthContext | None:
         seen.append(ctx)
         if ctx.headers.get("authorization") == "Bearer cli":
             return AuthContext(subject="cli-user")
         return None
 
-    app = Quater(cli_auth=cli_auth)
+    app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
     @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:
@@ -135,7 +135,7 @@ async def test_remote_action_manifest_auth_sees_cli_http_context() -> None:
 @pytest.mark.asyncio
 async def test_remote_action_rpc_requires_cli_auth_before_handler_runs() -> None:
     calls = 0
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:
@@ -157,16 +157,49 @@ async def test_remote_action_rpc_requires_cli_auth_before_handler_runs() -> None
 
 
 @pytest.mark.asyncio
-async def test_remote_action_rpc_auth_sees_cli_http_context() -> None:
-    seen: list[AuthRequest] = []
+@pytest.mark.parametrize(
+    "rpc_body",
+    [b"not valid json", b"[1, 2, 3]"],
+    ids=["malformed-json", "non-mapping"],
+)
+async def test_remote_action_rpc_authenticates_even_when_action_name_is_unreadable(
+    rpc_body: bytes,
+) -> None:
+    calls = 0
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
-    async def cli_auth(ctx: AuthRequest) -> AuthContext | None:
+    @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+    async def get_user(id: int) -> dict[str, int]:
+        nonlocal calls
+        calls += 1
+        return {"id": id}
+
+    response = await app.handle(
+        Request(
+            method="POST",
+            path=ACTIONS_RPC_PATH,
+            headers={"content-type": "application/json"},
+            body=rpc_body,
+        )
+    )
+
+    # The action name can't be read, so the cli surface authenticator still runs
+    # and denies before the handler — a malformed body must not bypass auth.
+    assert response.status_code == 401
+    assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_remote_action_rpc_auth_sees_cli_http_context() -> None:
+    seen: list[Request] = []
+
+    async def cli_auth(ctx: Request) -> AuthContext | None:
         seen.append(ctx)
         if ctx.headers.get("authorization") == "Bearer cli":
             return AuthContext(subject="cli-user")
         return None
 
-    app = Quater(cli_auth=cli_auth)
+    app = Quater(auth=[AuthConfig(cli_auth, surfaces=["cli"])])
 
     @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
     async def get_user(id: int, request: Request) -> dict[str, object]:
@@ -192,12 +225,13 @@ async def test_remote_action_rpc_auth_sees_cli_http_context() -> None:
     assert len(seen) == 1
     assert seen[0].context.source == "cli"
     assert seen[0].context.entrypoint == "server"
-    assert seen[0].context.action_name is None
+    # Remote CLI now reaches MCP parity: auth sees the action name before binding.
+    assert seen[0].context.action_name == "get_user"
 
 
 @pytest.mark.asyncio
 async def test_remote_action_rpc_cannot_call_non_cli_route() -> None:
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.get("/health")
     async def health() -> dict[str, bool]:
@@ -223,7 +257,9 @@ async def test_remote_action_dry_run_validates_without_handler_or_approval() -> 
         approval_calls += 1
         return True
 
-    app = Quater(cli_auth=authenticate, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(authenticate, surfaces=["cli"])], action_approval=approve
+    )
 
     @app.post(
         "/users/{id:int}/lock",
@@ -260,7 +296,9 @@ async def test_remote_action_requires_approval_token_before_handler_runs() -> No
     async def approve(ctx: ApprovalRequest) -> bool:
         return True
 
-    app = Quater(cli_auth=authenticate, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(authenticate, surfaces=["cli"])], action_approval=approve
+    )
 
     @app.post(
         "/users/{id:int}/lock",
@@ -292,7 +330,9 @@ async def test_remote_action_runs_after_valid_approval() -> None:
         seen.append(ctx)
         return ctx.token == "approved"
 
-    app = Quater(cli_auth=authenticate, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(authenticate, surfaces=["cli"])], action_approval=approve
+    )
 
     @app.post(
         "/users/{id:int}/lock",
@@ -340,7 +380,7 @@ async def test_remote_action_runs_after_valid_approval() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_action_handler_errors_do_not_leak_details() -> None:
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.post("/danger", cli=True, description="Run dangerous action.")
     async def danger() -> dict[str, bool]:
@@ -355,7 +395,7 @@ async def test_remote_action_handler_errors_do_not_leak_details() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_action_rejects_oversized_response() -> None:
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.get("/large", cli=True, description="Return a large payload.")
     async def large() -> Response:
@@ -372,7 +412,9 @@ async def test_remote_action_rejects_oversized_response() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_action_response_limit_uses_app_config() -> None:
-    app = Quater(cli_auth=authenticate, max_action_response_size=4)
+    app = Quater(
+        auth=[AuthConfig(authenticate, surfaces=["cli"])], max_action_response_size=4
+    )
 
     @app.get("/small-limit", cli=True, description="Return a small oversized payload.")
     async def small_limit() -> Response:
@@ -392,7 +434,7 @@ async def test_remote_action_response_limit_uses_app_config() -> None:
 
 @pytest.mark.asyncio
 async def test_remote_action_rejects_bad_payload_shapes() -> None:
-    app = Quater(cli_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
     @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:
@@ -412,16 +454,20 @@ async def test_remote_action_rejects_bad_payload_shapes() -> None:
 
 @pytest.mark.asyncio
 async def test_normal_api_auth_is_not_bypassed_by_action_support() -> None:
-    async def route_auth(ctx: AuthRequest) -> AuthContext | None:
+    async def route_auth(ctx: Request) -> AuthContext | None:
         if ctx.headers.get("authorization") == "Bearer route":
             return AuthContext(subject="api-user")
         return None
 
-    app = Quater(cli_auth=authenticate)
+    app = Quater(
+        auth=[
+            AuthConfig(route_auth, surfaces=["api"]),
+            AuthConfig(authenticate, surfaces=["cli"]),
+        ]
+    )
 
     @app.get(
         "/private",
-        auth=route_auth,
         cli=True,
         description="Read private data.",
     )

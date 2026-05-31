@@ -3,21 +3,20 @@ from __future__ import annotations
 import msgspec
 import pytest
 
-from quater import Quater, Request
-from quater.typing import AuthContext, AuthRequest
+from quater import AuthConfig, Quater, Request
+from quater.typing import AuthContext
 
 
 @pytest.mark.asyncio
 async def test_mcp_docs_are_generated_by_default() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="user_1")
 
-    app = Quater(mcp_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])])
 
     @app.get(
         "/users/{id:int}",
         tool=True,
-        auth=authenticate,
         description="Fetch <one> user.",
     )
     async def get_user(id: int) -> dict[str, int]:
@@ -42,6 +41,44 @@ async def test_mcp_docs_are_generated_by_default() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mcp_docs_report_public_when_no_mcp_authenticator() -> None:
+    app = Quater()
+
+    @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
+    async def get_user(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    response = await app.handle(Request(method="GET", path="/mcp/docs"))
+    body = response.body.decode("utf-8")
+
+    assert response.status_code == 200
+    assert "get_user" in body
+    # With no AuthConfig covering the mcp surface the tool is callable without
+    # authentication, so the docs must not claim it is protected.
+    assert "Auth: public" in body
+    assert "Auth: required" not in body
+
+
+@pytest.mark.asyncio
+async def test_mcp_docs_report_public_for_opted_out_tool() -> None:
+    async def authenticate(request: Request) -> AuthContext | None:
+        return AuthContext(subject="user_1")
+
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])])
+
+    @app.get("/open", tool=True, public=["mcp"], description="Open tool.")
+    async def open_tool() -> dict[str, bool]:
+        return {"ok": True}
+
+    response = await app.handle(Request(method="GET", path="/mcp/docs"))
+    body = response.body.decode("utf-8")
+
+    assert response.status_code == 200
+    assert "Auth: public" in body
+    assert "Auth: required" not in body
+
+
+@pytest.mark.asyncio
 async def test_mcp_docs_path_is_configurable() -> None:
     app = Quater(mcp_docs_path="/agent-tools")
 
@@ -62,12 +99,12 @@ async def test_mcp_docs_can_be_disabled() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_docs_use_mcp_auth_when_tools_are_registered() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         if ctx.headers.get("authorization") != "Bearer docs":
             return None
         return AuthContext(subject="docs-user")
 
-    app = Quater(mcp_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])])
 
     @app.get("/private", tool=True, description="Read private data.")
     async def private() -> dict[str, bool]:
@@ -92,10 +129,10 @@ class BatchPayload(msgspec.Struct):
 
 @pytest.mark.asyncio
 async def test_mcp_docs_generate_examples_for_required_argument_types() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="mcp")
 
-    app = Quater(mcp_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])])
 
     @app.post("/batches/{bucket}", tool=True, description="Process a batch.")
     async def process_batch(

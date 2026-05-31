@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from quater import (
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     Body,
     File,
     Form,
@@ -16,7 +16,7 @@ from quater import (
 from quater.exceptions import ConfigurationError, RouteBindingError
 
 
-async def allow_auth(_ctx: AuthRequest) -> AuthContext | None:
+async def allow_auth(_ctx: Request) -> AuthContext | None:
     return AuthContext(subject="tester")
 
 
@@ -201,7 +201,7 @@ def test_body_cannot_be_combined_with_form_or_file() -> None:
 
 
 def test_file_routes_are_not_exposed_as_mcp_or_cli_actions() -> None:
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     @app.post("/upload", tool=True, cli=True, description="Upload one file.")
     async def upload(document: UploadFile = EXPOSED_FILE) -> dict[str, str]:
@@ -213,7 +213,7 @@ def test_file_routes_are_not_exposed_as_mcp_or_cli_actions() -> None:
 
 @pytest.mark.asyncio
 async def test_form_routes_work_through_mcp_and_remote_cli_actions() -> None:
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     @app.post(
         "/oauth/token",

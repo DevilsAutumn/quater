@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthContext, Quater, Request
 from quater.protocol.actions import ACTIONS_MANIFEST_PATH, ACTIONS_RPC_PATH
 from quater.response import Response
 from quater.serialization import dumps_json, loads_json
@@ -15,27 +15,27 @@ SECRET_MARKER = "super-secret-token-value"
 INTERNAL_PATH_MARKER = "/Volumes/MacExtended/python-projects/quater"
 
 
-async def allow_auth(ctx: AuthRequest) -> AuthContext | None:
-    return AuthContext(subject=f"{ctx.context.source}-subject")
+async def allow_auth(request: Request) -> AuthContext | None:
+    return AuthContext(subject=f"{request.context.source}-subject")
 
 
-async def deny_auth(_ctx: AuthRequest) -> AuthContext | None:
+async def deny_auth(_request: Request) -> AuthContext | None:
     return None
 
 
-async def surface_token_auth(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") == f"Bearer {SURFACE_TOKEN}":
+async def surface_token_auth(request: Request) -> AuthContext | None:
+    if request.headers.get("authorization") == f"Bearer {SURFACE_TOKEN}":
         return AuthContext(subject="surface-user")
     return None
 
 
-async def route_token_auth(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("x-route-auth") == ROUTE_TOKEN:
+async def route_token_auth(request: Request) -> AuthContext | None:
+    if request.headers.get("x-route-auth") == ROUTE_TOKEN:
         return AuthContext(subject="route-user")
     return None
 
 
-async def exploding_auth(_ctx: AuthRequest) -> AuthContext | None:
+async def exploding_auth(_request: Request) -> AuthContext | None:
     raise RuntimeError(f"{SECRET_MARKER} at {INTERNAL_PATH_MARKER}/settings.py")
 
 

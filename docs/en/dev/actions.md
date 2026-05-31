@@ -11,7 +11,7 @@ remote CLI actions.
 ## Prerequisites
 
 Read the [Quickstart](/en/dev/quickstart) first. You need an app with at
-least one route declared with `cli=True` and a `cli_auth` hook on `Quater(...)`.
+least one route declared with `cli=True` and an `AuthConfig` covering `"cli"` on `Quater(auth=[...])`.
 
 ## Why Actions Exist
 
@@ -34,16 +34,16 @@ run locally, remotely, or from an agent-controlled workflow.
 ## A Runnable Action
 
 ```python
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer admin-token":
         return None
     return AuthContext(subject="admin")
 
 
-app = Quater(cli_auth=authenticate)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
 
 
 @app.get(
@@ -116,7 +116,7 @@ Local commands use `--app` or `QUATER_APP`. Local bearer tokens use `--token` or
 quater --app main:app --token admin-token actions list
 ```
 
-You can pass custom headers when `cli_auth` does not use bearer tokens:
+You can pass custom headers when the `cli` `AuthConfig` does not use bearer tokens:
 
 ```bash
 quater --app main:app --header "X-Operator: admin" actions list
@@ -140,9 +140,8 @@ flowchart TB
     remote["remote CLI\nquater call store get_order"]
     manifest["framework: GET /.well-known/quater-actions.json"]
     rpc["framework: POST /__quater__/actions/call"]
-    cli_auth["your code: cli_auth"]
+    cli_auth["per-surface AuthConfig (cli)"]
     registry["framework: action registry"]
-    route_auth["your code: route auth="]
     bind["framework: bind action args"]
     approval["your code: approval hook\nwhen needed"]
     handler["your code: handler"]
@@ -151,21 +150,21 @@ flowchart TB
     local --> import_app --> cli_auth --> registry
     remote --> manifest --> cli_auth
     remote --> rpc --> cli_auth --> registry
-    registry --> route_auth --> bind --> approval --> handler --> output
+    registry --> bind --> approval --> handler --> output
 ```
 
-`cli_auth` protects local action discovery, local calls, remote manifest
+The `cli` `AuthConfig` protects local action discovery, local calls, remote manifest
 discovery, and remote calls.
 
 For a remote action, the CLI sends auth to both discovery and execution
 endpoints. For a local action, Quater imports the app and builds an in-process
-request with the same auth headers. In both modes, route `auth=` still runs for
-the selected handler when the route declares it.
+request with the same auth headers. In both modes, the handler receives the
+`AuthContext` produced by the `cli` surface authenticator.
 
-::: warning CLI auth is not a replacement for route auth
-`cli_auth` answers "may this caller use the action surface?" Route `auth=`
-answers "may this caller run this handler?" Keep route `auth=` on sensitive
-operations that are also reachable through HTTP.
+::: warning CLI auth is not authorization
+The `cli` `AuthConfig` answers "may this caller use the action surface?" Authorization
+answers "may this caller run this handler?" Keep roles, ownership, and other
+domain checks in the handler or service for sensitive operations.
 :::
 
 ## Progressive Discovery
@@ -306,10 +305,10 @@ Auth identifies the caller. Approval confirms that a sensitive operation should
 run for that caller and those exact arguments.
 
 ```python
-from quater import ApprovalRequest, AuthContext, AuthRequest, Quater
+from quater import ApprovalRequest, AuthConfig, AuthContext, Quater
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer admin-token":
         return None
     return AuthContext(subject="admin")
@@ -319,7 +318,7 @@ async def approve_action(ctx: ApprovalRequest) -> bool:
     return ctx.token == "approve-ord_1001"
 
 
-app = Quater(cli_auth=authenticate, action_approval=approve_action)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])], action_approval=approve_action)
 
 
 @app.patch(
@@ -403,7 +402,7 @@ directory.
 : The action name does not exist or the route does not have `cli=True`.
 
 `401 Unauthorized`
-: The token or custom header did not pass `cli_auth`, or the selected route's
+: The token or custom header did not pass the `cli` `AuthConfig`, or the selected route's
   `auth=` denied the underlying handler call.
 
 `Missing value for action argument --order-id`

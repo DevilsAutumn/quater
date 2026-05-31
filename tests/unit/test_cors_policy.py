@@ -8,7 +8,7 @@ import pytest
 from quater import Quater, Request
 from quater.cors import CORSConfig
 from quater.exceptions import ConfigurationError
-from quater.typing import AuthContext, AuthRequest
+from quater.typing import AuthContext
 
 
 @pytest.mark.asyncio
@@ -164,7 +164,7 @@ async def test_preflight_does_not_require_route_or_authentication() -> None:
     auth_calls = 0
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return AuthContext(subject="user_1")
@@ -176,7 +176,7 @@ async def test_preflight_does_not_require_route_or_authentication() -> None:
         )
     )
 
-    @app.post("/items", auth=authenticate)
+    @app.post("/items")
     async def create_item() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1

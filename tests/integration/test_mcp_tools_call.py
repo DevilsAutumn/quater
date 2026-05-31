@@ -7,12 +7,12 @@ from typing import cast
 import msgspec
 import pytest
 
-from quater import AuthContext, AuthRequest, HTTPError, Quater, Request, Response
+from quater import AuthConfig, AuthContext, HTTPError, Quater, Request, Response
 from quater.tools.mcp import MAX_TOOL_RESPONSE_BYTES
 from quater.typing import ApprovalRequest
 
 
-async def allow_mcp_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_mcp_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="mcp")
 
 
@@ -66,7 +66,7 @@ def require_object_list(value: object) -> list[dict[str, object]]:
 
 @pytest.mark.asyncio
 async def test_tools_call_invokes_handler_with_tool_request_context() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int, request: Request) -> dict[str, object]:
@@ -104,7 +104,7 @@ async def test_tools_call_invokes_handler_with_tool_request_context() -> None:
 async def test_tools_call_reuses_cached_json_rpc_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
     original_decode = cast(Callable[..., object], msgspec.json.decode)
     decode_calls = 0
 
@@ -129,7 +129,7 @@ async def test_tools_call_reuses_cached_json_rpc_payload(
 
 @pytest.mark.asyncio
 async def test_normal_api_call_keeps_api_request_context() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int, request: Request) -> dict[str, object]:
@@ -142,7 +142,7 @@ async def test_normal_api_call_keeps_api_request_context() -> None:
 
 @pytest.mark.asyncio
 async def test_tools_call_escapes_rendered_request_path_parameters() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/files/{name}", tool=True, description="Fetch one file.")
     async def get_file(name: str, request: Request) -> dict[str, str]:
@@ -166,7 +166,7 @@ async def test_tools_call_escapes_rendered_request_path_parameters() -> None:
 
 @pytest.mark.asyncio
 async def test_tools_call_binds_body_model_from_arguments() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.post("/users", tool=True, description="Create one user.")
     async def create_user(user: CreateUser) -> dict[str, object]:
@@ -199,7 +199,7 @@ async def test_unknown_tool_returns_json_rpc_error() -> None:
 
 @pytest.mark.asyncio
 async def test_invalid_tool_arguments_do_not_call_handler() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
     calls = 0
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
@@ -217,7 +217,7 @@ async def test_invalid_tool_arguments_do_not_call_handler() -> None:
 
 @pytest.mark.asyncio
 async def test_handler_error_becomes_tool_result_error() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/boom", tool=True, description="Raise a handler error.")
     async def boom() -> dict[str, bool]:
@@ -234,7 +234,7 @@ async def test_handler_error_becomes_tool_result_error() -> None:
 
 @pytest.mark.asyncio
 async def test_handler_http_error_stays_json_rpc_tool_result() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/missing-resource", tool=True, description="Return an HTTP error.")
     async def missing_resource() -> dict[str, bool]:
@@ -251,7 +251,7 @@ async def test_handler_http_error_stays_json_rpc_tool_result() -> None:
 
 @pytest.mark.asyncio
 async def test_oversized_tool_response_becomes_tool_result_error() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/large", tool=True, description="Return a large payload.")
     async def large() -> Response:
@@ -268,7 +268,9 @@ async def test_oversized_tool_response_becomes_tool_result_error() -> None:
 
 @pytest.mark.asyncio
 async def test_tool_response_limit_uses_app_config() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth, max_tool_response_size=4)
+    app = Quater(
+        auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])], max_tool_response_size=4
+    )
 
     @app.get("/small-limit", tool=True, description="Return a small oversized payload.")
     async def small_limit() -> Response:
@@ -293,7 +295,9 @@ async def test_approval_required_tool_call_requires_token() -> None:
         approval_calls += 1
         return True
 
-    app = Quater(mcp_auth=allow_mcp_auth, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])], action_approval=approve
+    )
 
     @app.post(
         "/invoices/{id:int}/paid",
@@ -325,7 +329,9 @@ async def test_normal_api_call_to_approval_required_tool_uses_http_path() -> Non
     async def approve(ctx: ApprovalRequest) -> bool:
         return False
 
-    app = Quater(mcp_auth=allow_mcp_auth, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])], action_approval=approve
+    )
 
     @app.post(
         "/invoices/{id:int}/paid",
@@ -351,7 +357,9 @@ async def test_approval_required_tool_call_rejects_bad_token() -> None:
         seen.append(ctx)
         return False
 
-    app = Quater(mcp_auth=allow_mcp_auth, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])], action_approval=approve
+    )
 
     @app.post(
         "/invoices/{id:int}/paid",
@@ -394,7 +402,9 @@ async def test_approval_required_tool_call_runs_after_valid_token() -> None:
         seen_hashes.append(ctx.arguments_hash)
         return ctx.token == "approved"
 
-    app = Quater(mcp_auth=allow_mcp_auth, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])], action_approval=approve
+    )
 
     @app.post(
         "/invoices/{id:int}/paid",
@@ -426,7 +436,9 @@ async def test_invalid_approval_token_shape_returns_invalid_params() -> None:
     async def approve(ctx: ApprovalRequest) -> bool:
         return True
 
-    app = Quater(mcp_auth=allow_mcp_auth, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])], action_approval=approve
+    )
 
     @app.post(
         "/invoices/{id:int}/paid",

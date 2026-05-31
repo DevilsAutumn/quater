@@ -6,12 +6,11 @@ from typing import cast
 
 import pytest
 
-from quater import Quater
+from quater import AuthConfig, Quater, Request
 from quater.config import AppConfig
 from quater.exceptions import ConfigurationError, RouteConflictError
-from quater.request import Request
 from quater.response import Response
-from quater.typing import AuthContext, AuthRequest
+from quater.typing import AuthContext
 
 _OPTIONAL_STRING_CONFIG_FIELDS = (
     "content_security_policy",
@@ -32,7 +31,7 @@ _COUNT_CONFIG_FIELDS = ("max_form_parts",)
 _LIMIT_CONFIG_FIELDS = (*_SIZE_CONFIG_FIELDS, *_COUNT_CONFIG_FIELDS)
 
 
-async def allow_mcp_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_mcp_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="mcp")
 
 
@@ -250,7 +249,7 @@ def test_app_config_overrides_do_not_mutate_base_config() -> None:
 
 
 def test_secure_defaults_are_represented_in_config() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     assert app.config.debug is False
     assert app.config.security == "strict"
@@ -468,7 +467,7 @@ def test_route_metadata_can_be_registered_without_compiling_routes() -> None:
     async def handler() -> dict[str, bool]:
         return {"ok": True}
 
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
     route = app.add_route(
         "get",
         "/health",
@@ -486,4 +485,4 @@ def test_route_metadata_can_be_registered_without_compiling_routes() -> None:
     assert route.tool is True
     assert route.cli is False
     assert route.needs_approval is False
-    assert route.auth is None
+    assert route.public == ()

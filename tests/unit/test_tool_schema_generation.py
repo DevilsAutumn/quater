@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import msgspec
 
-from quater import Body, Header, Path, Quater, Query
+from quater import AuthConfig, Body, Header, Path, Quater, Query, Request
 from quater.tools.registry import build_tool_registry
-from quater.typing import AuthContext, AuthRequest
+from quater.typing import AuthContext
 
 
 def require_object(value: object) -> dict[str, object]:
@@ -21,12 +21,12 @@ UPDATE_PAYLOAD = Body(description="Update payload.")
 CREATE_ORDER_BODY = Body(alias="order", description="Order payload.")
 
 
-async def allow_mcp_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_mcp_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="mcp")
 
 
 def test_tool_schema_includes_path_query_and_body_parameters() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.post(
         "/orders/{id:int}/cancel",
@@ -61,7 +61,7 @@ def test_tool_schema_includes_path_query_and_body_parameters() -> None:
 
 
 def test_tool_list_payload_uses_generated_input_schema() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int, include_email: bool = False) -> dict[str, object]:
@@ -87,7 +87,7 @@ def test_tool_list_payload_uses_generated_input_schema() -> None:
 
 
 def test_tool_schema_uses_handler_names_with_marker_metadata() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.post("/orders/{id}", tool=True, description="Update one order.")
     async def update_order(
@@ -144,7 +144,7 @@ def test_tool_schema_uses_handler_names_with_marker_metadata() -> None:
 
 
 def test_body_alias_changes_action_argument_name() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.post("/orders", tool=True, description="Create one order.")
     async def create_order(

@@ -7,8 +7,8 @@ from typing import cast
 import pytest
 
 from quater import (
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     JSONResponse,
     Quater,
     Request,
@@ -21,7 +21,7 @@ from quater.protocol.actions import ACTIONS_MANIFEST_PATH, ACTIONS_RPC_PATH
 from quater.typing import ApprovalRequest
 
 
-async def allow_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject=ctx.context.source)
 
 
@@ -123,128 +123,6 @@ async def test_route_group_root_route_joins_to_prefix_without_trailing_slash() -
     assert response.body == b'{"ok":true}'
     assert trailing.status_code == 200
     assert trailing.body == b'{"ok":true}'
-
-
-@pytest.mark.asyncio
-async def test_route_group_auth_runs_before_route_auth() -> None:
-    calls: list[str] = []
-
-    async def group_auth(ctx: AuthRequest) -> AuthContext | None:
-        calls.append(f"group:{ctx.path}")
-        return AuthContext(subject="group")
-
-    async def route_auth(ctx: AuthRequest) -> AuthContext | None:
-        calls.append(f"route:{ctx.path}")
-        return AuthContext(subject="route")
-
-    app = Quater()
-    group = RouteGroup(prefix="/api", auth=group_auth)
-
-    @group.get("/me", auth=route_auth)
-    async def me(request: Request) -> dict[str, str]:
-        assert request.auth is not None
-        return {"subject": request.auth.subject}
-
-    app.include(group)
-
-    response = await app.handle(Request(method="GET", path="/api/me"))
-
-    assert response.status_code == 200
-    assert response.body == b'{"subject":"route"}'
-    assert calls == ["group:/api/me", "route:/api/me"]
-
-
-@pytest.mark.asyncio
-async def test_route_group_auth_denial_stops_route_auth_and_handler() -> None:
-    route_auth_calls = 0
-    handler_calls = 0
-
-    async def deny_group(ctx: AuthRequest) -> AuthContext | None:
-        return None
-
-    async def route_auth(ctx: AuthRequest) -> AuthContext | None:
-        nonlocal route_auth_calls
-        route_auth_calls += 1
-        return AuthContext(subject="route")
-
-    app = Quater()
-    group = RouteGroup(prefix="/api", auth=deny_group)
-
-    @group.get("/private", auth=route_auth)
-    async def private() -> dict[str, bool]:
-        nonlocal handler_calls
-        handler_calls += 1
-        return {"ok": True}
-
-    app.include(group)
-
-    response = await app.handle(Request(method="GET", path="/api/private"))
-
-    assert response.status_code == 401
-    assert route_auth_calls == 0
-    assert handler_calls == 0
-
-
-@pytest.mark.asyncio
-async def test_nested_route_group_auth_order_applies_to_mcp_and_cli() -> None:
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
-    calls: list[tuple[str, str, str]] = []
-
-    async def parent_auth(ctx: AuthRequest) -> AuthContext | None:
-        calls.append(("parent", ctx.context.source, ctx.path))
-        return AuthContext(subject=f"parent-{ctx.context.source}")
-
-    async def child_auth(ctx: AuthRequest) -> AuthContext | None:
-        calls.append(("child", ctx.context.source, ctx.path))
-        return AuthContext(subject=f"child-{ctx.context.source}")
-
-    async def route_auth(ctx: AuthRequest) -> AuthContext | None:
-        calls.append(("route", ctx.context.source, ctx.path))
-        return AuthContext(subject=f"route-{ctx.context.source}")
-
-    api = RouteGroup(prefix="/api", auth=parent_auth)
-    orders = RouteGroup(prefix="/orders", auth=child_auth)
-    api.include(orders)
-
-    @orders.get(
-        "/{order_id:int}",
-        tool=True,
-        cli=True,
-        auth=route_auth,
-        description="Fetch one nested order.",
-    )
-    async def get_order(order_id: int, request: Request) -> dict[str, object]:
-        assert request.auth is not None
-        return {
-            "order_id": order_id,
-            "source": request.context.source,
-            "subject": request.auth.subject,
-        }
-
-    app.include(api)
-
-    mcp_body = await call_mcp_tool(app, "get_order", {"order_id": 7})
-    cli_status, cli_body = await call_cli_action(app, "get_order", {"order_id": 8})
-
-    assert tool_text_json(mcp_body) == {
-        "order_id": 7,
-        "source": "mcp",
-        "subject": "route-mcp",
-    }
-    assert cli_status == 200
-    assert cli_body["body"] == {
-        "order_id": 8,
-        "source": "cli",
-        "subject": "route-cli",
-    }
-    assert calls == [
-        ("parent", "mcp", "/api/orders/7"),
-        ("child", "mcp", "/api/orders/7"),
-        ("route", "mcp", "/api/orders/7"),
-        ("parent", "cli", "/api/orders/8"),
-        ("child", "cli", "/api/orders/8"),
-        ("route", "cli", "/api/orders/8"),
-    ]
 
 
 @pytest.mark.asyncio
@@ -352,20 +230,15 @@ async def test_route_exception_handler_wins_over_group_exception_handler() -> No
 
 
 @pytest.mark.asyncio
-async def test_route_group_auth_and_middleware_apply_to_mcp_and_cli_actions() -> None:
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
-    seen_auth: list[tuple[str, str, str]] = []
+async def test_route_group_middleware_applies_to_mcp_and_cli_actions() -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
     seen_before: list[tuple[str, str]] = []
-
-    async def group_auth(ctx: AuthRequest) -> AuthContext | None:
-        seen_auth.append((ctx.context.source, ctx.context.action_name or "", ctx.path))
-        return AuthContext(subject=f"group-{ctx.context.source}")
 
     async def group_before(request: Request) -> Response | None:
         seen_before.append((request.context.source, request.path))
         return None
 
-    group = RouteGroup(prefix="/api", auth=group_auth, before=[group_before])
+    group = RouteGroup(prefix="/api", before=[group_before])
 
     @group.get(
         "/items/{item_id:int}",
@@ -412,16 +285,12 @@ async def test_route_group_auth_and_middleware_apply_to_mcp_and_cli_actions() ->
     mcp_body = json.loads(mcp.body)
     cli_body = json.loads(cli.body)
 
-    assert tool_text_json(mcp_body)["subject"] == "group-mcp"
+    assert tool_text_json(mcp_body)["subject"] == "mcp"
     assert cli_body["body"] == {
         "item_id": 4,
         "source": "cli",
-        "subject": "group-cli",
+        "subject": "cli",
     }
-    assert seen_auth == [
-        ("mcp", "get_item", "/api/items/3"),
-        ("cli", "get_item", "/api/items/4"),
-    ]
     assert seen_before == [
         ("mcp", "/api/items/3"),
         ("cli", "/api/items/4"),
@@ -430,7 +299,7 @@ async def test_route_group_auth_and_middleware_apply_to_mcp_and_cli_actions() ->
 
 @pytest.mark.asyncio
 async def test_group_exception_handler_applies_to_mcp_and_cli_actions() -> None:
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     async def handle_value_error(
         request: Request,
@@ -470,7 +339,9 @@ async def test_group_exception_handler_applies_to_mcp_and_cli_actions() -> None:
 
 @pytest.mark.asyncio
 async def test_action_approval_runs_before_route_group_middleware() -> None:
-    app = Quater(cli_auth=allow_auth, action_approval=approve)
+    app = Quater(
+        auth=[AuthConfig(allow_auth, surfaces=["cli"])], action_approval=approve
+    )
     events: list[str] = []
 
     async def group_before(request: Request) -> Response | None:
@@ -504,15 +375,18 @@ async def test_action_approval_runs_before_route_group_middleware() -> None:
     assert events == []
 
 
-def test_route_group_externally_callable_routes_validate_app_auth_on_include() -> None:
+def test_route_group_tool_routes_without_mcp_auth_compile() -> None:
     group = RouteGroup(prefix="/api")
 
     @group.get("/tools", tool=True, description="Read grouped tool.")
     async def read_tool() -> dict[str, bool]:
         return {"ok": True}
 
-    with pytest.raises(ConfigurationError, match="MCP tools require mcp_auth"):
-        Quater().include(group)
+    app = Quater()
+    app.include(group)
+    app.compile_routes()  # mcp is simply uncovered and open, not an error
+
+    assert app._compiled_tool_registry().get("read_tool") is not None
 
 
 def test_route_group_include_is_all_or_nothing_when_validation_fails() -> None:
@@ -522,20 +396,23 @@ def test_route_group_include_is_all_or_nothing_when_validation_fails() -> None:
     async def health() -> dict[str, bool]:
         return {"ok": True}
 
-    @group.get("/tools", tool=True, description="Read grouped tool.")
-    async def read_tool() -> dict[str, bool]:
+    @group.post("/charge", cli=True, needs_approval=True, description="Charge.")
+    async def charge() -> dict[str, bool]:
         return {"ok": True}
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
-    with pytest.raises(ConfigurationError, match="MCP tools require mcp_auth"):
+    with pytest.raises(ConfigurationError, match="action_approval"):
         app.include(group)
 
     assert app.routes == ()
 
-    authenticated_app = Quater(mcp_auth=allow_auth)
-    authenticated_app.include(group)
-    assert len(authenticated_app.routes) == 2
+    approved_app = Quater(
+        auth=[AuthConfig(allow_auth, surfaces=["cli"])],
+        action_approval=approve,
+    )
+    approved_app.include(group)
+    assert len(approved_app.routes) == 2
 
 
 def test_route_group_cannot_be_included_twice_or_modified_after_include() -> None:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Literal, assert_type
 
-from quater import AuthContext, AuthRequest, Quater, Request, Response
+from quater import AuthConfig, AuthContext, Quater, Request, Response
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     token = ctx.headers.get("authorization")
     if token != "Bearer demo-token":
         return None
@@ -17,7 +17,7 @@ app = Quater(
     openapi_path="/openapi.json",
     mcp_docs_path="/mcp/docs",
     mcp_allowed_origins=["http://localhost:3000"],
-    mcp_auth=authenticate,
+    auth=[AuthConfig(authenticate, surfaces=["mcp"])],
 )
 
 
@@ -29,7 +29,6 @@ async def health() -> dict[str, bool]:
 @app.get(
     "/users/{id:int}",
     tool=True,
-    auth=authenticate,
     description="Fetch one user.",
 )
 async def get_user(id: int, request: Request) -> dict[str, object]:

@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from quater import Quater, Request, TestClient
+from quater import AuthConfig, Quater, Request, TestClient
 
 from .helpers import (
     INTERNAL_PATH_MARKER,
@@ -160,7 +160,7 @@ async def test_handler_exception_does_not_leak_secret_markers_in_production() ->
 
 @pytest.mark.asyncio
 async def test_mcp_tool_exception_returns_safe_tool_error() -> None:
-    app = Quater(mcp_auth=surface_token_auth)
+    app = Quater(auth=[AuthConfig(surface_token_auth, surfaces=["mcp"])])
 
     @app.get("/boom", tool=True, description="Raise a production error.")
     async def boom() -> dict[str, bool]:

@@ -2,21 +2,20 @@ from __future__ import annotations
 
 import pytest
 
-from quater import Quater, Request
-from quater.typing import AuthContext, AuthRequest
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
 @pytest.mark.asyncio
 async def test_auth_context_is_attached_before_handler_runs() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(request: Request) -> AuthContext | None:
         return AuthContext(
-            subject=ctx.headers["authorization"].removeprefix("Bearer "),
+            subject=request.headers["authorization"].removeprefix("Bearer "),
             metadata={"source": "test"},
         )
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/me", auth=authenticate)
+    @app.get("/me")
     async def me(request: Request) -> dict[str, object]:
         assert request.auth is not None
         return {
@@ -40,12 +39,12 @@ async def test_auth_context_is_attached_before_handler_runs() -> None:
 async def test_missing_auth_context_denies_request_before_handler() -> None:
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(request: Request) -> AuthContext | None:
         return None
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1
@@ -59,18 +58,18 @@ async def test_missing_auth_context_denies_request_before_handler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_route_auth_runs_even_when_request_auth_is_already_set() -> None:
+async def test_auth_runs_even_when_request_auth_is_already_set() -> None:
     auth_calls = 0
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(request: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return None
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1
@@ -91,15 +90,15 @@ async def test_route_auth_runs_even_when_request_auth_is_already_set() -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_hook_errors_do_not_leak_authorization_values() -> None:
+async def test_auth_errors_do_not_leak_authorization_values() -> None:
     secret_token = "secret-token"
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-        raise RuntimeError(f"failed to verify {ctx.headers['authorization']}")
+    async def authenticate(request: Request) -> AuthContext | None:
+        raise RuntimeError(f"failed to verify {request.headers['authorization']}")
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         return {"ok": True}
 
@@ -117,20 +116,20 @@ async def test_auth_hook_errors_do_not_leak_authorization_values() -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_request_headers_are_read_only() -> None:
+async def test_auth_headers_are_read_only() -> None:
     seen_mutation_error = False
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(request: Request) -> AuthContext | None:
         nonlocal seen_mutation_error
         try:
-            ctx.headers["authorization"] = "changed"  # type: ignore[index]
+            request.headers["authorization"] = "changed"  # type: ignore[index]
         except TypeError:
             seen_mutation_error = True
-        return AuthContext(subject=ctx.headers["authorization"])
+        return AuthContext(subject=request.headers["authorization"])
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/me", auth=authenticate)
+    @app.get("/me")
     async def me(request: Request) -> dict[str, str]:
         assert request.auth is not None
         return {"subject": request.auth.subject}
@@ -145,7 +144,7 @@ async def test_auth_request_headers_are_read_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_routes_without_auth_stay_public() -> None:
+async def test_routes_without_an_auth_surface_stay_public() -> None:
     app = Quater()
 
     @app.get("/health")
@@ -159,24 +158,24 @@ async def test_routes_without_auth_stay_public() -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_is_per_route() -> None:
+async def test_public_opt_out_skips_auth_while_protected_routes_run_it() -> None:
     auth_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(request: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
-        token = ctx.headers.get("authorization")
+        token = request.headers.get("authorization")
         if token != "Bearer user_1":
             return None
         return AuthContext(subject="user_1")
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/public")
+    @app.get("/public", public=True)
     async def public() -> dict[str, bool]:
         return {"ok": True}
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private(request: Request) -> dict[str, str]:
         assert request.auth is not None
         return {"subject": request.auth.subject}
@@ -200,11 +199,11 @@ async def test_auth_is_per_route() -> None:
 
 
 @pytest.mark.asyncio
-async def test_http_tool_route_does_not_require_auth_by_default() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def test_http_tool_route_is_not_gated_by_the_mcp_surface() -> None:
+    async def authenticate(request: Request) -> AuthContext | None:
         return AuthContext(subject="mcp")
 
-    app = Quater(mcp_auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])])
 
     @app.get("/public-tool", tool=True, description="Read public tool status.")
     async def public_tool() -> dict[str, bool]:

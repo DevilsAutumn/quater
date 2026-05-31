@@ -8,14 +8,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TypeAlias
 
-from quater.typing import AuthContext, Authenticate, AuthRequest, LifespanHook
+from quater.typing import AuthContext, Authenticator, LifespanHook
 
 AsyncCallable: TypeAlias = Callable[..., Awaitable[object]]
 
 __all__ = [
     "AsyncCallable",
-    "Authenticate",
+    "Authenticator",
     "AuthContext",
-    "AuthRequest",
     "LifespanHook",
 ]

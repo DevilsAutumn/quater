@@ -6,6 +6,7 @@ import msgspec
 import pytest
 
 from quater import (
+    AuthConfig,
     Body,
     Cookie,
     File,
@@ -19,7 +20,7 @@ from quater import (
     UploadFile,
 )
 from quater.exceptions import ConfigurationError, RouteConflictError
-from quater.typing import AuthContext, AuthRequest
+from quater.typing import AuthContext
 
 
 class CreateUser(msgspec.Struct):
@@ -267,12 +268,12 @@ async def test_openapi_can_be_disabled_entirely() -> None:
 
 @pytest.mark.asyncio
 async def test_openapi_marks_route_level_auth_without_guessing_scheme() -> None:
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="user_1")
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         return {"ok": True}
 

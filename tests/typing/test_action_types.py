@@ -2,16 +2,23 @@ from __future__ import annotations
 
 from typing import assert_type
 
-from quater import ActionApproval, ApprovalRequest, AuthContext, AuthRequest, Quater
+from quater import (
+    ActionApproval,
+    ApprovalRequest,
+    AuthConfig,
+    AuthContext,
+    Quater,
+    Request,
+)
 from quater.actions.registry import (
     ActionDefinition,
     ActionRegistry,
     build_action_registry,
 )
-from quater.typing import Authenticate, RequestContext
+from quater.typing import RequestContext
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     assert_type(ctx.context, RequestContext)
     return AuthContext(subject=ctx.context.source)
 
@@ -25,7 +32,7 @@ async def approve(ctx: ApprovalRequest) -> bool:
     return True
 
 
-app = Quater(cli_auth=authenticate, action_approval=approve)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])], action_approval=approve)
 
 
 @app.post(
@@ -40,7 +47,6 @@ async def mark_paid(id: int) -> dict[str, int]:
 
 registry = build_action_registry(app.routes)
 
-assert_type(app.cli_auth, Authenticate | None)
 assert_type(app.action_approval, ActionApproval | None)
 assert_type(registry, ActionRegistry)
 assert_type(registry.get("mark_paid"), ActionDefinition | None)

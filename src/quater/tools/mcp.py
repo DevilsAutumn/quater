@@ -21,7 +21,7 @@ from quater.response import (
 )
 from quater.tools.audit import AuditHook, ToolAuditEvent, sanitize_arguments
 from quater.tools.registry import ToolDefinition, ToolRegistry
-from quater.typing import ActionApproval, Authenticate, RequestContext, RequestSource
+from quater.typing import ActionApproval, RequestContext, RequestSource
 
 JSONRPC_VERSION = "2.0"
 MCP_PROTOCOL_VERSION_HEADER = "mcp-protocol-version"
@@ -106,7 +106,6 @@ async def handle_mcp_request(
     request: Request,
     registry: ToolRegistry,
     *,
-    transport_auth: Authenticate | None = None,
     approval_hook: ActionApproval | None = None,
     audit_hook: AuditHook | None = None,
     debug: bool = False,
@@ -156,7 +155,6 @@ async def handle_mcp_request(
             request_id,
             payload.get("params"),
             registry,
-            transport_auth=transport_auth,
             approval_hook=approval_hook,
             audit_hook=audit_hook,
             debug=debug,
@@ -233,7 +231,6 @@ async def _handle_tools_call(
     params: object,
     registry: ToolRegistry,
     *,
-    transport_auth: Authenticate | None,
     approval_hook: ActionApproval | None,
     audit_hook: AuditHook | None,
     debug: bool,
@@ -263,7 +260,6 @@ async def _handle_tools_call(
             name,
             arguments,
             tool,
-            transport_auth=transport_auth,
             approval_hook=approval_hook,
             approval_token=approval_token,
             audit_hook=audit_hook,
@@ -285,7 +281,6 @@ async def _call_tool_with_audit(
     arguments: Mapping[object, object],
     tool: ToolDefinition,
     *,
-    transport_auth: Authenticate | None,
     approval_hook: ActionApproval | None,
     approval_token: str | None,
     audit_hook: AuditHook | None,
@@ -299,7 +294,6 @@ async def _call_tool_with_audit(
         response = await tool.call(
             request,
             typed_arguments,
-            authenticated_by=transport_auth,
             approval_hook=approval_hook,
             approval_token=approval_token,
             debug=debug,

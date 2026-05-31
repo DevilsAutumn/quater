@@ -5,14 +5,16 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, TypeAlias
+
+if TYPE_CHECKING:
+    from quater.request import Request
 
 RequestSource: TypeAlias = Literal["api", "mcp", "cli"]
 RequestEntrypoint: TypeAlias = Literal["server", "local"]
 
-
-def _empty_str_map() -> Mapping[str, str]:
-    return MappingProxyType({})
+# Every request surface, in a stable order for messages and iteration.
+SURFACES: tuple[RequestSource, ...] = ("api", "mcp", "cli")
 
 
 def _empty_metadata() -> Mapping[str, object]:
@@ -36,29 +38,20 @@ class RequestContext:
 
 
 @dataclass(slots=True, frozen=True)
-class AuthRequest:
-    """Request view passed to an auth hook.
-
-    It contains the fields auth code usually needs: method, path, normalized
-    headers, and Quater call context.
-    """
-
-    method: str
-    path: str
-    headers: Mapping[str, str] = field(default_factory=_empty_str_map)
-    context: RequestContext = field(default_factory=RequestContext)
-
-
-@dataclass(slots=True, frozen=True)
 class AuthContext:
-    """Authenticated identity returned by an auth hook.
+    """Authenticated identity returned by an authenticator.
 
     ``subject`` should be a stable user, service, or agent id. ``metadata`` is
     for small request-scoped values your app wants to carry into the handler.
+    ``payload`` carries an app object the authenticator already loaded (for
+    example the ``User`` row) so a handler can read it back through a typed
+    resource without a second lookup. Quater never inspects ``payload``; keep
+    your app's domain type out of the framework contract.
     """
 
     subject: str
     metadata: Mapping[str, object] = field(default_factory=_empty_metadata)
+    payload: object = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -76,16 +69,18 @@ class ApprovalRequest:
     context: RequestContext = field(default_factory=RequestContext)
 
 
-Authenticate: TypeAlias = Callable[[AuthRequest], Awaitable[AuthContext | None]]
+# An authenticator receives the request. Use ``await request.resolve(SessionDep)``
+# inside it when a request-scoped resource is needed after cheap checks pass.
+# ``SessionDep`` is the same ``Annotated[T, resource]`` alias handlers inject.
+Authenticator: TypeAlias = Callable[["Request"], Awaitable[AuthContext | None]]
 ActionApproval: TypeAlias = Callable[[ApprovalRequest], Awaitable[bool]]
 LifespanHook: TypeAlias = Callable[[], Awaitable[None]]
 
 __all__ = [
     "ActionApproval",
-    "Authenticate",
+    "Authenticator",
     "ApprovalRequest",
     "AuthContext",
-    "AuthRequest",
     "LifespanHook",
     "RequestContext",
     "RequestEntrypoint",

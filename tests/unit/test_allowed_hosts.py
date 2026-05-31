@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from quater import Quater, Request
-from quater.typing import AuthContext, AuthRequest
+from quater import AuthConfig, Quater, Request
+from quater.typing import AuthContext
 
 
 @pytest.mark.asyncio
@@ -41,14 +41,17 @@ async def test_allowed_host_rejects_malformed_bracketed_hosts(host: str) -> None
     auth_calls = 0
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return AuthContext(subject="user_1")
 
-    app = Quater(allowed_hosts=["api.example.com"])
+    app = Quater(
+        allowed_hosts=["api.example.com"],
+        auth=[AuthConfig(authenticate, surfaces=["api"])],
+    )
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1
@@ -131,14 +134,14 @@ async def test_strict_mode_default_rejects_non_local_hosts() -> None:
     auth_calls = 0
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return AuthContext(subject="user_1")
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1
@@ -218,14 +221,17 @@ async def test_rejected_host_never_reaches_auth_or_handler() -> None:
     auth_calls = 0
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return AuthContext(subject="user_1")
 
-    app = Quater(allowed_hosts=["api.example.com"])
+    app = Quater(
+        allowed_hosts=["api.example.com"],
+        auth=[AuthConfig(authenticate, surfaces=["api"])],
+    )
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1
@@ -246,14 +252,17 @@ async def test_duplicate_host_header_is_rejected_before_auth_or_handler() -> Non
     auth_calls = 0
     handler_calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return AuthContext(subject="user_1")
 
-    app = Quater(allowed_hosts=["api.example.com"])
+    app = Quater(
+        allowed_hosts=["api.example.com"],
+        auth=[AuthConfig(authenticate, surfaces=["api"])],
+    )
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1

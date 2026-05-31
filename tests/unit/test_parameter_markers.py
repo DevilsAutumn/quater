@@ -6,9 +6,9 @@ from typing import Annotated
 import msgspec
 import pytest
 
-from quater import Body, Cookie, Header, Path, Quater, Query, Request
+from quater import AuthConfig, Body, Cookie, Header, Path, Quater, Query, Request
 from quater.exceptions import RouteBindingError
-from quater.typing import AuthContext, AuthRequest
+from quater.typing import AuthContext
 
 
 class CreateOrder(msgspec.Struct):
@@ -16,7 +16,7 @@ class CreateOrder(msgspec.Struct):
     quantity: int
 
 
-async def allow_auth(_ctx: AuthRequest) -> AuthContext | None:
+async def allow_auth(_ctx: Request) -> AuthContext | None:
     return AuthContext(subject="test")
 
 
@@ -253,7 +253,7 @@ def test_duplicate_http_parameter_names_are_rejected() -> None:
 
 
 def test_duplicate_action_argument_names_are_rejected() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
     @app.post("/orders/{id}", cli=True, description="Create order.")
     async def create_order(

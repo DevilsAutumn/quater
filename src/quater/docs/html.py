@@ -61,11 +61,18 @@ def render_mcp_docs(
     registry: ToolRegistry,
     *,
     mcp_endpoint: str,
+    mcp_protected: bool = False,
 ) -> str:
     tools = sorted(registry.tools.values(), key=lambda tool: tool.name)
     body_parts: list[str] = []
     for tool in tools:
-        body_parts.append(_render_tool(tool, mcp_endpoint=mcp_endpoint))
+        body_parts.append(
+            _render_tool(
+                tool,
+                mcp_endpoint=mcp_endpoint,
+                mcp_protected=mcp_protected,
+            )
+        )
 
     if not body_parts:
         body_parts.append('<p class="empty">No MCP tools are registered yet.</p>')
@@ -82,14 +89,23 @@ def render_mcp_docs(
     )
 
 
-def _render_tool(tool: object, *, mcp_endpoint: str) -> str:
+def _render_tool(
+    tool: object,
+    *,
+    mcp_endpoint: str,
+    mcp_protected: bool,
+) -> str:
     from quater.tools.registry import ToolDefinition
 
     if not isinstance(tool, ToolDefinition):
         return ""
 
     route = tool.route
-    auth = "required" if route.auth is not None else "not declared"
+    # A tool only requires auth when the mcp surface has an authenticator and the
+    # route is not opted out as public. With no mcp AuthConfig every tool is
+    # callable without authentication, so it is reported as public.
+    requires_auth = mcp_protected and "mcp" not in route.public
+    auth = "required" if requires_auth else "public"
     output_schema = _output_schema(route)
     output_block = (
         _schema_block("Output Schema", output_schema)

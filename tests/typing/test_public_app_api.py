@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from typing import Literal, assert_type
 
-from quater import AccessLogEvent, AccessLogHook, AuthContext, AuthRequest, Quater
-from quater.request import Request
+from quater import (
+    AccessLogEvent,
+    AccessLogHook,
+    AuthConfig,
+    AuthContext,
+    Quater,
+    Request,
+)
 from quater.response import Response
-from quater.typing import Authenticate, LifespanHook
+from quater.typing import LifespanHook, RequestSource
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     token = ctx.headers.get("authorization")
     if token is None:
         return None
@@ -21,10 +27,14 @@ async def log_access(event: AccessLogEvent) -> None:
     assert_type(event.entrypoint, Literal["server", "local"])
 
 
-app = Quater(allowed_hosts=["api.example.com"], access_logger=log_access)
+app = Quater(
+    allowed_hosts=["api.example.com"],
+    access_logger=log_access,
+    auth=[AuthConfig(authenticate, surfaces=["api"])],
+)
 
 
-@app.get("/me", auth=authenticate)
+@app.get("/me")
 async def me(request: Request) -> dict[str, str]:
     assert request.auth is not None
     return {"subject": request.auth.subject}
@@ -45,7 +55,7 @@ async def dispatch_contract() -> None:
     assert_type(response, Response)
 
 
-assert_type(app.routes[0].auth, Authenticate | None)
+assert_type(app.routes[0].public, tuple[RequestSource, ...])
 assert_type(startup, LifespanHook)
 assert_type(shutdown, LifespanHook)
 assert_type(app.config.allowed_hosts, tuple[str, ...])

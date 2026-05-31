@@ -10,8 +10,8 @@ for AI agents.
 
 ## Prerequisites
 
-Read the [Quickstart](/en/dev/quickstart) and create an app with `mcp_auth`.
-You should understand route `auth=` before exposing sensitive tools.
+Read the [Quickstart](/en/dev/quickstart) and create an app with an `AuthConfig` covering `"mcp"`.
+You should decide the handler-level authorization rules before exposing sensitive tools.
 
 ## What MCP Means Here
 
@@ -26,22 +26,22 @@ approved backend action. It should call a described tool with typed inputs, and
 your app should decide whether that call is allowed.
 
 Quater does not make every route a tool. You opt in with `tool=True`, write a
-description, and protect the MCP transport with `mcp_auth`.
+description, and protect the MCP surface with an `AuthConfig` covering `"mcp"`.
 
 ## A Runnable Tool
 
 ```python
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer mcp-token":
         return None
     return AuthContext(subject="agent_123")
 
 
 app = Quater(
-    mcp_auth=authenticate,
+    auth=[AuthConfig(authenticate, surfaces=["mcp"])],
     mcp_allowed_origins=["https://client.example"],
 )
 
@@ -49,7 +49,6 @@ app = Quater(
 @app.get(
     "/orders/{order_id}",
     tool=True,
-    auth=authenticate,
     description="Fetch one order by id.",
 )
 async def get_order(order_id: str, request: Request) -> dict[str, object]:
@@ -67,10 +66,10 @@ It also appears in MCP `tools/list`.
 
 ## Auth Layering
 
-MCP auth has two independent gates:
+MCP auth and authorization have separate jobs:
 
-- `mcp_auth` protects `initialize`, `tools/list`, `tools/call`, and `/mcp/docs`.
-- Route `auth=` protects the handler after the tool call resolves to a route.
+- The `mcp` `AuthConfig` protects `initialize`, `tools/list`, `tools/call`, and `/mcp/docs`.
+- Handler or service authorization decides whether the authenticated caller may run the selected operation.
 
 Quater checks MCP auth on each HTTP request. It does not authenticate once during
 `initialize` and then reuse that result for later tool calls.
@@ -79,22 +78,21 @@ Quater checks MCP auth on each HTTP request. It does not authenticate once durin
 sequenceDiagram
     participant Client as MCP client
     participant Quater as Quater MCP transport
-    participant MCPAuth as your mcp_auth
-    participant RouteAuth as your route auth=
+    participant AuthConfig as the mcp AuthConfig
     participant Handler as your handler
 
     Client->>Quater: POST /mcp tools/call
-    Quater->>MCPAuth: AuthRequest(source="mcp")
-    MCPAuth-->>Quater: AuthContext or None
-    Quater->>RouteAuth: AuthRequest(path="/orders/{order_id}")
-    RouteAuth-->>Quater: AuthContext or None
+    Quater->>AuthConfig: run mcp AuthConfig (source="mcp", tool name known)
+    AuthConfig-->>Quater: AuthContext or None
+    Quater->>Handler: run handler (one auth already produced)
+
     Quater->>Handler: get_order(order_id, request)
     Handler-->>Client: JSON-RPC result
 ```
 
-If either hook returns `None`, the call fails. When both use the same function,
-Quater still calls the function twice because the transport and route are
-different boundaries.
+If the `mcp` authenticator returns `None`, the call fails before tool dispatch.
+Authorization inside the handler can still reject the selected operation after
+arguments are bound.
 
 ## Endpoint And Client Config
 
@@ -128,10 +126,10 @@ Bearer auth must go on every HTTP request, not only on `initialize`:
 `initialize` is not a login. Quater does not create a server-side session from
 it. If the token expires, the next request fails with `401 Unauthorized`.
 
-::: tip Why the route may also have `auth=`
-`mcp_auth` decides whether the caller can use the MCP surface. Route `auth=`
-decides whether that caller can run the selected backend operation. Use both for
-sensitive tools.
+::: tip Keep authorization close to the data
+The `mcp` `AuthConfig` decides whether the caller may use the MCP surface.
+Authorization decides whether that caller can run the selected backend operation.
+Keep roles, ownership, and other domain checks in the handler or service.
 :::
 
 ## Request Flow
@@ -140,11 +138,10 @@ sensitive tools.
 flowchart TB
     request["framework: POST /mcp"]
     origin["framework: origin check"]
-    auth["your code: mcp_auth"]
+    auth["per-surface AuthConfig"]
     dispatch["framework: JSON-RPC dispatch"]
     list["framework: tools/list"]
     call["framework: tools/call"]
-    route_auth["your code: route auth="]
     bind["framework: bind arguments"]
     approval["your code: approval hook when needed"]
     handler["your code: handler"]
@@ -152,7 +149,7 @@ flowchart TB
 
     request --> origin --> auth --> dispatch
     dispatch --> list --> result
-    dispatch --> call --> route_auth --> bind --> approval --> handler --> result
+    dispatch --> call --> bind --> approval --> handler --> result
 ```
 
 Browser MCP clients also need `mcp_allowed_origins`. If you omit it and CORS has
@@ -195,10 +192,10 @@ safely.
 Use `needs_approval=True` when auth alone should not run an operation.
 
 ```python
-from quater import ApprovalRequest, AuthContext, AuthRequest, Quater
+from quater import ApprovalRequest, AuthConfig, AuthContext, Quater
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer mcp-token":
         return None
     return AuthContext(subject="agent_123")
@@ -208,7 +205,7 @@ async def approve_action(ctx: ApprovalRequest) -> bool:
     return ctx.token == "approve-ord_1001"
 
 
-app = Quater(mcp_auth=authenticate, action_approval=approve_action)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])], action_approval=approve_action)
 
 
 @app.patch(
@@ -259,7 +256,7 @@ MCP clients should use `tools/list`. Humans should use `/mcp/docs`.
 Disable the page while keeping `/mcp` available:
 
 ```python
-app = Quater(mcp_auth=authenticate, mcp_docs_path=None)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])], mcp_docs_path=None)
 ```
 
 ## Auditing
@@ -274,7 +271,7 @@ async def audit(event: ToolAuditEvent) -> None:
     print(event.tool_name, event.subject, event.success)
 
 
-app = Quater(mcp_auth=authenticate, mcp_audit=audit)
+app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])], mcp_audit=audit)
 ```
 
 Quater redacts argument values before the hook sees them. If the audit hook
@@ -283,8 +280,8 @@ silently hide audit failures.
 
 ## What Can Go Wrong
 
-`MCP tools require mcp_auth`
-: Add `mcp_auth=...` before registering any `tool=True` route.
+`No AuthConfig covers the 'mcp' surface; its routes are unauthenticated` (startup warning)
+: An MCP tool has no `AuthConfig` covering `mcp`, so it is callable unauthenticated. Cover it with `AuthConfig(fn, surfaces=["mcp"])`, or open it deliberately with `public=["mcp"]`.
 
 `Invalid MCP Origin`
 : Add the browser origin to `mcp_allowed_origins`.
@@ -308,5 +305,5 @@ silently hide audit failures.
 - [Actions and CLI](/en/dev/actions): use the same approval hook for CLI.
 - [Security](/en/dev/security): review MCP origin validation and token rules.
 - [Testing](/en/dev/testing): test tools with `client.mcp`.
-- [Reference: Auth](/en/dev/reference/auth): inspect `AuthRequest` and
+- [Reference: Auth](/en/dev/reference/auth): inspect `AuthConfig`, `AuthContext`, and
   `ApprovalRequest`.

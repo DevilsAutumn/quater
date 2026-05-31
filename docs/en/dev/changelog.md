@@ -22,6 +22,7 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   produces the same binding — excluded from caller-facing schemas — as `inject`.
   Declaring a parameter's resource in both places, or as a parameter default, is
   rejected during route compilation.
+  ([#48](https://github.com/DevilsAutumn/quater/issues/48))
 - Added support for resources that depend on other resources. A `Resource`
   provider can now declare parameters annotated with `Annotated[T, other]`, the
   same way a handler does; Quater resolves each dependency first, once, from the
@@ -29,14 +30,15 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   provider — they never appear in OpenAPI, MCP, or CLI schemas. The dependency
   graph is validated when routes compile: dependency cycles and provider
   parameters that are neither the request nor a resource fail at startup.
+  ([#53](https://github.com/DevilsAutumn/quater/issues/53))
 - Added real-database integration tests for the resource lifecycle — async and
   sync sessions, transaction commit and rollback, and one session shared per
   request — across HTTP, MCP, and CLI, on a reusable SQLAlchemy/SQLite test
-  harness.
+  harness. ([#57](https://github.com/DevilsAutumn/quater/issues/57))
 - Added a `CliTestClient`, reachable as `client.cli` on the in-process
   `TestClient`, with `call()` and `manifest()` helpers for the CLI action
   surface. HTTP, MCP (`client.mcp`), and CLI now each have a first-class test
-  helper.
+  helper. ([#57](https://github.com/DevilsAutumn/quater/issues/57))
 
 ### Changed
 
@@ -47,7 +49,29 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   a request that injects nothing never allocates one, and nothing opened for one
   request is ever visible to another. The MCP and CLI paths now share that one
   scope between authentication and the handler instead of building separate
-  request objects.
+  request objects. ([#52](https://github.com/DevilsAutumn/quater/issues/52))
+- Reworked authentication into per-surface `AuthConfig` objects. An app is configured
+  with `Quater(auth=[AuthConfig(fn, surfaces=["api", "mcp", "cli"])])`, and exactly one
+  authenticator runs per request, chosen by `request.context.source`. The
+  authenticator receives the real `Request`; after cheap header/token checks it
+  can call `await request.resolve(SessionDep)` to open the same request-scoped
+  resource alias that the handler injects. That resource shares the handler's
+  scope, so a session auth opens to verify the caller is the same session the
+  handler injects. `AuthContext` gained a typed `payload` slot to
+  carry the loaded object (for example the `User`) so a handler reads it back
+  through a resource with no second query. Routes are protected by default and
+  opt out with `public=True` (every exposed surface) or `public=["mcp", ...]`
+  (named surfaces). Remote CLI now reads the action name before auth, matching
+  MCP. ([#54](https://github.com/DevilsAutumn/quater/issues/54))
+
+### Removed
+
+- **Breaking:** removed the `mcp_auth=` and `cli_auth=` constructor hooks, the
+  per-route and per-group `auth=` argument, the `AuthRequest` type, and the
+  `Authenticate` alias. Migrate by moving each authenticator into the matching
+  surface's `AuthConfig` and switching authenticators to take the real `Request`;
+  routes that were public drop `auth=` and add `public=` only where an `AuthConfig`
+  now covers their surface. See [Auth Model](/en/dev/auth-model#migrating-from-surface-hooks).
 
 ## 0.1.0a2
 

@@ -6,8 +6,8 @@ from typing import Any, cast
 import pytest
 
 from quater import (
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     Quater,
     Request,
     Resource,
@@ -214,14 +214,15 @@ async def test_asgi_body_limit_stops_reading_oversized_chunked_body() -> None:
 async def test_asgi_duplicate_authorization_header_is_rejected_before_auth() -> None:
     auth_calls = 0
     handler_calls = 0
-    app = Quater()
 
-    async def authenticate(_ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(_ctx: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return AuthContext(subject="user_1")
 
-    @app.get("/private", auth=authenticate)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
+
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1

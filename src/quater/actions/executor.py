@@ -18,7 +18,6 @@ from quater.actions.approval import (
     action_arguments_hash,
     require_action_approval,
 )
-from quater.auth import authenticate_request
 from quater.core import RouteDefinition
 from quater.exceptions import BadRequestError
 from quater.middleware import MiddlewareStack, compile_middleware_pipeline
@@ -26,7 +25,7 @@ from quater.params import BoundParameter, HandlerPlan
 from quater.request import Request
 from quater.response import Response
 from quater.routing import ParamSegment, RoutePattern
-from quater.typing import ActionApproval, Authenticate, RequestEntrypoint
+from quater.typing import ActionApproval, RequestEntrypoint
 
 ActionExecutionSource = Literal["mcp", "cli"]
 
@@ -88,20 +87,11 @@ async def execute_action(
     arguments: Mapping[str, object],
     *,
     source: ActionExecutionSource,
-    surface_auth: Authenticate | None = None,
-    authenticated_by: Authenticate | None = None,
     approval_hook: ActionApproval | None = None,
     approval_token: str | None = None,
     debug: bool = False,
 ) -> Response:
-    prepared = await prepare_action_call(
-        action,
-        request,
-        arguments,
-        source=source,
-        surface_auth=surface_auth,
-        authenticated_by=authenticated_by,
-    )
+    prepared = await prepare_action_call(action, request, arguments, source=source)
     if action.route.needs_approval:
         await require_action_approval(
             approval_hook,
@@ -139,18 +129,9 @@ async def preflight_action(
     arguments: Mapping[str, object],
     *,
     source: ActionExecutionSource,
-    surface_auth: Authenticate | None = None,
-    authenticated_by: Authenticate | None = None,
     approval_token: str | None = None,
 ) -> ActionPreflightResult:
-    prepared = await prepare_action_call(
-        action,
-        request,
-        arguments,
-        source=source,
-        surface_auth=surface_auth,
-        authenticated_by=authenticated_by,
-    )
+    prepared = await prepare_action_call(action, request, arguments, source=source)
     return ActionPreflightResult(
         action=action.name,
         source=source,
@@ -172,8 +153,6 @@ async def prepare_action_call(
     arguments: Mapping[str, object],
     *,
     source: ActionExecutionSource,
-    surface_auth: Authenticate | None = None,
-    authenticated_by: Authenticate | None = None,
 ) -> PreparedActionCall:
     parts = _build_request_parts(action, arguments)
     context = replace(
@@ -182,7 +161,7 @@ async def prepare_action_call(
         tool_name=action.name if source == "mcp" else None,
         action_name=action.name,
     )
-    auth_request = Request(
+    action_base = Request(
         method=action.route.method,
         path=_render_action_path(action.pattern, parts.path_params),
         scheme=request.scheme,
@@ -199,37 +178,19 @@ async def prepare_action_call(
         context=context,
         app=request.app,
     )
-
-    surface_authenticated = False
-    if request.auth is not None and authenticated_by is not None:
-        surface_authenticated = authenticated_by is surface_auth
-
-    try:
-        if surface_auth is not None and not surface_authenticated:
-            await authenticate_request(surface_auth, auth_request)
-            request.auth = auth_request.auth
-
-        route_auth = action.route.auth
-        if route_auth is not None:
-            await authenticate_request(route_auth, auth_request)
-            request.auth = auth_request.auth
-    except BaseException:
-        # Auth may have opened resources on the shared scope; tear them down.
-        await auth_request._aclose_resources()
-        raise
-
     action_request = _request_with_action_headers(
-        auth_request,
+        action_base,
         query_string=parts.query_string,
         body=parts.body,
         content_type=parts.content_type,
         headers=parts.headers,
         cookies=parts.cookies,
     )
-    # Auth and the handler share one per-request scope: a session opened to
-    # check the token is the same session the handler resolves.
-    if action_request is not auth_request:
-        action_request._adopt_resource_scope(auth_request)
+    # Authentication ran once on the incoming request and is already on
+    # ``request.auth``. Share that request's resource scope so a session the
+    # authenticator opened is the same session the handler resolves, and so it
+    # is torn down exactly once.
+    action_request._adopt_resource_scope(request)
 
     bound_arguments = await action.handler_plan.bind(
         action_request,

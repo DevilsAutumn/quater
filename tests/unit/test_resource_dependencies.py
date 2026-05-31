@@ -19,14 +19,7 @@ from typing import Annotated
 
 import pytest
 
-from quater import (
-    AuthContext,
-    AuthRequest,
-    Quater,
-    Request,
-    Resource,
-    TestClient,
-)
+from quater import AuthConfig, AuthContext, Quater, Request, Resource, TestClient
 from quater.actions.registry import build_action_registry
 from quater.exceptions import ConfigurationError
 from quater.tools.registry import build_tool_registry
@@ -37,7 +30,7 @@ class FakeSession:
         self.label = label
 
 
-async def allow_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject=ctx.context.source)
 
 
@@ -300,7 +293,7 @@ async def _schema_user_provider(session: SessionDep) -> dict[str, str]:
 @pytest.mark.asyncio
 async def test_transitive_dependencies_stay_out_of_caller_schemas() -> None:
     user = Resource(_schema_user_provider, name="current_user")
-    app = Quater(mcp_auth=allow_auth, cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
 
     @app.get(
         "/orders/{order_id}",

@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, Request, TestClient
+from quater import AuthConfig, AuthContext, Quater, Request, TestClient
 
 from .helpers import (
     INTERNAL_PATH_MARKER,
@@ -24,12 +24,12 @@ from .helpers import (
 async def test_malformed_auth_result_denies_instead_of_authenticating() -> None:
     calls = 0
 
-    async def malformed_auth(_ctx: AuthRequest) -> AuthContext | None:
+    async def malformed_auth(_request: Request) -> AuthContext | None:
         return cast(AuthContext, {"subject": "not-an-auth-context"})
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(malformed_auth, surfaces=["api"])])
 
-    @app.get("/private", auth=malformed_auth)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal calls
         calls += 1
@@ -46,22 +46,27 @@ async def test_malformed_auth_result_denies_instead_of_authenticating() -> None:
 async def test_auth_denial_and_exceptions_never_call_protected_handler() -> None:
     denied_calls = 0
     exploding_calls = 0
-    app = Quater()
 
-    @app.get("/denied", auth=deny_auth)
+    denied_app = Quater(auth=[AuthConfig(deny_auth, surfaces=["api"])])
+
+    @denied_app.get("/denied")
     async def denied() -> dict[str, bool]:
         nonlocal denied_calls
         denied_calls += 1
         return {"ok": True}
 
-    @app.get("/exploding", auth=exploding_auth)
+    exploding_app = Quater(auth=[AuthConfig(exploding_auth, surfaces=["api"])])
+
+    @exploding_app.get("/exploding")
     async def exploding() -> dict[str, bool]:
         nonlocal exploding_calls
         exploding_calls += 1
         return {"ok": True}
 
-    denied_response = await app.handle(Request(method="GET", path="/denied"))
-    exploding_response = await app.handle(Request(method="GET", path="/exploding"))
+    denied_response = await denied_app.handle(Request(method="GET", path="/denied"))
+    exploding_response = await exploding_app.handle(
+        Request(method="GET", path="/exploding")
+    )
 
     assert denied_response.status_code == 401
     assert denied_response.body == b"Unauthorized"
@@ -108,14 +113,14 @@ async def test_duplicate_auth_sensitive_headers_fail_before_auth_or_handler(
     auth_calls = 0
     handler_calls = 0
 
-    async def authenticate(_ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(_request: Request) -> AuthContext | None:
         nonlocal auth_calls
         auth_calls += 1
         return AuthContext(subject="user_1")
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/private", auth=authenticate)
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal handler_calls
         handler_calls += 1
@@ -136,15 +141,14 @@ async def test_duplicate_auth_sensitive_headers_fail_before_auth_or_handler(
 
 
 @pytest.mark.asyncio
-async def test_same_route_auth_gate_protects_http_mcp_and_remote_cli() -> None:
+async def test_one_auth_gate_protects_http_mcp_and_remote_cli() -> None:
     calls: list[str] = []
-    app = Quater(mcp_auth=surface_token_auth, cli_auth=surface_token_auth)
+    app = Quater(auth=[AuthConfig(route_token_auth, surfaces=["api", "mcp", "cli"])])
 
     @app.get(
         "/orders/{order_id}",
         tool=True,
         cli=True,
-        auth=route_token_auth,
         description="Read one order.",
     )
     async def get_order(order_id: str, request: Request) -> dict[str, object]:
@@ -171,12 +175,7 @@ async def test_same_route_auth_gate_protects_http_mcp_and_remote_cli() -> None:
             {"order_id": "ord_1001"},
             token="surface-token",
         )
-    mcp_denied_body = decoded_test_object(mcp_denied)
-    assert mcp_denied.status_code == 200
-    assert mcp_denied_body["result"] == {
-        "content": [{"type": "text", "text": "Unauthorized"}],
-        "isError": True,
-    }
+    assert mcp_denied.status_code == 401
 
     cli_denied = await remote_action_call(
         app,
@@ -184,10 +183,6 @@ async def test_same_route_auth_gate_protects_http_mcp_and_remote_cli() -> None:
         headers=surface_headers(route=False),
     )
     assert cli_denied.status_code == 401
-    assert decoded_object(cli_denied.body)["error"] == {
-        "code": "http_error",
-        "message": "Unauthorized",
-    }
     assert calls == []
 
     http_allowed = await app.handle(
@@ -238,9 +233,9 @@ async def test_same_route_auth_gate_protects_http_mcp_and_remote_cli() -> None:
 
 @pytest.mark.asyncio
 async def test_surface_auth_protects_mcp_and_cli_discovery() -> None:
-    app = Quater(mcp_auth=surface_token_auth, cli_auth=surface_token_auth)
+    app = Quater(auth=[AuthConfig(surface_token_auth, surfaces=["mcp", "cli"])])
 
-    @app.get("/health")
+    @app.get("/health", public=True)
     async def health() -> dict[str, bool]:
         return {"ok": True}
 

@@ -84,7 +84,7 @@ PAGES: tuple[ReferencePage, ...] = (
             "Auth hooks, approval hooks, framework errors, and signed cookies."
         ),
         symbols=(
-            "AuthRequest",
+            "AuthConfig",
             "AuthContext",
             "ApprovalRequest",
             "ActionApproval",

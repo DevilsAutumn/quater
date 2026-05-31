@@ -39,9 +39,8 @@ Quater(
     content_security_policy: str | None = None,
     mcp_docs_path: str | None = "/mcp/docs",
     mcp_allowed_origins: Iterable[str] | None = None,
-    mcp_auth: Authenticate | None = None,
+    auth: Iterable[AuthConfig] | None = None,
     mcp_audit: AuditHook | None = None,
-    cli_auth: Authenticate | None = None,
     action_approval: ActionApproval | None = None,
     access_logger: AccessLogHook | None = None,
     docs_path: str | None = "/docs",
@@ -69,9 +68,8 @@ Quater(
 | `content_security_policy` | `str \| None` | `None` | Adds `Content-Security-Policy` in strict and relaxed modes. |
 | `mcp_docs_path` | `str \| None` | `"/mcp/docs"` | Human MCP docs path. `None` disables the page. |
 | `mcp_allowed_origins` | `Iterable[str] \| None` | `None` | Browser origins allowed for MCP requests. |
-| `mcp_auth` | [`Authenticate`](./auth#symbol-authenticate) \| None | `None` | Surface auth for MCP requests. Required when any route uses `tool=True`. Runs per MCP HTTP request and does not create a session. |
+| `auth` | `Iterable[`[`AuthConfig`](./auth#symbol-authconfig)`] \| None` | `None` | Per-surface authenticators. Exactly one runs per request, chosen by source. A surface with no covering `AuthConfig` leaves its routes open (logged at startup). A surface may be covered by at most one `AuthConfig`. |
 | `mcp_audit` | `AuditHook \| None` | `None` | Receives redacted MCP tool-call audit events. |
-| `cli_auth` | [`Authenticate`](./auth#symbol-authenticate) \| None | `None` | Surface auth for local and remote CLI actions. Required when any route uses `cli=True`. |
 | `action_approval` | [`ActionApproval`](./auth#symbol-actionapproval) \| None | `None` | Required when any tool/action uses `needs_approval=True`. |
 | `access_logger` | [`AccessLogHook`](./observability#symbol-accessloghook) \| None | `None` | Receives structured access events. |
 | `docs_path` | `str \| None` | `"/docs"` | Swagger UI path. `None` disables the page. |
@@ -111,7 +109,7 @@ route(
     tool: bool = False,
     cli: bool = False,
     needs_approval: bool = False,
-    auth: Authenticate | None = None,
+    public: bool | Iterable[str] = False,
     inject: ResourceMap | None = None,
     metadata: dict[str, Any] | None = None,
     before: Iterable[BeforeMiddleware] = (),
@@ -130,7 +128,7 @@ route(
 | `tool` | `bool` | `False` | Expose the route as an MCP tool. |
 | `cli` | `bool` | `False` | Expose the route as a CLI action. |
 | `needs_approval` | `bool` | `False` | Require approval before MCP or CLI execution. |
-| `auth` | `Authenticate \| None` | `None` | Route-level auth hook. |
+| `public` | `bool \| Iterable[str]` | `False` | Opt the route out of auth. `True` opens every surface it is exposed on; a list (`["api", "mcp", "cli"]`) opens only the named surfaces. |
 | `inject` | `ResourceMap \| None` | `None` | Request resources injected into handler parameters. |
 | `metadata` | `dict[str, Any] \| None` | `None` | Extra metadata for docs and extensions. |
 | `before` | `Iterable[BeforeMiddleware]` | `()` | Middleware that can run before the handler. |
@@ -162,8 +160,9 @@ route(
 
 Raises:
 
-- `ImproperlyConfigured` for invalid config, missing `mcp_auth`, missing
-  `cli_auth`, missing `action_approval`, docs path conflicts, or reserved paths.
+- `ImproperlyConfigured` for invalid config, a surface covered by more than one
+  `AuthConfig`, missing `action_approval`, docs path conflicts, or reserved paths. An
+  exposed surface with no covering `AuthConfig` is logged at startup, not raised.
 - `MiddlewareStateError` when you register middleware after routes compile.
 - `TypeError` when `include()` receives a non-`RouteGroup`.
 
@@ -179,7 +178,6 @@ RouteGroup(
     prefix: str = "",
     *,
     tags: Iterable[str] = (),
-    auth: Authenticate | None = None,
     inject: ResourceMap | None = None,
     metadata: Mapping[str, Any] | None = None,
     before: Iterable[BeforeMiddleware] = (),
@@ -193,7 +191,6 @@ RouteGroup(
 | --- | --- | --- | --- |
 | `prefix` | `str` | `""` | Prefix applied to child routes. Must start with `/` when set. |
 | `tags` | `Iterable[str]` | `()` | OpenAPI tags inherited by child routes. |
-| `auth` | `Authenticate \| None` | `None` | Group auth that runs before route auth. |
 | `inject` | `ResourceMap \| None` | `None` | Resources inherited by child routes. |
 | `metadata` | `Mapping[str, Any] \| None` | `None` | Metadata inherited by child routes. |
 | `before` | `Iterable[BeforeMiddleware]` | `()` | Before middleware inherited by routes. |

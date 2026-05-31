@@ -8,7 +8,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import SearchStrategy
 
-from quater import AuthContext, AuthRequest, Quater, Request
+from quater import AuthConfig, AuthContext, Quater, Request
 from quater.exceptions import ConfigurationError
 
 
@@ -55,12 +55,13 @@ async def test_path_confusion_inputs_do_not_bypass_static_or_method_rules() -> N
 @pytest.mark.asyncio
 async def test_normalized_slashes_do_not_bypass_auth_or_call_wrong_handler() -> None:
     calls = 0
-    app = Quater()
 
-    async def deny(_ctx: AuthRequest) -> AuthContext | None:
+    async def deny(_request: Request) -> AuthContext | None:
         return None
 
-    @app.get("/private", auth=deny)
+    app = Quater(auth=[AuthConfig(deny, surfaces=["api"])])
+
+    @app.get("/private")
     async def private() -> dict[str, bool]:
         nonlocal calls
         calls += 1

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextlib import suppress
@@ -9,6 +10,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
 from quater._finalize import (
+    add_request_finalizer,
     move_request_finalizers_to_response,
     move_response_finalizers,
     run_response_finalizers,
@@ -17,7 +19,7 @@ from quater._state import State
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
 from quater.actions.descriptions import resolve_action_description
 from quater.actions.executor import execute_action, preflight_action
-from quater.auth import authenticate_request
+from quater.auth import AuthConfig, build_auth_map, run_authenticator, validate_auth
 from quater.config import (
     _UNSET,
     AppConfig,
@@ -26,7 +28,13 @@ from quater.config import (
     _Unset,
     docs_asset_paths,
 )
-from quater.core import Handler, RouteDefinition
+from quater.core import (
+    Handler,
+    PublicSurfaces,
+    RouteDefinition,
+    exposed_surfaces,
+    normalize_public,
+)
 from quater.cors import CORSConfig, add_cors_headers, is_cors_preflight
 from quater.datastructures import normalize_response_headers
 from quater.dependencies import ResourceMap
@@ -79,13 +87,17 @@ from quater.tools.descriptions import (
     normalize_route_description,
     resolve_tool_description,
 )
-from quater.typing import ActionApproval, Authenticate, LifespanHook
+from quater.typing import ActionApproval, LifespanHook, RequestSource
+
+logger = logging.getLogger("quater")
 
 HandlerT = TypeVar("HandlerT", bound=Handler)
 MCP_PATH = "/mcp"
-MCP_AUTH_REQUIRED_MESSAGE = "MCP tools require mcp_auth"
-CLI_AUTH_REQUIRED_MESSAGE = "CLI actions require cli_auth"
 ACTION_APPROVAL_REQUIRED_MESSAGE = "Approval-required actions require action_approval"
+# Builtin routes served over HTTP but gated by an agent surface's AuthConfig.
+_AUTH_SURFACE_METADATA = "quater_auth_surface"
+
+
 _RESERVED_USER_ROUTE_PREFIXES = (MCP_PATH, "/__quater__")
 _RESERVED_USER_ROUTE_PATHS = frozenset(
     {
@@ -123,13 +135,12 @@ class Quater:
     __slots__ = (
         "action_approval",
         "access_logger",
-        "cli_auth",
         "config",
         "mcp_audit",
-        "mcp_auth",
         "name",
         "state",
         "_action_registry",
+        "_auth_by_surface",
         "_asgi_adapter",
         "_lifespan",
         "_middleware",
@@ -162,9 +173,8 @@ class Quater:
         content_security_policy: str | None = None,
         mcp_docs_path: str | None | _Unset = _UNSET,
         mcp_allowed_origins: Iterable[str] | None = None,
-        mcp_auth: Authenticate | None = None,
+        auth: Iterable[AuthConfig] | None = None,
         mcp_audit: AuditHook | None = None,
-        cli_auth: Authenticate | None = None,
         action_approval: ActionApproval | None = None,
         access_logger: AccessLogHook | None = None,
         docs_path: str | None | _Unset = _UNSET,
@@ -194,10 +204,9 @@ class Quater:
         )
         self.action_approval = action_approval
         self.access_logger = access_logger
-        self.cli_auth = cli_auth
         self.mcp_audit = mcp_audit
-        self.mcp_auth = mcp_auth
         self.state = State()
+        self._auth_by_surface: dict[RequestSource, AuthConfig] = build_auth_map(auth)
         self._action_registry: ActionRegistry | None = None
         self._asgi_adapter: ASGIAdapter | None = None
         self._lifespan = LifespanManager()
@@ -319,7 +328,7 @@ class Quater:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -359,7 +368,12 @@ class Quater:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=normalize_public(
+                public,
+                tool=tool,
+                cli=cli,
+                route_name=route_name,
+            ),
             inject=dict(inject or {}),
             metadata=dict(metadata or {}),
             middleware=MiddlewareStack.from_parts(
@@ -398,7 +412,7 @@ class Quater:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -418,7 +432,7 @@ class Quater:
                 tool=tool,
                 cli=cli,
                 needs_approval=needs_approval,
-                auth=auth,
+                public=public,
                 inject=inject,
                 metadata=metadata,
                 before=before,
@@ -439,7 +453,7 @@ class Quater:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -455,7 +469,7 @@ class Quater:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -473,7 +487,7 @@ class Quater:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -489,7 +503,7 @@ class Quater:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -507,7 +521,7 @@ class Quater:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -523,7 +537,7 @@ class Quater:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -541,7 +555,7 @@ class Quater:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -557,7 +571,7 @@ class Quater:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -575,7 +589,7 @@ class Quater:
         tool: bool = False,
         cli: bool = False,
         needs_approval: bool = False,
-        auth: Authenticate | None = None,
+        public: PublicSurfaces = False,
         inject: ResourceMap | None = None,
         metadata: dict[str, Any] | None = None,
         before: Iterable[BeforeMiddleware] = (),
@@ -591,7 +605,7 @@ class Quater:
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            auth=auth,
+            public=public,
             inject=inject,
             metadata=metadata,
             before=before,
@@ -614,12 +628,11 @@ class Quater:
         from quater.tools.registry import build_tool_registry
 
         self._tool_registry = build_tool_registry(tuple(self._routes))
-        if self._tool_registry.tools and self.mcp_auth is None:
-            raise ConfigurationError(MCP_AUTH_REQUIRED_MESSAGE)
         from quater.actions.registry import build_action_registry
 
         self._action_registry = build_action_registry(tuple(self._routes))
         self._validate_action_registry_security(self._action_registry)
+        self._validate_auth_coverage()
         self._routes_dirty = False
         return self._router
 
@@ -738,8 +751,7 @@ class Quater:
 
                 validate_mcp_origin(request, self.config)
                 request.context = await mcp_request_context(request)
-                if self.mcp_auth is not None:
-                    await authenticate_request(self.mcp_auth, request)
+                await self._authenticate_mcp(request)
             if not is_mcp_request:
                 router = self._compiled_router()
                 match = router.match(request.method, request.path)
@@ -748,9 +760,15 @@ class Quater:
                         match.route.definition,
                         request,
                     )
-                    await self._authenticate_route(match.route.definition, request)
+                    if request.path == ACTIONS_RPC_PATH:
+                        await self._authenticate_actions_rpc(request)
+                    else:
+                        await self._authenticate_http(
+                            match.route.definition,
+                            request,
+                        )
         except Exception as exc:
-            # Auth or routing may have opened resources on the request scope
+            # Authentication or routing may have opened resources on the request scope
             # before failing; tear them down in reverse order.
             await request._aclose_resources()
             response = default_exception_response(exc, debug=self.config.debug)
@@ -767,7 +785,6 @@ class Quater:
             response = await handle_mcp_request(
                 request,
                 self._compiled_tool_registry(),
-                transport_auth=self.mcp_auth,
                 approval_hook=self.action_approval,
                 audit_hook=self.mcp_audit,
                 debug=self.config.debug,
@@ -800,8 +817,6 @@ class Quater:
             from quater.tools.registry import build_tool_registry
 
             self._tool_registry = build_tool_registry(tuple(self._routes))
-            if self._tool_registry.tools and self.mcp_auth is None:
-                raise ConfigurationError(MCP_AUTH_REQUIRED_MESSAGE)
         return self._tool_registry
 
     def _compiled_action_registry(self) -> ActionRegistry:
@@ -857,8 +872,10 @@ class Quater:
                     path=self.config.mcp_docs_path,
                     handler=self._mcp_docs,
                     name="quater_mcp_docs",
-                    auth=self.mcp_auth,
-                    metadata={"include_in_openapi": False},
+                    metadata={
+                        "include_in_openapi": False,
+                        _AUTH_SURFACE_METADATA: "mcp",
+                    },
                 )
             )
         if self._has_cli_routes():
@@ -868,10 +885,10 @@ class Quater:
                     path=ACTIONS_MANIFEST_PATH,
                     handler=self._actions_manifest,
                     name="quater_actions_manifest",
-                    auth=self.cli_auth,
                     metadata={
                         "include_in_openapi": False,
                         "quater_builtin": "actions_manifest",
+                        _AUTH_SURFACE_METADATA: "cli",
                     },
                 )
             )
@@ -881,10 +898,10 @@ class Quater:
                     path=ACTIONS_RPC_PATH,
                     handler=self._actions_call,
                     name="quater_actions_call",
-                    auth=self.cli_auth,
                     metadata={
                         "include_in_openapi": False,
                         "quater_builtin": "actions_call",
+                        _AUTH_SURFACE_METADATA: "cli",
                     },
                 )
             )
@@ -955,6 +972,7 @@ class Quater:
             render_mcp_docs(
                 self._compiled_tool_registry(),
                 mcp_endpoint=MCP_PATH,
+                mcp_protected="mcp" in self._auth_by_surface,
             ),
             headers={"content-security-policy": DOCS_CSP},
         )
@@ -1011,7 +1029,6 @@ class Quater:
                     request,
                     cast(Mapping[str, object], arguments),
                     source="cli",
-                    authenticated_by=self.cli_auth,
                     approval_token=approval_token,
                 )
                 return JSONResponse(preflight_payload(result))
@@ -1021,7 +1038,6 @@ class Quater:
                 request,
                 cast(Mapping[str, object], arguments),
                 source="cli",
-                authenticated_by=self.cli_auth,
                 approval_hook=self.action_approval,
                 approval_token=approval_token,
                 debug=self.config.debug,
@@ -1080,6 +1096,7 @@ class Quater:
                 tuple(self._routes),
                 title=self.name or "Quater API",
                 version=__version__,
+                api_protected="api" in self._auth_by_surface,
             )
         return self._openapi_schema
 
@@ -1113,10 +1130,6 @@ class Quater:
     ) -> None:
         if route_name == "anonymous" and (tool or cli):
             raise ConfigurationError("Externally callable routes require a name")
-        if tool and self.mcp_auth is None:
-            raise ConfigurationError(MCP_AUTH_REQUIRED_MESSAGE)
-        if cli and self.cli_auth is None:
-            raise ConfigurationError(CLI_AUTH_REQUIRED_MESSAGE)
         if needs_approval and not (tool or cli):
             raise ConfigurationError("needs_approval requires tool=True or cli=True")
         if needs_approval and self.action_approval is None:
@@ -1156,14 +1169,111 @@ class Quater:
                 "Cannot register middleware after routes are compiled"
             )
 
-    async def _authenticate_route(
+    async def _authenticate_surface(
+        self,
+        surface: RequestSource,
+        request: Request,
+        *,
+        public: tuple[RequestSource, ...],
+    ) -> None:
+        """Run the one authenticator that covers ``surface``, unless opted out.
+
+        Skips when the route is public on this surface, or when no ``AuthConfig``
+        covers it (for ``api`` that means an unauthenticated route, logged at
+        startup; ``mcp``/``cli`` can only be uncovered when every exposed route
+        is public on them).
+        """
+
+        if surface in public:
+            return
+        auth = self._auth_by_surface.get(surface)
+        if auth is None:
+            return
+        await run_authenticator(auth, request)
+
+    async def _authenticate_http(
         self,
         route: RouteDefinition,
         request: Request,
     ) -> None:
-        if route.auth is None:
-            return
-        await authenticate_request(route.auth, request)
+        surface = cast(
+            RequestSource,
+            route.metadata.get(_AUTH_SURFACE_METADATA, "api"),
+        )
+        await self._authenticate_surface(surface, request, public=route.public)
+
+    async def _authenticate_mcp(self, request: Request) -> None:
+        public: tuple[RequestSource, ...] = ()
+        tool_name = request.context.tool_name
+        if tool_name is not None:
+            tool = self._compiled_tool_registry().get(tool_name)
+            if tool is not None:
+                public = tool.route.public
+        await self._authenticate_surface("mcp", request, public=public)
+
+    async def _authenticate_actions_rpc(self, request: Request) -> None:
+        action_name = await _actions_rpc_action_name(request)
+        request.context = replace(
+            request.context,
+            source="cli",
+            entrypoint="server",
+            tool_name=None,
+            action_name=action_name,
+        )
+        public: tuple[RequestSource, ...] = ()
+        if action_name is not None:
+            action = self._compiled_action_registry().get(action_name)
+            if action is not None and action.cli:
+                public = action.route.public
+        await self._authenticate_surface("cli", request, public=public)
+
+    def _validate_auth_coverage(self) -> None:
+        """Warn loudly when an exposed surface has no authenticator.
+
+        Every surface behaves the same: if no ``AuthConfig`` covers it, its routes are
+        unauthenticated. That is allowed — the developer chooses what to protect
+        and where — but it is logged loudly, on agent surfaces as well as HTTP.
+        Routes a developer explicitly opens with ``public`` on an agent surface
+        are also called out.
+        """
+
+        for auth in dict.fromkeys(self._auth_by_surface.values()):
+            validate_auth(auth)
+
+        protected: dict[RequestSource, bool] = {
+            "api": False,
+            "mcp": False,
+            "cli": False,
+        }
+        public_routes: dict[RequestSource, list[str]] = {
+            "api": [],
+            "mcp": [],
+            "cli": [],
+        }
+        for route in self._routes:
+            for surface in exposed_surfaces(tool=route.tool, cli=route.cli):
+                if surface in route.public:
+                    public_routes[surface].append(route.name)
+                else:
+                    protected[surface] = True
+
+        all_surfaces: tuple[RequestSource, ...] = ("api", "mcp", "cli")
+        for surface in all_surfaces:
+            if protected[surface] and surface not in self._auth_by_surface:
+                logger.warning(
+                    "No AuthConfig covers the %r surface; "
+                    "its routes are unauthenticated.",
+                    surface,
+                )
+        agent_surfaces: tuple[RequestSource, ...] = ("mcp", "cli")
+        for surface in agent_surfaces:
+            names = public_routes[surface]
+            if names:
+                logger.warning(
+                    "Routes public on %r (callable without authentication): %s",
+                    surface,
+                    ", ".join(sorted(names)),
+                )
 
     def _prepare_matched_route_context(
         self,
@@ -1191,6 +1301,13 @@ class Quater:
         *,
         started_at: float,
     ) -> Response:
+        # Authentication may open resources on the request scope that the
+        # handler never adopts (a request-only handler, discovery, or an early
+        # exit). Defer their teardown onto the response so it is torn down once,
+        # streaming-safe. ``_aclose_resources`` is idempotent, so this is safe
+        # alongside the handler's own deferred close on the shared scope.
+        if request.has_open_resources:
+            add_request_finalizer(request, request._aclose_resources)
         finalized = self._finalize_response(response, request, context)
         finalized = move_request_finalizers_to_response(request, finalized)
         if self.access_logger is not None:
@@ -1224,6 +1341,24 @@ class Quater:
             fallback.headers = normalize_response_headers(fallback.headers)
             validate_response(fallback)
             return fallback
+
+
+async def _actions_rpc_action_name(request: Request) -> str | None:
+    """Read just the action name from a remote-CLI RPC body, before auth.
+
+    The read is bounded by ``max_body_size`` (via ``request.json``) and never
+    binds arguments. It brings the remote CLI to MCP parity: the authenticator
+    sees ``request.context.action_name`` and can pick the matching policy.
+    """
+
+    try:
+        payload = await request.json()
+    except RequestJSONError:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    name = payload.get("action")
+    return name if isinstance(name, str) and name else None
 
 
 def _action_approval_token(payload: Mapping[object, object]) -> str | None:

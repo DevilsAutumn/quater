@@ -6,8 +6,8 @@ import json
 import pytest
 
 from quater import (
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     Header,
     Quater,
     Request,
@@ -19,7 +19,7 @@ from quater.actions.registry import build_action_registry
 from quater.protocol.actions import ACTIONS_RPC_PATH
 
 
-async def allow_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject=ctx.context.source)
 
 
@@ -170,7 +170,7 @@ async def test_lifespan_hooks_can_share_application_state() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_tool_can_read_application_state() -> None:
-    app = Quater(mcp_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp"])])
     app.state.store_name = "primary"
 
     @app.get("/store", tool=True, description="Read the configured store name.")
@@ -192,7 +192,7 @@ async def test_mcp_tool_can_read_application_state() -> None:
 
 @pytest.mark.asyncio
 async def test_cli_action_request_preserves_application_state() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
     app.state.store_name = "local"
 
     @app.get("/store", cli=True, description="Read the configured store name.")
@@ -208,7 +208,6 @@ async def test_cli_action_request_preserves_application_state() -> None:
         Request(method="POST", path=ACTIONS_RPC_PATH, app=app),
         {},
         source="cli",
-        surface_auth=allow_auth,
     )
 
     assert json.loads(response.body) == {"store": "local"}
@@ -216,7 +215,7 @@ async def test_cli_action_request_preserves_application_state() -> None:
 
 @pytest.mark.asyncio
 async def test_cli_action_with_header_preserves_app_and_request_state() -> None:
-    app = Quater(cli_auth=allow_auth)
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
     app.state.store_name = "local"
 
     async def attach_state(request: Request) -> Response | None:
@@ -249,7 +248,6 @@ async def test_cli_action_with_header_preserves_app_and_request_state() -> None:
         Request(method="POST", path=ACTIONS_RPC_PATH, app=app),
         {"agent": "ops"},
         source="cli",
-        surface_auth=allow_auth,
     )
 
     assert json.loads(response.body) == {

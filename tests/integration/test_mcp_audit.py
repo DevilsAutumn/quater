@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from quater import Quater, Request, ToolAuditEvent
-from quater.typing import AuthContext, AuthRequest
+from quater import AuthConfig, Quater, Request, ToolAuditEvent
+from quater.typing import AuthContext
 
 
 def mcp_body(name: str, arguments: dict[str, object]) -> bytes:
@@ -26,15 +26,14 @@ async def test_successful_tool_call_emits_sanitized_audit_event() -> None:
     async def audit(event: ToolAuditEvent) -> None:
         events.append(event)
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="user_1")
 
-    app = Quater(mcp_auth=authenticate, mcp_audit=audit)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])], mcp_audit=audit)
 
     @app.get(
         "/users/{id:int}",
         tool=True,
-        auth=authenticate,
         description="Fetch one user.",
     )
     async def get_user(id: int) -> dict[str, int]:
@@ -60,10 +59,10 @@ async def test_failed_tool_call_emits_failure_audit_event() -> None:
     async def audit(event: ToolAuditEvent) -> None:
         events.append(event)
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="mcp")
 
-    app = Quater(mcp_auth=authenticate, mcp_audit=audit)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])], mcp_audit=audit)
 
     @app.get("/boom", tool=True, description="Raise a handler error.")
     async def boom() -> dict[str, bool]:
@@ -87,10 +86,10 @@ async def test_audit_hook_failure_returns_json_rpc_error_without_leaking_detail(
     async def audit(event: ToolAuditEvent) -> None:
         raise RuntimeError("database password leaked")
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="user_1")
 
-    app = Quater(mcp_auth=authenticate, mcp_audit=audit)
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["mcp"])], mcp_audit=audit)
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:
@@ -111,10 +110,12 @@ async def test_audit_hook_failure_in_debug_includes_exception_type() -> None:
     async def audit(event: ToolAuditEvent) -> None:
         raise RuntimeError("audit backend unavailable")
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         return AuthContext(subject="user_1")
 
-    app = Quater(debug=True, mcp_auth=authenticate, mcp_audit=audit)
+    app = Quater(
+        debug=True, auth=[AuthConfig(authenticate, surfaces=["mcp"])], mcp_audit=audit
+    )
 
     @app.get("/users/{id:int}", tool=True, description="Fetch one user.")
     async def get_user(id: int) -> dict[str, int]:

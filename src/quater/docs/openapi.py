@@ -31,6 +31,7 @@ def build_openapi_schema(
     *,
     title: str,
     version: str,
+    api_protected: bool = False,
 ) -> dict[str, object]:
     paths: dict[str, object] = {}
     operation_ids: set[str] = set()
@@ -55,6 +56,7 @@ def build_openapi_schema(
             route,
             handler_plan,
             operation_id=operation_id,
+            api_protected=api_protected,
         )
 
     return {
@@ -69,6 +71,7 @@ def _operation(
     handler_plan: HandlerPlan,
     *,
     operation_id: str,
+    api_protected: bool,
 ) -> dict[str, object]:
     operation: dict[str, object] = {
         "operationId": operation_id,
@@ -91,8 +94,8 @@ def _operation(
     if request_body is not None:
         operation["requestBody"] = request_body
 
-    if route.auth is not None:
-        operation["x-quater-auth"] = "required"
+    if api_protected:
+        operation["x-quater-auth"] = "public" if "api" in route.public else "required"
 
     extra = route.metadata.get("openapi_extra")
     if isinstance(extra, Mapping):

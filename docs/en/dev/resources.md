@@ -187,6 +187,12 @@ Because the session comes from the shared scope, the session opened to look up
 the user is the *same* session a handler injects directly — one connection for
 the whole request.
 
+When the value is the *authenticated* user, prefer loading it once in the
+authenticator and reading it back through `AuthContext.payload` instead of a
+per-handler lookup resource. It shares the same request session and skips the
+second query entirely. See
+[Auth Model](./auth-model#reading-the-loaded-user-payload).
+
 It stays explicit on purpose: a provider only receives a resource you point at
 through its annotation. Nothing is guessed from a bare type. A provider
 parameter that is neither named `request` nor annotated with a resource is

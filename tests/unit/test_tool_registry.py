@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
-from quater import Quater
+from quater import AuthConfig, Quater, Request
 from quater.core import RouteDefinition
 from quater.exceptions import ConfigurationError
 from quater.tools import registry as tool_registry_module
 from quater.tools.registry import ToolRegistry, build_tool_registry
-from quater.typing import AuthContext, AuthRequest
+from quater.typing import AuthContext
 
 
-async def allow_mcp_auth(ctx: AuthRequest) -> AuthContext | None:
+async def allow_mcp_auth(ctx: Request) -> AuthContext | None:
     return AuthContext(subject="mcp")
 
 
 def test_registry_exposes_only_routes_marked_as_tools() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/private")
     async def private() -> dict[str, bool]:
@@ -33,7 +35,7 @@ def test_registry_exposes_only_routes_marked_as_tools() -> None:
 
 
 def test_explicit_tool_description_overrides_handler_docstring() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/public", tool=True, description="Return public status for agents.")
     async def public() -> dict[str, bool]:
@@ -46,7 +48,7 @@ def test_explicit_tool_description_overrides_handler_docstring() -> None:
 
 
 def test_tool_routes_must_define_a_description() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     with pytest.raises(ConfigurationError, match="non-empty description"):
 
@@ -72,7 +74,7 @@ def test_registry_defensively_rejects_missing_tool_description() -> None:
 
 
 def test_tool_descriptions_have_a_reasonable_size_limit() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     with pytest.raises(ConfigurationError, match="1000 characters"):
 
@@ -82,7 +84,7 @@ def test_tool_descriptions_have_a_reasonable_size_limit() -> None:
 
 
 def test_duplicate_tool_names_fail_when_registry_is_built() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/users/{id:int}", tool=True, name="lookup", description="Find a user.")
     async def lookup_user(id: int) -> dict[str, int]:
@@ -102,7 +104,7 @@ def test_duplicate_tool_names_fail_when_registry_is_built() -> None:
 
 
 def test_app_builds_tool_registry_during_route_compile() -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
 
     @app.get("/items/{id:int}", tool=True, description="Fetch one item.")
     async def get_item(id: int) -> dict[str, int]:
@@ -114,7 +116,7 @@ def test_app_builds_tool_registry_during_route_compile() -> None:
 
 
 def test_app_compiles_dirty_tool_registry_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = Quater(mcp_auth=allow_mcp_auth)
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
     registry_builds = 0
     original_build_tool_registry = tool_registry_module.build_tool_registry
 
@@ -135,11 +137,17 @@ def test_app_compiles_dirty_tool_registry_once(monkeypatch: pytest.MonkeyPatch) 
     assert registry_builds == 1
 
 
-def test_tool_routes_require_mcp_auth() -> None:
+def test_tool_routes_without_an_mcp_auth_are_allowed_but_warned(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     app = Quater()
 
-    with pytest.raises(ConfigurationError, match="MCP tools require mcp_auth"):
+    @app.get("/items/{id:int}", tool=True, description="Fetch one item.")
+    async def get_item(id: int) -> dict[str, int]:
+        return {"id": id}
 
-        @app.get("/items/{id:int}", tool=True, description="Fetch one item.")
-        async def get_item(id: int) -> dict[str, int]:
-            return {"id": id}
+    with caplog.at_level(logging.WARNING, logger="quater"):
+        app.compile_routes()
+
+    assert app._compiled_tool_registry().get("get_item") is not None
+    assert any("'mcp' surface" in record.message for record in caplog.records)

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from quater import AuthContext, AuthRequest, HTTPError, Quater, Request, Resource
+from quater import AuthConfig, AuthContext, HTTPError, Quater, Request, Resource
 
 DATABASE_URL = os.getenv(
     "BENCHMARK_DATABASE_URL",
@@ -77,8 +77,8 @@ async def prepare_database(session: AsyncSession) -> None:
     await session.commit()
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
-    if ctx.headers.get("authorization") != f"Bearer {TOKEN}":
+async def authenticate(request: Request) -> AuthContext | None:
+    if request.headers.get("authorization") != f"Bearer {TOKEN}":
         return None
     return AuthContext(subject="benchmark-user")
 
@@ -86,6 +86,7 @@ async def authenticate(ctx: AuthRequest) -> AuthContext | None:
 app = Quater(
     allowed_hosts=["127.0.0.1", "localhost"],
     max_body_size="2mb",
+    auth=[AuthConfig(authenticate, surfaces=["api"])],
 )
 
 
@@ -116,18 +117,18 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 db_session = Resource(get_session, name="db_session")
 
 
-@app.get("/ping")
+@app.get("/ping", public=True)
 async def ping() -> dict[str, bool]:
     return {"ok": True}
 
 
-@app.get("/health", inject={"session": db_session})
+@app.get("/health", public=True, inject={"session": db_session})
 async def health(session: AsyncSession) -> dict[str, bool]:
     result = await session.execute(text("SELECT 1"))
     return {"ok": result.scalar() == 1}
 
 
-@app.get("/products", auth=authenticate, inject={"session": db_session})
+@app.get("/products", inject={"session": db_session})
 async def products(session: AsyncSession, limit: int = 50) -> dict[str, object]:
     bounded = max(1, min(limit, 100))
     result = await session.execute(
@@ -146,7 +147,7 @@ async def products(session: AsyncSession, limit: int = 50) -> dict[str, object]:
     }
 
 
-@app.get("/products/{sku}", auth=authenticate, inject={"session": db_session})
+@app.get("/products/{sku}", inject={"session": db_session})
 async def product(sku: str, session: AsyncSession) -> dict[str, Any]:
     p = await session.get(Product, sku)
     if p is None:
@@ -159,7 +160,7 @@ async def product(sku: str, session: AsyncSession) -> dict[str, Any]:
     }
 
 
-@app.get("/orders", auth=authenticate, inject={"session": db_session})
+@app.get("/orders", inject={"session": db_session})
 async def orders(session: AsyncSession, limit: int = 25) -> dict[str, object]:
     bounded = max(1, min(limit, 100))
     result = await session.execute(
@@ -179,7 +180,7 @@ async def orders(session: AsyncSession, limit: int = 25) -> dict[str, object]:
     }
 
 
-@app.get("/reports/summary", auth=authenticate, inject={"session": db_session})
+@app.get("/reports/summary", inject={"session": db_session})
 async def summary(session: AsyncSession) -> dict[str, Any]:
     products_count = select(func.count()).select_from(Product).scalar_subquery()
     orders_count = select(func.count()).select_from(Order).scalar_subquery()

@@ -116,21 +116,21 @@ when auth failed.
 ```python
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, Request, TestClient
+from quater import AuthConfig, AuthContext, Quater, Request, TestClient
 
 
 @pytest.mark.asyncio
 async def test_auth_blocks_handler() -> None:
     calls = 0
 
-    async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+    async def authenticate(ctx: Request) -> AuthContext | None:
         if ctx.headers.get("authorization") != "Bearer user-token":
             return None
         return AuthContext(subject="user_123")
 
-    app = Quater()
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
 
-    @app.get("/me", auth=authenticate)
+    @app.get("/me")
     async def me(request: Request) -> dict[str, str]:
         nonlocal calls
         calls += 1
@@ -283,10 +283,10 @@ Use `client.mcp` to test MCP without a separate MCP client:
 ```python
 import pytest
 
-from quater import AuthContext, AuthRequest, Quater, TestClient
+from quater import AuthConfig, AuthContext, Quater, TestClient
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     if ctx.headers.get("authorization") != "Bearer mcp-token":
         return None
     return AuthContext(subject="agent_123")
@@ -295,7 +295,7 @@ async def authenticate(ctx: AuthRequest) -> AuthContext | None:
 @pytest.mark.asyncio
 async def test_mcp_tool_call() -> None:
     app = Quater(
-        mcp_auth=authenticate,
+        auth=[AuthConfig(authenticate, surfaces=["mcp"])],
         mcp_allowed_origins=["https://client.example"],
     )
 

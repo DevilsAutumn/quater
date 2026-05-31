@@ -42,7 +42,7 @@ Use names exported from `quater` and documented in the
 - binding markers: `Path`, `Query`, `Body`, `Header`, `Cookie`
 - responses: `Response`, `JSONResponse`, `TextResponse`, `HTMLResponse`,
   `BytesResponse`, `StreamResponse`, `RedirectResponse`, `EmptyResponse`
-- auth and security: `AuthRequest`, `AuthContext`, `ApprovalRequest`,
+- auth and security: `AuthConfig`, `AuthContext`, `ApprovalRequest`,
   `ActionApproval`, `HTTPError`, `ImproperlyConfigured`, `SignedCookieSigner`
 - resources: `Resource`
 - observability: `AccessLogEvent`, `AccessLogHook`, `ToolAuditEvent`

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import assert_type
 
-from quater import Quater, ToolAuditEvent
+from quater import AuthConfig, Quater, Request, ToolAuditEvent
 from quater.tools.audit import AuditHook
 from quater.tools.registry import ToolRegistry, build_tool_registry
-from quater.typing import AuthContext, Authenticate, AuthRequest, RequestContext
+from quater.typing import AuthContext, RequestContext
 
 
-async def authenticate(ctx: AuthRequest) -> AuthContext | None:
+async def authenticate(ctx: Request) -> AuthContext | None:
     assert_type(ctx.context, RequestContext)
     return AuthContext(subject=ctx.context.source)
 
@@ -22,12 +22,12 @@ async def audit(event: ToolAuditEvent) -> None:
 
 app = Quater(
     mcp_allowed_origins=["https://app.example.com"],
-    mcp_auth=authenticate,
+    auth=[AuthConfig(authenticate, surfaces=["mcp"])],
     mcp_audit=audit,
 )
 
 
-@app.get("/me", tool=True, auth=authenticate, description="Read current user.")
+@app.get("/me", tool=True, description="Read current user.")
 async def me() -> dict[str, bool]:
     return {"ok": True}
 
@@ -35,7 +35,6 @@ async def me() -> dict[str, bool]:
 registry = build_tool_registry(app.routes)
 
 assert_type(app.mcp_audit, AuditHook | None)
-assert_type(app.mcp_auth, Authenticate | None)
 assert_type(app.config.mcp_allowed_origins, tuple[str, ...])
 assert_type(app.config.docs_path, str | None)
 assert_type(app.config.openapi_path, str | None)

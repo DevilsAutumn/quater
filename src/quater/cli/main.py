@@ -12,7 +12,6 @@ from typing import NoReturn, cast
 
 from quater.actions.executor import execute_action, preflight_action
 from quater.actions.registry import ActionDefinition
-from quater.auth import authenticate_request
 from quater.cli.apps import load_app
 from quater.cli.client import call_action, fetch_manifest
 from quater.cli.errors import CLIError, CLIUsageError
@@ -132,29 +131,35 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
             app=app,
         )
         approval_token = _non_empty_approval(namespace.approval)
-        if namespace.dry_run:
-            result = await preflight_action(
+        try:
+            await app._authenticate_surface(
+                "cli",
+                request,
+                public=action.route.public,
+            )
+            if namespace.dry_run:
+                result = await preflight_action(
+                    action,
+                    request,
+                    arguments,
+                    source="cli",
+                    approval_token=approval_token,
+                )
+                print_preflight(result, as_json=namespace.as_json)
+                return 0
+
+            response = await execute_action(
                 action,
                 request,
                 arguments,
                 source="cli",
-                surface_auth=app.cli_auth,
+                approval_hook=app.action_approval,
                 approval_token=approval_token,
+                debug=app.config.debug,
             )
-            print_preflight(result, as_json=namespace.as_json)
-            return 0
-
-        response = await execute_action(
-            action,
-            request,
-            arguments,
-            source="cli",
-            surface_auth=app.cli_auth,
-            approval_hook=app.action_approval,
-            approval_token=approval_token,
-            debug=app.config.debug,
-        )
-        return await print_response(response, as_json=namespace.as_json)
+            return await print_response(response, as_json=namespace.as_json)
+        finally:
+            await request._aclose_resources()
 
     _unreachable()
 
@@ -342,8 +347,6 @@ async def _authenticate_actions_request(
 
     if not isinstance(app, Quater):
         raise CLIUsageError("Loaded object is not a Quater application")
-    if app.cli_auth is None:
-        return
     request = Request(
         method="GET",
         path=ACTIONS_RPC_PATH,
@@ -351,7 +354,10 @@ async def _authenticate_actions_request(
         context=RequestContext(source="cli", entrypoint="local"),
         app=app,
     )
-    await authenticate_request(app.cli_auth, request)
+    try:
+        await app._authenticate_surface("cli", request, public=())
+    finally:
+        await request._aclose_resources()
 
 
 def _get_cli_action(action: ActionDefinition | None) -> ActionDefinition:
@@ -367,7 +373,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--token",
         help=(
-            "Bearer token for the app's cli_auth hook. "
+            "Bearer token for the app's cli-surface authenticator. "
             "Local actions also read QUATER_TOKEN."
         ),
     )

@@ -17,8 +17,8 @@ from quater import (
     ActionApproval,
     AppConfig,
     ApprovalRequest,
+    AuthConfig,
     AuthContext,
-    AuthRequest,
     Body,
     CliTestClient,
     Cookie,
@@ -99,8 +99,8 @@ def test_public_exports_are_intentionally_small() -> None:
     assert quater.AccessLogEvent is AccessLogEvent
     assert quater.AccessLogHook is AccessLogHook
     assert quater.ApprovalRequest is ApprovalRequest
+    assert quater.AuthConfig is AuthConfig
     assert quater.AuthContext is AuthContext
-    assert quater.AuthRequest is AuthRequest
     assert quater.Body is Body
     assert quater.Cookie is Cookie
     assert quater.File is File
