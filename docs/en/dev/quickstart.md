@@ -298,9 +298,13 @@ in this release.
 `Missing required query parameter: page`
 : Send the query parameter or give the handler parameter a default.
 
+`Missing required body parameter: payload`
+: Send a JSON body or give the handler parameter a default.
+
 `Malformed JSON body`
-: Send valid JSON and set `content-type: application/json` when you call the
-  route manually.
+: The route called `await request.json()` with an empty or invalid body, or a
+  body parameter got non-empty bytes that were not valid JSON. Send valid JSON
+  and set `content-type: application/json` when you call the route manually.
 
 `Unsupported form content type`
 : Send form requests as `application/x-www-form-urlencoded` or

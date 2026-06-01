@@ -237,7 +237,7 @@ def _build_request_parts(
             continue
         if parameter.input_name not in arguments:
             value = _missing_value(parameter)
-            if value is _MISSING and parameter.source in {"path", "body"}:
+            if value is _MISSING and parameter.source == "path":
                 raise BadRequestError(
                     f"Missing action argument: {parameter.input_name}"
                 )
@@ -281,29 +281,48 @@ def _build_request_parts(
         elif parameter.source == "file":
             raise BadRequestError("File arguments are not supported for actions")
 
+    body, content_type = _encode_request_parts_body(
+        has_body=has_body,
+        body_value=body_value,
+        body_parameter_name=body_parameter_name,
+        has_form=has_form,
+        form_items=form_items,
+    )
+
     return _ActionRequestParts(
         path_params=path_params,
         query_string=urlencode(query_items),
-        body=(
-            _encode_body_argument(body_value, body_parameter_name)
-            if has_body
-            else urlencode(form_items).encode("utf-8")
-            if has_form
-            else b""
-        ),
-        content_type=(
-            "application/json"
-            if has_body
-            else "application/x-www-form-urlencoded"
-            if has_form
-            else None
-        ),
+        body=body,
+        content_type=content_type,
         headers=tuple(header_items),
         cookies=tuple(cookie_items),
     )
 
 
 _MISSING = object()
+
+
+def _encode_request_parts_body(
+    *,
+    has_body: bool,
+    body_value: object,
+    body_parameter_name: str | None,
+    has_form: bool,
+    form_items: list[tuple[str, str]],
+) -> tuple[bytes, str | None]:
+    if has_body:
+        if body_value is _MISSING:
+            return b"", "application/json"
+        return (
+            _encode_body_argument(body_value, body_parameter_name),
+            "application/json",
+        )
+    if has_form:
+        return (
+            urlencode(form_items).encode("utf-8"),
+            "application/x-www-form-urlencoded",
+        )
+    return b"", None
 
 
 def _missing_value(parameter: BoundParameter) -> object:

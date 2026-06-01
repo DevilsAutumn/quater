@@ -45,6 +45,11 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   `api/server`, MCP remains `mcp/server`, remote CLI remains `cli/server`, and
   local CLI remains `cli/local`.
   ([#70](https://github.com/DevilsAutumn/quater/issues/70))
+- Added a cross-surface parity test matrix that calls the same handler through
+  HTTP, MCP `tools/call`, local CLI, and remote CLI, then checks declared
+  inputs, defaults, optional values, validation failures, handler errors, and
+  the documented unknown-extra argument policy.
+  ([#68](https://github.com/DevilsAutumn/quater/issues/68))
 
 ### Changed
 
@@ -79,6 +84,10 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   such as cookies, redirects, HTML pages, or browser-only headers should check
   `request.context.source` and skip `"mcp"`/`"cli"` when needed.
   ([#55](https://github.com/DevilsAutumn/quater/issues/55))
+- Changed empty required JSON body binding to fail as request validation with
+  `Missing required body parameter: ...` across HTTP, MCP tools, local CLI, and
+  remote CLI. Direct `await request.json()` still reports malformed JSON for an
+  empty or invalid body. ([#68](https://github.com/DevilsAutumn/quater/issues/68))
 
 ### Fixed
 
@@ -90,8 +99,8 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   handler binding. ([#64](https://github.com/DevilsAutumn/quater/issues/64))
 - Fixed HTTP JSON body binding so an empty optional or defaulted `Body` is
   treated like missing input, matching MCP and CLI action calls. Required empty
-  bodies still return `400 Missing required body`; non-empty malformed JSON and
-  typed JSON `null` are still rejected normally.
+  bodies still return `400 Missing required body parameter`; non-empty malformed
+  JSON and typed JSON `null` are still rejected normally.
   ([#66](https://github.com/DevilsAutumn/quater/issues/66))
 
 ### Removed

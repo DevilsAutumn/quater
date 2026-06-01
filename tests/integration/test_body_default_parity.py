@@ -194,7 +194,7 @@ async def test_required_body_empty_http_request_is_missing_not_malformed() -> No
     response = await app.handle(Request(method="POST", path="/items"))
 
     assert response.status_code == 400
-    assert response.body == b"Missing required body: payload"
+    assert response.body == b"Missing required body parameter: payload"
 
 
 @pytest.mark.asyncio

@@ -356,10 +356,12 @@ async def _bind_body_parameter(request: Request, parameter: BoundParameter) -> o
     annotation = parameter.annotation
     body = await request.body()
     if body == b"":
-        return _missing_request_value(parameter, label="body")
+        return _missing_request_value(parameter, label="body parameter")
 
     if _uses_generic_json(annotation):
-        return await request.json()
+        from quater.serialization import loads_json
+
+        return loads_json(body)
 
     from quater.serialization import JSONValidationError, loads_json_as
 

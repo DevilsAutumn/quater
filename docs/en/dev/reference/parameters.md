@@ -89,8 +89,8 @@ Body(
 
 `Body` follows normal Python default rules. If an HTTP request has no body
 bytes, Quater treats the body as missing input: a required body returns
-`400 Missing required body`, a body with a default uses that default, and a
-`T | None` body receives `None`.
+`400 Missing required body parameter`, a body with a default uses that default,
+and a `T | None` body receives `None`.
 
 This only applies to an empty body. A non-empty body must still be valid JSON,
 so `{"broken"` returns `400 Malformed JSON body` even when the parameter has a

@@ -346,9 +346,14 @@ assert bad_origin.status_code == 403
 : Use only one of `json=`, `content=`, or `data=`. Combine `data=` with
   `files=` only when testing multipart uploads.
 
+`Missing required body parameter: payload`
+: The handler bound a required body parameter, but the test request did not
+  send any body bytes. Use `json=...`, `content=...`, or make the parameter
+  optional.
+
 `Malformed JSON body`
-: The handler called `await request.json()` or bound a body parameter, but the
-  request body was not valid JSON.
+: The handler called `await request.json()` with an empty or invalid body, or
+  bound a body parameter and received non-empty bytes that were not valid JSON.
 
 ## Also See
 

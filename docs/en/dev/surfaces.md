@@ -98,6 +98,21 @@ Local CLI output:
 
 MCP returns the same handler result inside a JSON-RPC tool response.
 
+## Argument Parity
+
+For declared handler inputs, Quater keeps the binding contract the same across
+HTTP, MCP tools, local CLI, and remote CLI. Path, query, body, header, cookie,
+default, and optional parameters should reach the same Python handler values;
+when the same invalid value can be represented on each surface, validation
+errors should also point at the same declared input.
+
+Unknown extras are intentionally surface-specific. HTTP ignores extra query
+params, headers, and cookies because web requests often carry tracking params,
+proxy headers, or browser cookies that the handler did not ask for. MCP tools
+and CLI actions reject unknown action arguments because those calls are
+schema-driven; rejecting extras catches typos, stale clients, and accidental
+over-posting.
+
 Middleware and exception handlers also follow the handler, not the transport
 wrapper. Global logging, timing, and error-mapping middleware runs around the
 real route handler for HTTP, MCP tools, and CLI actions. On MCP and CLI,

@@ -282,6 +282,10 @@ session_id = request.cookies.get("session")
 `Malformed JSON body`
 : `await request.json()` could not decode valid JSON.
 
+`Missing required body parameter: payload`
+: A handler declared a required JSON body parameter, but the request did not
+  include a body. Send JSON or give the handler parameter a default.
+
 `Malformed form body`
 : `await request.form()` could not decode submitted form data.
 
