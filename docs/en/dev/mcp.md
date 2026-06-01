@@ -163,6 +163,13 @@ body parameters. `Form` fields appear as scalar tool arguments. It excludes
 injected `Resource` parameters because those values belong to the app, not the
 caller.
 
+For a tool call, Quater builds the handler request from the MCP tool arguments.
+Handler-level `Header()` and `Cookie()` parameters only see values passed in
+`params.arguments`. The outer MCP transport headers, such as `Authorization`,
+`Cookie`, `Content-Length`, `Mcp-Protocol-Version`, `Origin`, and request ids,
+are used by the MCP endpoint and are not copied into the handler request. Use
+`request.auth` for the authenticated caller.
+
 ```json
 {
   "name": "get_order",

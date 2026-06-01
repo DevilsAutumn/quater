@@ -194,23 +194,72 @@ async def test_action_header_and_cookie_arguments_are_available_to_handler() -> 
 
     @app.get("/audit", cli=True, description="Read audit state.")
     async def audit(
+        authorization: str = Header(),
         request_id: str = Header(alias="X-Request-ID"),
         session_id: str = Cookie(alias="session"),
     ) -> dict[str, str]:
-        return {"request_id": request_id, "session_id": session_id}
+        return {
+            "authorization": authorization,
+            "request_id": request_id,
+            "session_id": session_id,
+        }
 
     response = await execute_action(
         action_for(app, "audit"),
         Request(method="POST", path="/__quater__/actions/call"),
-        {"request_id": "req_123", "session_id": "sess_123"},
+        {
+            "authorization": "Bearer action-token",
+            "request_id": "req_123",
+            "session_id": "sess_123",
+        },
         source="cli",
     )
 
-    assert response.body == b'{"request_id":"req_123","session_id":"sess_123"}'
+    assert (
+        response.body
+        == b'{"authorization":"Bearer action-token","request_id":"req_123",'
+        b'"session_id":"sess_123"}'
+    )
 
 
 @pytest.mark.asyncio
-async def test_action_cookie_arguments_reject_malformed_existing_cookie() -> None:
+async def test_action_requests_do_not_inherit_transport_headers_or_cookies() -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    @app.get("/audit", cli=True, description="Read audit state.")
+    async def audit(
+        authorization: str | None = Header(default=None),
+        request_id: str | None = Header(default=None, alias="X-Request-ID"),
+        session_id: str | None = Cookie(default=None, alias="session"),
+    ) -> dict[str, object]:
+        return {
+            "authorization": authorization,
+            "request_id": request_id,
+            "session_id": session_id,
+        }
+
+    response = await execute_action(
+        action_for(app, "audit"),
+        Request(
+            method="POST",
+            path="/__quater__/actions/call",
+            headers={
+                "authorization": "Bearer surface-token",
+                "cookie": "session=outer-cookie",
+                "x-request-id": "outer-request",
+            },
+        ),
+        {},
+        source="cli",
+    )
+
+    assert (
+        response.body == b'{"authorization":null,"request_id":null,"session_id":null}'
+    )
+
+
+@pytest.mark.asyncio
+async def test_action_cookie_arguments_ignore_malformed_transport_cookie() -> None:
     app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
     handler_calls = 0
 
@@ -220,19 +269,19 @@ async def test_action_cookie_arguments_reject_malformed_existing_cookie() -> Non
         handler_calls += 1
         return {"session_id": session_id}
 
-    with pytest.raises(BadRequestError, match="Malformed Cookie header"):
-        await execute_action(
-            action_for(app, "audit"),
-            Request(
-                method="POST",
-                path="/__quater__/actions/call",
-                headers={"Cookie": "session=abc; $bad=x"},
-            ),
-            {"session_id": "sess_123"},
-            source="cli",
-        )
+    response = await execute_action(
+        action_for(app, "audit"),
+        Request(
+            method="POST",
+            path="/__quater__/actions/call",
+            headers={"Cookie": "session=abc; $bad=x"},
+        ),
+        {"session_id": "sess_123"},
+        source="cli",
+    )
 
-    assert handler_calls == 0
+    assert response.body == b'{"session_id":"sess_123"}'
+    assert handler_calls == 1
 
 
 @pytest.mark.asyncio

@@ -74,6 +74,15 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   `request.context.source` and skip `"mcp"`/`"cli"` when needed.
   ([#55](https://github.com/DevilsAutumn/quater/issues/55))
 
+### Fixed
+
+- Isolated synthetic MCP and CLI action requests from the outer transport
+  request. Route handlers now only receive `Header()` and `Cookie()` values
+  that were passed as action arguments, plus framework-generated headers needed
+  for the synthetic body. Transport auth, cookies, protocol headers, request
+  ids, and content length stay on the MCP/CLI surface instead of leaking into
+  handler binding. ([#64](https://github.com/DevilsAutumn/quater/issues/64))
+
 ### Removed
 
 - **Breaking:** removed the `mcp_auth=` and `cli_auth=` constructor hooks, the

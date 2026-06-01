@@ -4,7 +4,16 @@ import json
 
 import pytest
 
-from quater import AuthConfig, AuthContext, Quater, Request, Response, TextResponse
+from quater import (
+    AuthConfig,
+    AuthContext,
+    Cookie,
+    Header,
+    Quater,
+    Request,
+    Response,
+    TextResponse,
+)
 from quater.protocol.actions import (
     ACTIONS_MANIFEST_PATH,
     ACTIONS_RPC_PATH,
@@ -227,6 +236,41 @@ async def test_remote_action_rpc_auth_sees_cli_http_context() -> None:
     assert seen[0].context.entrypoint == "server"
     # Remote CLI now reaches MCP parity: auth sees the action name before binding.
     assert seen[0].context.action_name == "get_user"
+
+
+@pytest.mark.asyncio
+async def test_remote_action_does_not_leak_transport_headers_or_cookies() -> None:
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
+
+    @app.get("/orders", cli=True, description="Read one order.")
+    async def get_order(
+        authorization: str | None = Header(default=None),
+        request_id: str | None = Header(default=None, alias="X-Request-ID"),
+        session_id: str | None = Cookie(default=None, alias="session"),
+    ) -> dict[str, object]:
+        return {
+            "authorization": authorization,
+            "request_id": request_id,
+            "session_id": session_id,
+        }
+
+    headers = {
+        **authed_headers(),
+        "cookie": "session=outer-cookie",
+        "x-request-id": "outer-request",
+    }
+    status, body = await action_rpc(
+        app,
+        {"action": "get_order", "arguments": {}},
+        headers=headers,
+    )
+
+    assert status == 200
+    assert body["body"] == {
+        "authorization": None,
+        "request_id": None,
+        "session_id": None,
+    }
 
 
 @pytest.mark.asyncio

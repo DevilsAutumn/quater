@@ -158,8 +158,15 @@ discovery, and remote calls.
 
 For a remote action, the CLI sends auth to both discovery and execution
 endpoints. For a local action, Quater imports the app and builds an in-process
-request with the same auth headers. In both modes, the handler receives the
+auth request from the CLI auth headers. In both modes, the handler receives the
 `AuthContext` produced by the `cli` surface authenticator.
+
+When Quater calls the route handler, it builds a synthetic request from the
+action arguments. Handler-level `Header()` and `Cookie()` parameters only see
+values passed as action arguments. The outer CLI transport headers, such as
+`Authorization`, `Cookie`, `Content-Length`, and request ids, are used for the
+CLI surface and are not copied into the handler request. Use `request.auth` for
+the authenticated caller.
 
 ::: warning CLI auth is not authorization
 The `cli` `AuthConfig` answers "may this caller use the action surface?" Authorization

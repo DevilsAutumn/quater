@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from http.cookies import CookieError, SimpleCookie
+from http.cookies import SimpleCookie
 from inspect import Signature
 from types import UnionType
 from typing import Literal, Protocol, Union, get_args, get_origin
@@ -166,7 +166,7 @@ async def prepare_action_call(
         method=action.route.method,
         path=_render_action_path(action.pattern, parts.path_params),
         scheme=request.scheme,
-        headers=request.headers.raw,
+        headers=(),
         query_string=parts.query_string,
         body=parts.body,
         auth=request.auth,
@@ -407,8 +407,7 @@ def _request_with_action_headers(
         method=request.method,
         path=request.path,
         scheme=request.scheme,
-        headers=_merge_action_headers(
-            request,
+        headers=_action_headers(
             content_type=content_type,
             headers=headers,
             cookies=cookies,
@@ -427,48 +426,20 @@ def _request_with_action_headers(
     )
 
 
-def _merge_action_headers(
-    request: Request,
-    *,
+def _action_headers(
     content_type: str | None,
     headers: tuple[tuple[str, str], ...],
     cookies: tuple[tuple[str, str], ...],
 ) -> tuple[tuple[str, str], ...]:
-    override_names = {name.lower() for name, _value in headers}
-    if content_type is not None:
-        override_names.add("content-type")
-    if cookies:
-        override_names.add("cookie")
-
-    merged = tuple(
-        (name, value)
-        for name, value in request.headers.raw
-        if name.lower() not in override_names
-    )
     content_type_header = (
         (("content-type", content_type),) if content_type is not None else ()
     )
-    if not cookies:
-        return (*merged, *headers, *content_type_header)
-
-    return (
-        *merged,
-        *headers,
-        *content_type_header,
-        ("cookie", _merged_cookie_header(request.headers.get("cookie"), cookies)),
-    )
+    cookie_header = (("cookie", _cookie_header(cookies)),) if cookies else ()
+    return (*headers, *content_type_header, *cookie_header)
 
 
-def _merged_cookie_header(
-    existing: str | None,
-    cookies: tuple[tuple[str, str], ...],
-) -> str:
+def _cookie_header(cookies: tuple[tuple[str, str], ...]) -> str:
     jar = SimpleCookie()
-    if existing:
-        try:
-            jar.load(existing)
-        except CookieError as exc:
-            raise BadRequestError("Malformed Cookie header") from exc
     for name, value in cookies:
         jar[name] = value
     return "; ".join(morsel.OutputString() for morsel in jar.values())

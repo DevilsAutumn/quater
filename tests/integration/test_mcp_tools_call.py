@@ -10,6 +10,8 @@ import pytest
 from quater import (
     AuthConfig,
     AuthContext,
+    Cookie,
+    Header,
     HTTPError,
     Quater,
     Request,
@@ -35,19 +37,23 @@ async def mcp_call(
     name: str,
     arguments: dict[str, object],
     meta: dict[str, object] | None = None,
+    headers: dict[str, str] | None = None,
     request_id: int = 1,
 ) -> tuple[int, dict[str, object]]:
     params: dict[str, object] = {"name": name, "arguments": arguments}
     if meta is not None:
         params["_meta"] = meta
+    request_headers = {
+        "authorization": "Bearer mcp",
+        "content-type": "application/json",
+    }
+    if headers is not None:
+        request_headers.update(headers)
     response = await app.handle(
         Request(
             method="POST",
             path="/mcp",
-            headers={
-                "authorization": "Bearer mcp",
-                "content-type": "application/json",
-            },
+            headers=request_headers,
             body=json.dumps(
                 {
                     "jsonrpc": "2.0",
@@ -133,6 +139,42 @@ async def test_tools_call_reuses_cached_json_rpc_payload(
     result = require_object(body["result"])
     assert result["isError"] is False
     assert decode_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_tools_call_does_not_leak_transport_headers_or_cookies() -> None:
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
+
+    @app.get("/orders", tool=True, description="Read one order.")
+    async def get_order(
+        authorization: str | None = Header(default=None),
+        request_id: str | None = Header(default=None, alias="X-Request-ID"),
+        session_id: str | None = Cookie(default=None, alias="session"),
+    ) -> dict[str, object]:
+        return {
+            "authorization": authorization,
+            "request_id": request_id,
+            "session_id": session_id,
+        }
+
+    status, body = await mcp_call(
+        app,
+        name="get_order",
+        arguments={},
+        headers={
+            "cookie": "session=outer-cookie",
+            "x-request-id": "outer-request",
+        },
+    )
+
+    assert status == 200
+    result = require_object(body["result"])
+    content = require_object_list(result["content"])
+    assert (
+        content[0]["text"]
+        == '{"authorization":null,"request_id":null,"session_id":null}'
+    )
+    assert result["isError"] is False
 
 
 @pytest.mark.asyncio
