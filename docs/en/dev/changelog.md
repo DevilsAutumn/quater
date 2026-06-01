@@ -91,6 +91,11 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
 ### Fixed
 
+- Fixed protected action approval hashes to use the bound and validated handler
+  arguments, including defaults and normalized scalar values, instead of the raw
+  caller payload. Request and resource values stay out of the hash, so approval
+  tokens now map to the operation Quater will actually run.
+  ([#72](https://github.com/DevilsAutumn/quater/issues/72))
 - Isolated synthetic MCP and CLI action requests from the outer transport
   request. Route handlers now only receive `Header()` and `Cookie()` values
   that were passed as action arguments, plus framework-generated headers needed

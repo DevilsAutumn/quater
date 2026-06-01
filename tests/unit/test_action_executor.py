@@ -6,8 +6,12 @@ from typing import cast
 import msgspec
 import pytest
 
-from quater import AuthConfig, Body, Cookie, Header, Quater, Request
-from quater.actions.approval import action_arguments_hash
+from quater import AuthConfig, Body, Cookie, Header, Quater, Request, Resource
+from quater.actions.approval import (
+    ApprovalDeniedError,
+    ApprovalRequiredError,
+    action_arguments_hash,
+)
 from quater.actions.executor import execute_action, preflight_action
 from quater.actions.registry import ActionDefinition, build_action_registry
 from quater.exceptions import BadRequestError
@@ -20,6 +24,7 @@ class CreateUser(msgspec.Struct):
 
 
 USER_PAYLOAD = Body(alias="user_payload")
+DEFAULT_PAYLOAD = Body({"x": 7}, alias="payload_alias")
 
 
 async def allow_auth(ctx: Request) -> AuthContext | None:
@@ -339,6 +344,242 @@ async def test_action_required_header_null_is_rejected() -> None:
             {"request_id": None},
             source="cli",
         )
+
+
+@pytest.mark.asyncio
+async def test_argument_hash_uses_bound_scalar_values_and_defaults() -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    @app.get("/users/{id:int}", cli=True, description="Fetch one user.")
+    async def get_user(id: int, include_email: bool = False) -> dict[str, object]:
+        return {"id": id, "include_email": include_email}
+
+    action = action_for(app, "get_user")
+    request = Request(method="POST", path="/__quater__/actions/call")
+
+    missing_default = await preflight_action(
+        action,
+        request,
+        {"id": "7"},
+        source="cli",
+    )
+    explicit_default = await preflight_action(
+        action,
+        request,
+        {"id": 7, "include_email": False},
+        source="cli",
+    )
+    string_values = await preflight_action(
+        action,
+        request,
+        {"id": "7", "include_email": "false"},
+        source="cli",
+    )
+    different_call = await preflight_action(
+        action,
+        request,
+        {"id": 7, "include_email": True},
+        source="cli",
+    )
+
+    assert missing_default.arguments_hash == explicit_default.arguments_hash
+    assert missing_default.arguments_hash == string_values.arguments_hash
+    assert missing_default.arguments_hash == action_arguments_hash(
+        "get_user",
+        {"id": 7, "include_email": False},
+    )
+    assert missing_default.arguments_hash != different_call.arguments_hash
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ratio", ["nan", "inf", "-inf", "infinity"])
+async def test_argument_hash_rejects_non_finite_bound_float_values(
+    ratio: str,
+) -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    @app.get("/risk", cli=True, description="Read risk.")
+    async def risk(ratio: float | None = None) -> dict[str, object]:
+        return {"ratio": ratio}
+
+    action = action_for(app, "risk")
+    request = Request(method="POST", path="/__quater__/actions/call")
+    missing = await preflight_action(action, request, {}, source="cli")
+
+    assert missing.arguments_hash == action_arguments_hash("risk", {"ratio": None})
+    with pytest.raises(BadRequestError, match="Invalid float query parameter: ratio"):
+        await preflight_action(action, request, {"ratio": ratio}, source="cli")
+
+
+@pytest.mark.asyncio
+async def test_approval_hook_receives_preflight_bound_argument_hash() -> None:
+    seen_hashes: list[str] = []
+
+    async def approve(ctx: ApprovalRequest) -> bool:
+        seen_hashes.append(ctx.arguments_hash)
+        return True
+
+    app = Quater(
+        auth=[AuthConfig(allow_auth, surfaces=["cli"])],
+        action_approval=approve,
+    )
+
+    @app.post(
+        "/users/{id:int}/lock",
+        cli=True,
+        needs_approval=True,
+        description="Lock one user.",
+    )
+    async def lock_user(id: int, notify: bool = False) -> dict[str, object]:
+        return {"id": id, "notify": notify}
+
+    action = action_for(app, "lock_user")
+    request = Request(
+        method="POST",
+        path="/__quater__/actions/call",
+        auth=AuthContext(subject="cli"),
+    )
+    dry_run = await preflight_action(
+        action,
+        request,
+        {"id": 7, "notify": False},
+        source="cli",
+    )
+
+    response = await execute_action(
+        action,
+        request,
+        {"id": "7", "notify": "false"},
+        source="cli",
+        approval_hook=approve,
+        approval_token="approved",
+    )
+
+    assert response.body == b'{"id":7,"notify":false}'
+    assert seen_hashes == [dry_run.arguments_hash]
+
+
+@pytest.mark.asyncio
+async def test_argument_hash_includes_bound_body_default_under_input_alias() -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    @app.post("/items", cli=True, description="Create one item.")
+    async def create_item(
+        payload: dict[str, int] = DEFAULT_PAYLOAD,
+    ) -> dict[str, int]:
+        return payload
+
+    action = action_for(app, "create_item")
+    request = Request(method="POST", path="/__quater__/actions/call")
+
+    missing_default = await preflight_action(action, request, {}, source="cli")
+    explicit_default = await preflight_action(
+        action,
+        request,
+        {"payload_alias": {"x": 7}},
+        source="cli",
+    )
+    different_call = await preflight_action(
+        action,
+        request,
+        {"payload_alias": {"x": 8}},
+        source="cli",
+    )
+
+    assert missing_default.arguments_hash == explicit_default.arguments_hash
+    assert missing_default.arguments_hash == action_arguments_hash(
+        "create_item",
+        {"payload_alias": {"x": 7}},
+    )
+    assert missing_default.arguments_hash != different_call.arguments_hash
+
+
+@pytest.mark.asyncio
+async def test_argument_hash_excludes_request_and_resource_values() -> None:
+    resource_events: list[str] = []
+
+    class Session:
+        pass
+
+    async def provider() -> Session:
+        resource_events.append("open")
+        return Session()
+
+    async def approve(ctx: ApprovalRequest) -> bool:
+        return True
+
+    app = Quater(
+        auth=[AuthConfig(allow_auth, surfaces=["cli"])],
+        action_approval=approve,
+    )
+
+    @app.post(
+        "/users/{id:int}/lock",
+        cli=True,
+        needs_approval=True,
+        inject={"session": Resource(provider)},
+        description="Lock one user.",
+    )
+    async def lock_user(
+        id: int,
+        request: Request,
+        session: Session,
+    ) -> dict[str, object]:
+        return {"id": id, "source": request.context.source}
+
+    action = action_for(app, "lock_user")
+    request = Request(method="POST", path="/__quater__/actions/call")
+    dry_run = await preflight_action(action, request, {"id": "7"}, source="cli")
+
+    assert dry_run.arguments_hash == action_arguments_hash("lock_user", {"id": 7})
+    assert resource_events == []
+
+    with pytest.raises(ApprovalRequiredError) as exc_info:
+        await execute_action(action, request, {"id": "7"}, source="cli")
+
+    assert exc_info.value.arguments_hash == dry_run.arguments_hash
+    assert resource_events == []
+
+
+@pytest.mark.asyncio
+async def test_approval_denied_without_hook_uses_bound_argument_hash() -> None:
+    async def approve(ctx: ApprovalRequest) -> bool:
+        return True
+
+    app = Quater(
+        auth=[AuthConfig(allow_auth, surfaces=["cli"])],
+        action_approval=approve,
+    )
+
+    @app.post(
+        "/users/{id:int}/lock",
+        cli=True,
+        needs_approval=True,
+        description="Lock one user.",
+    )
+    async def lock_user(id: int, notify: bool = False) -> dict[str, object]:
+        return {"id": id, "notify": notify}
+
+    action = action_for(app, "lock_user")
+    request = Request(method="POST", path="/__quater__/actions/call")
+    dry_run = await preflight_action(
+        action,
+        request,
+        {"id": 7, "notify": False},
+        source="cli",
+    )
+
+    with pytest.raises(ApprovalDeniedError) as exc_info:
+        await execute_action(
+            action,
+            request,
+            {"id": "7", "notify": "false"},
+            source="cli",
+            approval_hook=None,
+            approval_token="approved",
+        )
+
+    assert exc_info.value.arguments_hash == dry_run.arguments_hash
 
 
 def test_action_argument_hash_is_stable_for_mapping_order() -> None:

@@ -305,10 +305,12 @@ Dry run OK: update_order_status
   approval token: missing
 ```
 
-Quater computes the argument hash from the action name and canonical JSON
-arguments. JSON object key order does not change it. Use the hash when an
-approval system grants permission for one exact call, not for every call with
-the same action name.
+Quater computes the argument hash after binding and validation, using the
+action name plus canonical JSON for the arguments the handler will receive.
+Defaults are included, type-normalized values hash the same way, and JSON
+object key order does not change it. Use the hash when an approval system
+grants permission for one exact call, not for every call with the same action
+name.
 
 ## Approval
 

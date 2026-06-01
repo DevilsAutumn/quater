@@ -31,6 +31,29 @@ async def test_query_params_are_converted_and_defaults_are_applied() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("score", ["nan", "inf", "-inf", "infinity"])
+async def test_non_finite_float_query_param_returns_validation_error(
+    score: str,
+) -> None:
+    app = Quater()
+    calls = 0
+
+    @app.get("/search")
+    async def search(score: float) -> dict[str, float]:
+        nonlocal calls
+        calls += 1
+        return {"score": score}
+
+    response = await app.handle(
+        Request(method="GET", path="/search", query_string=f"score={score}")
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid float query parameter: score"
+    assert calls == 0
+
+
+@pytest.mark.asyncio
 async def test_missing_required_query_param_returns_validation_error() -> None:
     app = Quater()
     calls = 0

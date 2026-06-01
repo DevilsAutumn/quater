@@ -101,7 +101,7 @@ ApprovalRequest(
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `action` | `str` | required | Tool or CLI action name. |
-| `arguments_hash` | `str` | required | SHA-256 hash of action name and canonical JSON arguments. |
+| `arguments_hash` | `str` | required | SHA-256 hash of the action name and canonical bound arguments. |
 | `token` | `str` | required | Submitted approval token. |
 | `auth` | [`AuthContext`](#symbol-authcontext) \| None | `None` | Authenticated caller when available. |
 | `context` | `RequestContext` | `RequestContext()` | Source and entrypoint metadata. |

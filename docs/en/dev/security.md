@@ -134,8 +134,9 @@ The approval request includes:
 - authenticated subject when available
 - request context
 
-Quater computes the hash from the action name and canonical JSON arguments.
-Object key ordering does not change it.
+Quater computes the hash after binding and validation, from the action name and
+canonical JSON for the arguments the handler will receive. Defaults are included
+and object key ordering does not change it.
 
 ## Hosts And Proxies
 

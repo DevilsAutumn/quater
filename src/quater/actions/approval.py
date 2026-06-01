@@ -31,12 +31,11 @@ async def require_action_approval(
     approval: ActionApproval | None,
     *,
     action: str,
-    arguments: Mapping[str, object],
+    arguments_hash: str,
     token: str | None,
     auth: AuthContext | None,
     context: RequestContext,
 ) -> None:
-    arguments_hash = action_arguments_hash(action, arguments)
     if token is None:
         raise ApprovalRequiredError(action, arguments_hash)
     if approval is None:

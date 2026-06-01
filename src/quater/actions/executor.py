@@ -97,7 +97,7 @@ async def execute_action(
         await require_action_approval(
             approval_hook,
             action=action.name,
-            arguments=arguments,
+            arguments_hash=prepared.arguments_hash,
             token=approval_token,
             auth=prepared.request.auth,
             context=prepared.request.context,
@@ -204,8 +204,23 @@ async def prepare_action_call(
         request=action_request,
         path_params=parts.path_params,
         bound_arguments=bound_arguments,
-        arguments_hash=action_arguments_hash(action.name, arguments),
+        arguments_hash=action_arguments_hash(
+            action.name,
+            _approval_arguments(action.handler_plan.parameters, bound_arguments),
+        ),
     )
+
+
+def _approval_arguments(
+    parameters: tuple[BoundParameter, ...],
+    bound_arguments: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        parameter.input_name: bound_arguments[parameter.name]
+        for parameter in parameters
+        if parameter.source not in {"request", "resource"}
+        and parameter.name in bound_arguments
+    }
 
 
 def _build_request_parts(

@@ -161,7 +161,7 @@ FIELD_DOCS: Mapping[str, Mapping[str, str]] = {
     },
     "ApprovalRequest": {
         "action": "Tool or CLI action name.",
-        "arguments_hash": "Hash of the action name and canonical arguments.",
+        "arguments_hash": "Hash of the action name and canonical bound arguments.",
         "token": "Approval token supplied by the caller.",
         "auth": "Authenticated subject, when the action request was authenticated.",
         "context": "Quater context for the tool or CLI call.",

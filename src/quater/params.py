@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass
+from math import isfinite
 from types import UnionType
 from typing import (
     Annotated,
@@ -458,9 +459,12 @@ def convert_scalar_value(
             raise BadRequestError(f"Invalid integer {source}: {name}") from exc
     if annotation is float:
         try:
-            return float(value)
+            parsed = float(value)
         except ValueError as exc:
             raise BadRequestError(f"Invalid float {source}: {name}") from exc
+        if not isfinite(parsed):
+            raise BadRequestError(f"Invalid float {source}: {name}")
+        return parsed
     if annotation is bool:
         return _parse_bool(value, name, source=source)
     return value
