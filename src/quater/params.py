@@ -354,13 +354,17 @@ def _missing_request_value(parameter: BoundParameter, *, label: str) -> object:
 
 async def _bind_body_parameter(request: Request, parameter: BoundParameter) -> object:
     annotation = parameter.annotation
+    body = await request.body()
+    if body == b"":
+        return _missing_request_value(parameter, label="body")
+
     if _uses_generic_json(annotation):
         return await request.json()
 
     from quater.serialization import JSONValidationError, loads_json_as
 
     try:
-        return loads_json_as(await request.body(), annotation)
+        return loads_json_as(body, annotation)
     except RequestJSONError:
         raise
     except (JSONValidationError, TypeError) as exc:
@@ -403,7 +407,7 @@ async def _read_upload_file(file: object) -> bytes:
 
 
 def _uses_generic_json(annotation: object) -> bool:
-    return annotation in {_EMPTY, Any, object, dict, list}
+    return annotation in {_EMPTY, Any, object}
 
 
 def _is_query_type(annotation: object) -> bool:

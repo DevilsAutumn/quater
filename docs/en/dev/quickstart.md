@@ -203,6 +203,12 @@ Use [`msgspec.Struct`](https://jcristharif.com/msgspec/) when you want typed,
 validated JSON input with Quater's fast JSON path. Plain `dict` works for
 dynamic responses or data that does not need validation.
 
+For JSON bodies, a default makes the body optional. An empty HTTP body, or a
+missing MCP/CLI body argument, uses the default. If the annotation includes
+`None`, empty input becomes `None`. A body that contains bytes must still be
+valid JSON. For typed bodies, JSON `null` is accepted only for annotations that
+allow `None`.
+
 Use `Form` and `File` when a route must accept browser form posts or multipart
 uploads. Form fields bind scalar values; file fields bind `UploadFile` or
 `bytes`.

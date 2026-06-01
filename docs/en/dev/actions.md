@@ -255,6 +255,10 @@ HTTP aliases stay on the HTTP side for `Path`, `Query`, `Header`, and `Cookie`.
 `Body(alias=...)` changes the CLI and MCP body argument name because the body has
 no HTTP query or header name.
 
+Body defaults are shared across HTTP, MCP, and CLI. If an action body argument
+is omitted, Quater uses the handler's `Body(default=...)` value or `None` for a
+`T | None` body, just like an empty HTTP request body.
+
 `Form` fields behave like scalar arguments for actions. Quater encodes them as
 form data before it calls the same handler path:
 

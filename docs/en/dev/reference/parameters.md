@@ -87,6 +87,16 @@ Body(
 | `alias` | `str \| None` | `None` | MCP and CLI argument name for the body. |
 | `description` | `str \| None` | `None` | Schema description. Empty strings become `None`. |
 
+`Body` follows normal Python default rules. If an HTTP request has no body
+bytes, Quater treats the body as missing input: a required body returns
+`400 Missing required body`, a body with a default uses that default, and a
+`T | None` body receives `None`.
+
+This only applies to an empty body. A non-empty body must still be valid JSON,
+so `{"broken"` returns `400 Malformed JSON body` even when the parameter has a
+default. JSON `null` is also real input, not a missing body. For typed bodies,
+use `T | None` when `null` should be accepted.
+
 ## Form {#symbol-form}
 
 Added in `0.1.0a1`.

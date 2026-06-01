@@ -11,7 +11,7 @@ This page records public release notes for Quater.
 
 Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
-## 0.1.0a3
+## 0.1.0a3(under developement)
 
 ### Added
 
@@ -82,6 +82,11 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   for the synthetic body. Transport auth, cookies, protocol headers, request
   ids, and content length stay on the MCP/CLI surface instead of leaking into
   handler binding. ([#64](https://github.com/DevilsAutumn/quater/issues/64))
+- Fixed HTTP JSON body binding so an empty optional or defaulted `Body` is
+  treated like missing input, matching MCP and CLI action calls. Required empty
+  bodies still return `400 Missing required body`; non-empty malformed JSON and
+  typed JSON `null` are still rejected normally.
+  ([#66](https://github.com/DevilsAutumn/quater/issues/66))
 
 ### Removed
 

@@ -91,6 +91,16 @@ async def update_order(
     }
 ```
 
+For `Body`, "missing" means the HTTP request body is empty, or the MCP/CLI
+action argument was not provided. Required bodies return `400 Missing required
+body`. Bodies with defaults use the default. Bodies annotated as `T | None`
+receive `None`.
+
+If the client sends any body bytes, Quater parses them as JSON. Malformed JSON
+still returns `400 Malformed JSON body`, even when the parameter has a default.
+For typed bodies, JSON `null` is input, not "missing", so only use it when the
+annotation allows `None`.
+
 Use form and file markers for non-JSON request bodies:
 
 ```python
