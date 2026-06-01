@@ -17,6 +17,14 @@ This is Quater's first beta release train. It keeps the project pre-0.1, but
 marks the HTTP/MCP/CLI surface model, per-surface auth, resource lifecycle, and
 testing helpers as ready for broader evaluation.
 
+### Fixed
+
+- Fixed remote CLI (`quater call`) to handle all three server response shapes:
+  normal success (`body` text), dry-run (`dry_run`, `action`, `method`, `path`,
+  `arguments_hash`), and error (`error.message`). Previously, dry-run and error
+  responses fell through to `status: <code>` instead of showing useful output.
+  ([#75](https://github.com/DevilsAutumn/quater/issues/75))
+
 ### Added
 
 - Added support for declaring a `Resource` in a parameter's `Annotated[...]`

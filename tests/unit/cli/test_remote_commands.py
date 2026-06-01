@@ -419,3 +419,163 @@ def test_cli_remote_call_rejects_empty_approval_token(
     captured = capsys.readouterr()
     assert code == 2
     assert captured.err == "Approval token must not be empty\n"
+
+
+def _setup_remote_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    response_body: dict[str, object],
+    *,
+    status_code: int = 200,
+) -> None:
+    quater_home = tmp_path / ".quater"
+    monkeypatch.setenv("QUATER_HOME", str(quater_home))
+    monkeypatch.setattr(
+        "quater.cli.main.fetch_manifest",
+        lambda url, *, token: {"protocol": "quater-actions.v1", "actions": []},
+    )
+    monkeypatch.setattr(
+        "quater.cli.main.call_action",
+        lambda *a, **kw: RemoteResponse(status_code=status_code, body=response_body),
+    )
+    main(["connect", "billing", "https://api.example.com", "--token", "secret"])
+
+
+def test_cli_remote_call_normal_mode_prints_body_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _setup_remote_call(tmp_path, monkeypatch, {"ok": True, "body": "User locked."})
+    capsys.readouterr()
+
+    code = main(["call", "billing", "users.lock"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.out.strip() == "User locked."
+    assert "{" not in captured.out
+
+
+def test_cli_remote_call_json_flag_prints_full_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _setup_remote_call(tmp_path, monkeypatch, {"ok": True, "body": "User locked."})
+    capsys.readouterr()
+
+    code = main(["--json", "call", "billing", "users.lock"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    payload = json.loads(captured.out)
+    assert payload["ok"] is True
+    assert payload["body"] == "User locked."
+
+
+def test_cli_remote_call_normal_mode_falls_back_to_status_on_empty_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _setup_remote_call(tmp_path, monkeypatch, {"ok": True, "body": ""})
+    capsys.readouterr()
+
+    code = main(["call", "billing", "users.lock"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "status: 200" in captured.out
+
+
+def test_cli_remote_call_dry_run_prints_human_readable_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _setup_remote_call(
+        tmp_path,
+        monkeypatch,
+        {
+            "dry_run": True,
+            "action": "users.lock",
+            "method": "POST",
+            "path": "/users/lock",
+            "arguments_hash": "abc123",
+        },
+    )
+    capsys.readouterr()
+
+    code = main(["call", "billing", "users.lock", "--dry-run"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Dry run OK" in captured.out
+    assert "users.lock" in captured.out
+    assert "POST" in captured.out
+    assert "/users/lock" in captured.out
+    assert "abc123" in captured.out
+    assert "{" not in captured.out
+
+
+def test_cli_remote_call_dry_run_json_flag_prints_full_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    body = {
+        "dry_run": True,
+        "action": "users.lock",
+        "method": "POST",
+        "path": "/users/lock",
+        "arguments_hash": "abc123",
+    }
+    _setup_remote_call(tmp_path, monkeypatch, body)
+    capsys.readouterr()
+
+    code = main(["--json", "call", "billing", "users.lock", "--dry-run"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    payload = json.loads(captured.out)
+    assert payload["dry_run"] is True
+    assert payload["action"] == "users.lock"
+
+
+def test_cli_remote_call_error_response_prints_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _setup_remote_call(
+        tmp_path,
+        monkeypatch,
+        {"error": {"message": "User not found"}},
+        status_code=404,
+    )
+    capsys.readouterr()
+
+    code = main(["call", "billing", "users.lock"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "User not found" in captured.out
+    assert "status: 404" not in captured.out
+
+
+def test_cli_remote_call_error_json_flag_prints_full_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    body = {"error": {"message": "User not found"}}
+    _setup_remote_call(tmp_path, monkeypatch, body, status_code=404)
+    capsys.readouterr()
+
+    code = main(["--json", "call", "billing", "users.lock"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    payload = json.loads(captured.out)
+    assert payload["error"]["message"] == "User not found"
