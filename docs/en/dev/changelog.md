@@ -39,6 +39,12 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   `TestClient`, with `call()` and `manifest()` helpers for the CLI action
   surface. HTTP, MCP (`client.mcp`), and CLI now each have a first-class test
   helper. ([#57](https://github.com/DevilsAutumn/quater/issues/57))
+- Added security regression coverage proving callers cannot spoof
+  `request.context.source` or `request.context.entrypoint` through HTTP headers,
+  request bodies, MCP metadata, or remote CLI action payloads. HTTP remains
+  `api/server`, MCP remains `mcp/server`, remote CLI remains `cli/server`, and
+  local CLI remains `cli/local`.
+  ([#70](https://github.com/DevilsAutumn/quater/issues/70))
 
 ### Changed
 
