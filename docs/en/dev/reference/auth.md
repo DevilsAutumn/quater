@@ -125,7 +125,7 @@ Added in `0.1.0a3`.
 Callable type for an authenticator. It receives the `Request`; resource
 parameters are rejected so no-token requests can fail before opening a database
 session. Use `await request.resolve(resource)` after cheap checks when auth
-needs a request-scoped resource. Handlers can inject that same resource through
+needs a resource. Handlers can inject that same resource through
 `Annotated[T, resource]`.
 
 ```python

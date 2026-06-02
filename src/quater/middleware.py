@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol, TypeAlias
 
+from quater._finalize import move_response_finalizers
 from quater.exceptions import HTTPError
 from quater.request import Request
 from quater.response import Response, TextResponse
@@ -112,7 +113,7 @@ def compile_middleware_pipeline(
                     path_params,
                 )
         except Exception as exc:
-            response = await _resolve_exception(
+            response = await _resolve_pipeline_exception(
                 request,
                 exc,
                 exception_handlers,
@@ -122,11 +123,19 @@ def compile_middleware_pipeline(
             if response is None:
                 raise
 
+        response = await _close_function_resources_before_response(
+            request,
+            response,
+            exception_handlers,
+            debug=debug,
+            handle_unhandled=handle_unhandled_exceptions,
+        )
+
         try:
             for after_middleware in after:
                 response = await after_middleware(request, response)
         except Exception as exc:
-            response = await _resolve_exception(
+            response = await _resolve_pipeline_exception(
                 request,
                 exc,
                 exception_handlers,
@@ -190,6 +199,48 @@ async def _resolve_exception(
     if not handle_unhandled:
         return None
     return default_exception_response(exc, debug=debug)
+
+
+async def _resolve_pipeline_exception(
+    request: Request,
+    exc: Exception,
+    handlers: tuple[ExceptionHandlerEntry, ...],
+    *,
+    debug: bool,
+    handle_unhandled: bool,
+) -> Response | None:
+    await request._aexit_resources_for_error(exc)
+    return await _resolve_exception(
+        request,
+        exc,
+        handlers,
+        debug=debug,
+        handle_unhandled=handle_unhandled,
+    )
+
+
+async def _close_function_resources_before_response(
+    request: Request,
+    response: Response,
+    handlers: tuple[ExceptionHandlerEntry, ...],
+    *,
+    debug: bool,
+    handle_unhandled: bool,
+) -> Response:
+    try:
+        await request._aclose_function_resources()
+    except Exception as exc:
+        resolved = await _resolve_pipeline_exception(
+            request,
+            exc,
+            handlers,
+            debug=debug,
+            handle_unhandled=handle_unhandled,
+        )
+        if resolved is None:
+            raise
+        return move_response_finalizers(response, resolved)
+    return response
 
 
 def default_exception_response(exc: Exception, *, debug: bool) -> Response:

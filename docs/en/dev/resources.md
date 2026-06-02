@@ -5,7 +5,7 @@ description: Use Quater app.state and Resource providers for long-lived applicat
 
 # Resources And Injection
 
-This page explains `app.state` and request-scoped `Resource` injection.
+This page explains `app.state` and scoped `Resource` injection.
 
 ## Prerequisites
 
@@ -46,25 +46,32 @@ flowchart TB
     state --> shutdown
 ```
 
-Cleanup runs after response creation. For streaming responses, Quater keeps the
-resource alive until the response body has been consumed by the adapter.
+Cleanup timing depends on the resource scope. Request-scoped resources close
+after the response path finishes; for streaming responses, Quater keeps them
+alive until the response body has been consumed by the adapter.
+Function-scoped resources close before the response leaves the route pipeline.
+On route and action paths, that happens before after-response middleware runs.
 
-### One scope per request
+### Resource lifetimes
 
-Every request gets a single resource scope: one place that opens the values it
-needs, caches them, and cleans them up. Two things follow from that.
+Every request gets shared resource scopes: places that open the values it
+needs, cache them, and clean them up. Two things follow from that.
 
-First, the same `Resource` resolves once per request. If two parameters — or a
-handler and, later, the rest of the request — ask for the same `Resource`
+First, the same `Resource` resolves once per request within its lifetime. If two
+parameters — or auth and, later, the handler — ask for the same `Resource`
 object, they get the same instance. A `Resource` that opens a database session
 opens **one** session per request, not one per parameter.
 
-Second, the scope is strictly per request. Nothing opened for one request is
+Second, the scopes are strictly per request. Nothing opened for one request is
 ever visible to another, and when the request finishes, every resource it
 opened is torn down once, in the reverse of the order it was opened. If a later
 resource fails to open, the ones already open are still cleaned up.
 
-The scope is lazy: a request whose handler injects nothing never creates one.
+The scopes are lazy: a request whose handler injects nothing never creates one.
+
+Use the default `scope="request"` when the value must stay alive through
+streaming. Use `scope="function"` for unit-of-work resources that commit in
+their post-yield code and need commit failures to become a real error response.
 
 ## A Runnable Example
 
@@ -178,9 +185,9 @@ the raw `Resource[T]` is the form type checkers can follow precisely.
 ## Resources That Depend On Resources
 
 A provider can ask for other resources, the same way a handler does — with
-`Annotated[T, resource]`. Quater resolves each dependency first, once, from the
-request's shared scope, and passes it in. The classic case is a current-user
-resource that needs the database session to look the user up:
+`Annotated[T, resource]`. Quater resolves each dependency first, once in its
+resource scope, and passes it in. The classic case is a current-user resource
+that needs the database session to look the user up:
 
 ```python
 from typing import Annotated
@@ -204,9 +211,9 @@ async def current_user_provider(
 current_user = Resource(current_user_provider, name="current_user")
 ```
 
-Because the session comes from the shared scope, the session opened to look up
-the user is the *same* session a handler injects directly — one connection for
-the whole request.
+Because the session comes from the shared scope for that resource, the session
+opened to look up the user is the *same* session a handler injects directly —
+one connection for the whole request.
 
 When the value is the *authenticated* user, prefer loading it once in the
 authenticator and reading it back through `AuthContext.payload` instead of a

@@ -17,15 +17,9 @@ from typing import (
     get_type_hints,
 )
 
-from quater._finalize import add_request_finalizer
 from quater._parameters import ParameterMarker
 from quater.core import Handler
-from quater.dependencies import (
-    Resource,
-    ResourceMap,
-    resolve_resource,
-    validate_resource,
-)
+from quater.dependencies import Resource, ResourceMap, validate_resource
 from quater.exceptions import BadRequestError, RequestJSONError, RouteBindingError
 from quater.request import Request
 from quater.response import Response
@@ -98,17 +92,6 @@ class HandlerPlan:
 
         return kwargs
 
-    async def call(self, request: Request, path_params: Mapping[str, object]) -> object:
-        try:
-            kwargs = await self.bind(request, path_params)
-            result = await self.handler(**kwargs)
-        except BaseException as exc:
-            await request._aexit_resources_for_error(exc)
-            raise
-
-        await request._aclose_resources()
-        return result
-
     async def call_response(
         self,
         request: Request,
@@ -123,8 +106,6 @@ class HandlerPlan:
             await request._aexit_resources_for_error(exc)
             raise
 
-        if request.has_open_resources:
-            add_request_finalizer(request, request._aclose_resources)
         return response
 
 
@@ -698,8 +679,7 @@ async def _bind_resource_parameter(
     resource = parameter.resource
     if resource is None:
         raise RuntimeError("Injected parameter is missing its resource")
-    scope = request.resources
-    return await resolve_resource(resource, request, scope.cache, scope.stack)
+    return await request.resolve(resource)
 
 
 def _normalize_resources(inject: ResourceMap | None) -> dict[str, Resource[Any]]:

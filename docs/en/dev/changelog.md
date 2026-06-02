@@ -31,6 +31,11 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   graph is validated when routes compile: dependency cycles and provider
   parameters that are neither the request nor a resource fail at startup.
   ([#53](https://github.com/DevilsAutumn/quater/issues/53))
+- Added `scope="function"` for `Resource` providers that need to finish before
+  the response is sent, such as transaction/unit-of-work providers that commit
+  after `yield`. The default `scope="request"` remains streaming-safe, and
+  request-scoped resources cannot depend on function-scoped resources.
+  ([#83](https://github.com/DevilsAutumn/quater/issues/83))
 - Added real-database integration tests for the resource lifecycle — async and
   sync sessions, transaction commit and rollback, and one session shared per
   request — across HTTP, MCP, and CLI, on a reusable SQLAlchemy/SQLite test
@@ -95,6 +100,10 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
 ### Fixed
 
+- Fixed yield resource cleanup so handler/authentication errors are thrown into
+  generator providers. Rollback branches now run on request failure, and cleanup
+  failures during an existing error no longer hide the primary response.
+  ([#83](https://github.com/DevilsAutumn/quater/issues/83))
 - Fixed HTTP path parameter parity across RSGI, ASGI, and WSGI. ASGI now
   percent-decodes `raw_path` before route matching, so encoded slashes split
   path segments the same way they do on Quater's primary Granian/RSGI path;

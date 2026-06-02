@@ -43,16 +43,16 @@ async def me(request: Request) -> dict[str, object]:
 The authenticator receives the real `Request` and returns an `AuthContext`
 (returning `None`, or anything that is not an `AuthContext`, denies the
 request). Do cheap checks first, then call
-`await request.resolve(session_resource)` only when auth needs a request-scoped
-resource. The handler can inject that same resource through
+`await request.resolve(session_resource)` only when auth needs a resource. The
+handler can inject that same resource through
 `Annotated[T, session_resource]`. The resolved value shares the request's
-scope, so a session auth opens to verify the caller is the **same** session the
-handler later injects — no second connection, no double lookup.
+resource scope, so a session auth opens to verify the caller is the **same**
+session the handler later injects — no second connection, no double lookup.
 
 Sharing is by resource identity: reuse a single module-level `Resource` in both
 the authenticator and the handler's `Annotated` alias. Two separate `Resource`
 objects, even with the same provider, are two resources and open two sessions —
-see [Resources and Injection](./resources#one-scope-per-request).
+see [Resources and Injection](./resources#resource-lifetimes).
 
 ::: note Validation timing
 Resources injected into handlers are validated when routes compile. A resource

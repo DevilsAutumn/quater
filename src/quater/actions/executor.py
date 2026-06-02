@@ -11,6 +11,7 @@ from typing import Literal, Protocol, Union, get_args, get_origin
 from urllib.parse import quote, urlencode
 
 from quater._finalize import (
+    add_request_finalizer,
     close_request_finalizers,
     move_request_finalizers_to_response,
 )
@@ -121,6 +122,11 @@ async def execute_action(
     except BaseException:
         await close_request_finalizers(prepared.request)
         raise
+    if prepared.request._mark_request_resources_deferred():
+        add_request_finalizer(
+            prepared.request,
+            prepared.request._aclose_request_resources,
+        )
     return move_request_finalizers_to_response(prepared.request, response)
 
 
@@ -188,7 +194,7 @@ async def prepare_action_call(
         cookies=parts.cookies,
     )
     # Authentication ran once on the incoming request and is already on
-    # ``request.auth``. Share that request's resource scope so a session the
+    # ``request.auth``. Share that request's resource scopes so a session the
     # authenticator opened is the same session the handler resolves, and so it
     # is torn down exactly once.
     action_request._adopt_resource_scope(request)

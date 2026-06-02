@@ -12,7 +12,17 @@ from typing import Annotated
 
 import pytest
 
-from quater import HTTPError, Quater, Request, Resource, StreamResponse, TestClient
+from quater import (
+    HTTPError,
+    Quater,
+    Request,
+    Resource,
+    Response,
+    StreamResponse,
+    TestClient,
+    TextResponse,
+)
+from quater._finalize import run_response_finalizers
 from quater.params import build_handler_plan
 
 
@@ -233,6 +243,105 @@ async def test_resource_provider_cannot_swallow_handler_exception() -> None:
 
 
 @pytest.mark.asyncio
+async def test_function_scope_teardown_failure_replaces_success_response() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except RuntimeError:
+            events.append("rollback")
+            raise
+        else:
+            events.append("commit")
+            raise RuntimeError("commit failed")
+        finally:
+            events.append("close")
+
+    app = Quater(debug=True)
+
+    @app.post("/orders", inject={"session": Resource(provider, scope="function")})
+    async def create_order(session: str) -> dict[str, str]:
+        events.append(f"handler:{session}")
+        return {"status": "created"}
+
+    response = await app.handle(Request(method="POST", path="/orders"))
+
+    assert response.status_code == 500
+    assert response.body == b"RuntimeError: commit failed"
+    assert events == ["open", "handler:primary", "commit", "close"]
+
+
+@pytest.mark.asyncio
+async def test_function_scope_closes_before_after_middleware() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+
+    app = Quater()
+
+    @app.after_response
+    async def after(request: Request, response: Response) -> Response:
+        events.append(f"after:{response.body.decode()}")
+        return TextResponse("after")
+
+    @app.get("/orders", inject={"session": Resource(provider, scope="function")})
+    async def list_orders(session: str) -> dict[str, str]:
+        events.append(f"handler:{session}")
+        return {"status": "ok"}
+
+    response = await app.handle(Request(method="GET", path="/orders"))
+
+    assert response.status_code == 200
+    assert response.body == b"after"
+    assert events == ["open", "handler:primary", "close", 'after:{"status":"ok"}']
+
+
+@pytest.mark.asyncio
+async def test_function_scope_teardown_error_runs_after_middleware() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+            raise RuntimeError("commit failed")
+
+    app = Quater(debug=True)
+
+    @app.after_response
+    async def after(request: Request, response: Response) -> Response:
+        events.append(f"after:{response.status_code}:{response.body.decode()}")
+        response.headers = (*response.headers, ("x-after", "yes"))
+        return response
+
+    @app.post("/orders", inject={"session": Resource(provider, scope="function")})
+    async def create_order(session: str) -> dict[str, str]:
+        events.append(f"handler:{session}")
+        return {"status": "created"}
+
+    response = await app.handle(Request(method="POST", path="/orders"))
+
+    assert response.status_code == 500
+    assert response.body == b"RuntimeError: commit failed"
+    assert ("x-after", "yes") in response.headers
+    assert events == [
+        "open",
+        "handler:primary",
+        "close",
+        "after:500:RuntimeError: commit failed",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_no_resource_scope_is_created_when_handler_uses_no_resources() -> None:
     app = Quater()
 
@@ -246,6 +355,7 @@ async def test_no_resource_scope_is_created_when_handler_uses_no_resources() -> 
     assert response.status_code == 200
     # Lazy: a request that resolves no resources never allocates a scope.
     assert request._resource_scope is None
+    assert request._function_resource_scope is None
 
 
 @pytest.mark.asyncio
@@ -274,6 +384,34 @@ async def test_resource_scope_stays_open_until_stream_is_consumed() -> None:
 
     assert response.body == b"primary"
     assert events == ["open", "chunk:primary", "close"]
+
+
+@pytest.mark.asyncio
+async def test_request_scope_close_is_deferred_once_on_route_response() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("close")
+
+    app = Quater()
+
+    @app.get("/orders", inject={"session": Resource(provider)})
+    async def list_orders(session: str) -> dict[str, str]:
+        return {"session": session}
+
+    response = await app.handle(Request(method="GET", path="/orders"))
+
+    assert response.status_code == 200
+    assert response._finalizers is not None
+    assert len(response._finalizers) == 1
+
+    await run_response_finalizers(response)
+
+    assert events == ["open", "close"]
 
 
 @pytest.mark.asyncio

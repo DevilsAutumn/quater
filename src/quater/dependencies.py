@@ -1,4 +1,4 @@
-"""Request-scoped resources for handler injection."""
+"""Scoped resources for handler injection."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from typing import (
 from quater.exceptions import ConfigurationError
 from quater.request import Request
 
-ResourceScope = Literal["request"]
+ResourceScope = Literal["function", "request"]
 T = TypeVar("T")
 _ResourceProviderResult: TypeAlias = (
     T
@@ -49,7 +49,8 @@ _ResourceProviderResult: TypeAlias = (
 )
 ResourceProvider: TypeAlias = Callable[..., _ResourceProviderResult[T]]
 ResourceMap: TypeAlias = Mapping[str, "Resource[Any]"]
-StackFactory = Callable[[], AsyncExitStack]
+StackFactory = Callable[[ResourceScope], AsyncExitStack]
+ProviderStackFactory = Callable[[], AsyncExitStack]
 
 # Cache markers: a resource that has not been resolved, and one whose
 # resolution is in progress (used to catch dependency cycles at resolve time).
@@ -68,17 +69,17 @@ class _ProviderParam:
 
 @dataclass(frozen=True, slots=True, init=False)
 class Resource(Generic[T]):
-    """A request-scoped value that Quater can inject into route handlers.
+    """A value that Quater can inject into route handlers.
 
     Providers may return a value, an awaitable value, a context manager, an
     async context manager, or yield one value from a generator. Generator and
-    context-manager providers are cleaned up after the handler finishes.
+    context-manager providers are cleaned up according to their scope.
 
     A provider may also depend on other resources: declare them as parameters
     annotated with ``Annotated[T, other_resource]``, exactly like a handler.
-    Quater resolves those dependencies first — once, from the request's shared
-    scope — and passes them in. The dependency graph is validated when routes
-    compile, so cycles and unresolvable parameters fail at startup.
+    Quater resolves those dependencies first, once per scope, and passes them
+    in. The dependency graph is validated when routes compile, so cycles,
+    invalid lifetime edges, and unresolvable parameters fail at startup.
     """
 
     provider: ResourceProvider[T]
@@ -151,8 +152,8 @@ class Resource(Generic[T]):
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        if self.scope != "request":
-            raise ConfigurationError("Resource scope must be 'request'")
+        if self.scope not in {"function", "request"}:
+            raise ConfigurationError("Resource scope must be 'function' or 'request'")
         if not callable(self.provider):
             raise TypeError("Resource provider must be callable")
         _reject_variadic_parameters(self.provider)
@@ -169,7 +170,13 @@ class Resource(Generic[T]):
         resource reused across a request resolves exactly once.
         """
 
-        return await resolve_resource(self, request, {}, lambda: stack)
+        cache: dict[int, object] = {}
+        return await resolve_resource(
+            self,
+            request,
+            lambda _scope: cache,
+            lambda _scope: stack,
+        )
 
     @property
     def display_name(self) -> str:
@@ -280,24 +287,38 @@ def validate_resource(
     _path.append(resource)
     for parameter in _ensure_plan(resource):
         if parameter.resource is not None:
+            _validate_dependency_scope(resource, parameter.resource)
             validate_resource(parameter.resource, _path)
     _path.pop()
     object.__setattr__(resource, "_validated", True)
 
 
+def _validate_dependency_scope(
+    resource: Resource[Any],
+    dependency: Resource[Any],
+) -> None:
+    if resource.scope == "request" and dependency.scope == "function":
+        raise ConfigurationError(
+            f"Request-scoped resource {resource.display_name!r} cannot depend on "
+            f"function-scoped resource {dependency.display_name!r}"
+        )
+
+
 async def resolve_resource(
     resource: Resource[T],
     request: Request,
-    cache: dict[int, object],
+    get_cache: Callable[[ResourceScope], dict[int, object]],
     get_stack: StackFactory,
 ) -> T:
     """Resolve a resource and its dependencies, caching by resource identity.
 
-    Dependencies resolve first and share ``cache``, so a resource reused across
-    a request is built once. ``get_stack`` is called only when a value actually
-    needs cleanup, so resolving plain values opens no exit stack.
+    Dependencies resolve first and share the cache for their own scope, so a
+    resource reused across a request is built once per lifetime. ``get_stack``
+    is called only when a value actually needs cleanup, so resolving plain
+    values opens no exit stack.
     """
 
+    cache = get_cache(resource.scope)
     key = id(resource)
     cached = cache.get(key, _UNRESOLVED)
     if cached is _RESOLVING:
@@ -314,8 +335,12 @@ async def resolve_resource(
             if parameter.resource is None:
                 value: object = request
             else:
+                _validate_dependency_scope(resource, parameter.resource)
                 value = await resolve_resource(
-                    parameter.resource, request, cache, get_stack
+                    parameter.resource,
+                    request,
+                    get_cache,
+                    get_stack,
                 )
             if parameter.keyword_only:
                 kwargs[parameter.name] = value
@@ -325,7 +350,9 @@ async def resolve_resource(
         resolved = cast(
             T,
             await _resolve_provider_result(
-                result, get_stack, name=resource.display_name
+                result,
+                lambda: get_stack(resource.scope),
+                name=resource.display_name,
             ),
         )
     except BaseException:
@@ -337,7 +364,7 @@ async def resolve_resource(
 
 async def _resolve_provider_result(
     result: object,
-    get_stack: StackFactory,
+    get_stack: ProviderStackFactory,
     *,
     name: str,
 ) -> object:

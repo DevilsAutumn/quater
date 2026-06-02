@@ -769,8 +769,8 @@ class Quater:
                             request,
                         )
         except Exception as exc:
-            # Authentication or routing may have opened resources on the request scope
-            # before failing; tear them down in reverse order.
+            # Authentication or routing may have opened resources before failing;
+            # tear them down in reverse order.
             await request._aexit_resources_for_error(exc)
             response = default_exception_response(exc, debug=self.config.debug)
             return await self._finalize_request(
@@ -1306,13 +1306,19 @@ class Quater:
         *,
         started_at: float,
     ) -> Response:
-        # Authentication may open resources on the request scope that the
-        # handler never adopts (a request-only handler, discovery, or an early
-        # exit). Defer their teardown onto the response so it is torn down once,
-        # streaming-safe. ``_aclose_resources`` is idempotent, so this is safe
-        # alongside the handler's own deferred close on the shared scope.
-        if request.has_open_resources:
-            add_request_finalizer(request, request._aclose_resources)
+        try:
+            await request._aclose_function_resources()
+        except Exception as exc:
+            await request._aexit_resources_for_error(exc)
+            error_response = default_exception_response(exc, debug=self.config.debug)
+            response = move_response_finalizers(response, error_response)
+
+        # Authentication may open request-scoped resources that the handler
+        # never adopts (a request-only handler, discovery, or an early exit).
+        # Defer their teardown onto the response so it is torn down once,
+        # streaming-safe.
+        if request._mark_request_resources_deferred():
+            add_request_finalizer(request, request._aclose_request_resources)
         finalized = self._finalize_response(response, request, context)
         finalized = move_request_finalizers_to_response(request, finalized)
         if self.access_logger is not None:

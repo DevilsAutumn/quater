@@ -249,3 +249,63 @@ async def test_provider_unit_of_work_rolls_back_handler_errors_across_surfaces(
     assert database.order_count() == before
     assert database.order_items("u_bob") == ["gizmo"]
     assert events == ["open", "rollback", "close"]
+
+
+@pytest.mark.parametrize("surface", SURFACES)
+@pytest.mark.asyncio
+async def test_function_scoped_commit_failure_fails_before_response_across_surfaces(
+    database: Database, surface: str
+) -> None:
+    events: list[str] = []
+    app = _app_with_db(database, [])
+
+    async def unit_of_work_provider(request: Request) -> AsyncIterator[AsyncSession]:
+        session = async_sessions(request)()
+        events.append("open")
+        try:
+            yield session
+        except Exception:
+            events.append("rollback")
+            await session.rollback()
+            raise
+        else:
+            events.append("commit")
+            await session.rollback()
+            raise RuntimeError("commit failed")
+        finally:
+            events.append("close")
+            await session.close()
+
+    unit_of_work = Resource(
+        unit_of_work_provider,
+        scope="function",
+        name="unit_of_work",
+    )
+
+    @app.post(
+        "/orders/{user_id}",
+        tool=True,
+        cli=True,
+        inject={"db": unit_of_work},
+        description="Create an order.",
+    )
+    async def create_order(user_id: str, db: AsyncSession) -> dict[str, str]:
+        db.add(Order(user_id=user_id, item="stapler", qty=7))
+        await db.flush()
+        return {"status": "created"}
+
+    before = database.order_count()
+    async with TestClient(app) as client:
+        ok, _payload = await _invoke(
+            client,
+            surface,
+            method="POST",
+            path="/orders/u_bob",
+            action="create_order",
+            arguments={"user_id": "u_bob"},
+        )
+
+    assert not ok
+    assert database.order_count() == before
+    assert database.order_items("u_bob") == ["gizmo"]
+    assert events == ["open", "commit", "close"]

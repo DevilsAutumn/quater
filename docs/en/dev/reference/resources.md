@@ -1,6 +1,6 @@
 # Resources Reference
 
-This page documents `Resource`, the request-scoped injection primitive.
+This page documents `Resource`, the scoped injection primitive.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ Resource(
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `provider` | `ResourceProvider[T]` | required | Callable that creates the value. |
-| `scope` | `ResourceScope` | `"request"` | Lifetime. Only `"request"` exists today. |
+| `scope` | `ResourceScope` | `"request"` | Lifetime: `"request"` or `"function"`. |
 | `name` | `str \| None` | `None` | Name used in resource error messages. |
 
 Returns: `None`. Bind the instance to a handler parameter either through a route
@@ -87,20 +87,25 @@ A provider may accept no parameters or one `Request` parameter. It may return a
 value, awaitable, context manager, async context manager, generator, or async
 generator.
 
-Generators must yield exactly once. Quater closes them after the response path
-finishes.
+Generators must yield exactly once. Request-scoped resources close after the
+response path finishes. Function-scoped resources close before after-response
+middleware runs, so cleanup failures can still become the request's response.
 
 ## Methods And Properties
 
 | Member | Return | Description |
 | --- | --- | --- |
 | `display_name` | `str` | `name`, provider `__name__`, or `"resource"`. |
-| `resolve(request, stack)` | `T` | Resolves the resource for one handler call. Application code usually does not call this directly. |
+| `resolve(request, stack)` | `T` | Resolves the resource into the stack you provide. Application code usually does not call this directly. |
+
+The low-level `resolve(request, stack)` helper uses the caller's stack; it does
+not create separate function/request teardown boundaries.
 
 ## What Can Go Wrong
 
-`Resource scope must be 'request'`
-: Use the only supported scope.
+`Resource scope must be 'function' or 'request'`
+: Use `"request"` for resources that must stay alive through streaming, or
+  `"function"` for resources that must finish before the response is sent.
 
 `Resource provider must be callable`
 : Pass a function or callable object.
@@ -127,6 +132,10 @@ finishes.
 
 `Only one resource is supported in a type annotation`
 : A parameter's `Annotated[...]` metadata lists more than one `Resource`.
+
+`Request-scoped resource 'current_user' cannot depend on function-scoped resource 'session'`
+: A longer-lived resource cannot depend on a shorter-lived one. Make both
+  resources request-scoped, or make the dependent resource function-scoped too.
 
 ## Also See
 

@@ -210,6 +210,46 @@ def test_two_node_dependency_cycle_is_rejected_at_compile_time() -> None:
         _compile_with_resource(a)
 
 
+def test_request_resource_cannot_depend_on_function_resource() -> None:
+    async def session_provider() -> FakeSession:
+        return FakeSession("short")
+
+    session = Resource(session_provider, scope="function", name="session")
+
+    async def user_provider(session: object) -> dict[str, str]:
+        assert isinstance(session, FakeSession)
+        return {"session": session.label}
+
+    user_provider.__annotations__["session"] = Annotated[FakeSession, session]
+    user = Resource(user_provider, name="current_user")
+
+    with pytest.raises(
+        ConfigurationError,
+        match="Request-scoped resource 'current_user' cannot depend on "
+        "function-scoped resource 'session'",
+    ):
+        _compile_with_resource(user)
+
+
+@pytest.mark.asyncio
+async def test_direct_resolution_rejects_invalid_resource_lifetime() -> None:
+    async def session_provider() -> FakeSession:
+        return FakeSession("short")
+
+    session = Resource(session_provider, scope="function", name="session")
+
+    async def user_provider(session: object) -> dict[str, str]:
+        assert isinstance(session, FakeSession)
+        return {"session": session.label}
+
+    user_provider.__annotations__["session"] = Annotated[FakeSession, session]
+    user = Resource(user_provider, name="current_user")
+
+    async with AsyncExitStack() as stack:
+        with pytest.raises(ConfigurationError, match="cannot depend"):
+            await user.resolve(Request(method="GET", path="/x"), stack)
+
+
 @pytest.mark.asyncio
 async def test_direct_resolution_of_a_cycle_raises_instead_of_recursing() -> None:
     # Resolving a cyclic resource without going through route compilation must

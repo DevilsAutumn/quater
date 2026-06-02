@@ -239,7 +239,10 @@ def test_resource_rejects_invalid_provider_configuration() -> None:
     # Provider parameters that are neither the request nor a resource dependency
     # are rejected when routes compile (see test_resource_dependencies), not at
     # construction — so a provider can carry resource dependencies.
-    with pytest.raises(ConfigurationError, match="scope must be 'request'"):
+    with pytest.raises(
+        ConfigurationError,
+        match="scope must be 'function' or 'request'",
+    ):
         Resource(provider, scope=cast(Any, "application"))
 
     with pytest.raises(TypeError, match="provider must be callable"):

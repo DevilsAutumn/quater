@@ -43,6 +43,7 @@ generator_resource = Resource(generator_provider)
 async_generator_resource = Resource(async_generator_provider)
 context_manager_resource = Resource(context_manager_provider)
 async_context_manager_resource = Resource(async_context_manager_provider)
+function_resource = Resource(async_generator_provider, scope="function")
 
 SessionDep = Annotated[Session, plain_resource]
 
@@ -52,6 +53,7 @@ assert_type(generator_resource, Resource[Session])
 assert_type(async_generator_resource, Resource[Session])
 assert_type(context_manager_resource, Resource[Session])
 assert_type(async_context_manager_resource, Resource[Session])
+assert_type(function_resource, Resource[Session])
 
 
 async def resolve_resources(request: Request, stack: AsyncExitStack) -> None:

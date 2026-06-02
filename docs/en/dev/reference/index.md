@@ -34,7 +34,7 @@ Public symbols:
 - [Parameters](./parameters): request binding markers.
 - [Request](./request): request object, state, headers, query, cookies, and
   context.
-- [Resources](./resources): request-scoped injection.
+- [Resources](./resources): scoped injection.
 - [Responses](./responses): automatic return conversion and explicit responses.
 - [Auth and Security](./auth): auth hooks, approval hooks, errors, and signed
   cookies.
