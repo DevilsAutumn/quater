@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Iterable
 from typing import Protocol, TypeAlias, cast
 
-from quater._finalize import schedule_response_finalizers
+from quater._finalize import run_response_finalizers
 from quater.adapters._shared import (
     QuaterApplication,
     first_client_address,
@@ -124,7 +124,7 @@ class RSGIAdapter:
 
             protocol.response_empty(response.status_code, response_header_list)
         finally:
-            schedule_response_finalizers(response)
+            await run_response_finalizers(response)
 
 
 def _body_reader(protocol: RSGIHTTPProtocol, max_body_size: int) -> BodyReader:

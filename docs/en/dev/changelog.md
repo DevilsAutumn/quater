@@ -98,6 +98,9 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   percent-decodes `raw_path` before route matching, so encoded slashes split
   path segments the same way they do on Quater's primary Granian/RSGI path;
   WSGI also recovers UTF-8 path bytes before dispatch. ([#78](https://github.com/DevilsAutumn/quater/issues/78))
+- Fixed RSGI response cleanup to await response finalizers before the adapter
+  returns, matching ASGI and WSGI cleanup behavior for regular and streaming
+  responses. ([#77](https://github.com/DevilsAutumn/quater/issues/77))
 - Fixed protected action approval hashes to use the bound and validated handler
   arguments, including defaults and normalized scalar values, instead of the raw
   caller payload. Request and resource values stay out of the hash, so approval

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 
 import pytest
@@ -12,7 +11,6 @@ from quater._finalize import (
     move_request_finalizers_to_response,
     move_response_finalizers,
     run_response_finalizers,
-    schedule_response_finalizers,
 )
 
 
@@ -99,32 +97,3 @@ async def test_close_request_finalizers_runs_lifo_and_propagates_errors() -> Non
 
     assert request._finalizers is None
     assert events == ["last", "failing"]
-
-
-def test_scheduled_finalizers_are_ignored_without_running_loop() -> None:
-    async def cleanup() -> None:
-        return None
-
-    response = Response()
-    response._finalizers = [cleanup]
-
-    schedule_response_finalizers(response)
-
-    assert response._finalizers == [cleanup]
-
-
-@pytest.mark.asyncio
-async def test_scheduled_finalizers_run_on_current_event_loop() -> None:
-    events: list[str] = []
-    response = Response()
-
-    async def cleanup() -> None:
-        events.append("closed")
-
-    response._finalizers = [cleanup]
-
-    schedule_response_finalizers(response)
-    await asyncio.sleep(0)
-
-    assert response._finalizers is None
-    assert events == ["closed"]

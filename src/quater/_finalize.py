@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from asyncio import create_task, get_running_loop
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -58,16 +57,6 @@ async def run_response_finalizers(response: Response) -> None:
             _logger.exception("Response cleanup failed")
 
 
-def schedule_response_finalizers(response: Response) -> None:
-    if not response._finalizers:
-        return
-    try:
-        get_running_loop()
-    except RuntimeError:
-        return
-    create_task(run_response_finalizers(response))
-
-
 async def close_request_finalizers(request: Request) -> None:
     finalizers = request._finalizers
     if not finalizers:
@@ -92,5 +81,4 @@ __all__ = [
     "move_request_finalizers_to_response",
     "move_response_finalizers",
     "run_response_finalizers",
-    "schedule_response_finalizers",
 ]
