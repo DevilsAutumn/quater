@@ -88,25 +88,52 @@ async def call_asgi_file_lookup(
 
 
 @pytest.mark.asyncio
-async def test_asgi_raw_path_preserves_encoded_slash_inside_path_segment() -> None:
+async def test_asgi_raw_path_decodes_non_ascii_path_segment() -> None:
+    app = Quater()
+
+    @app.get("/items/{item_id}")
+    async def item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    sent = await call_asgi(
+        app.asgi,
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/items/caf\u00e9",
+            "raw_path": b"/items/caf%C3%A9",
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost")],
+            "client": ("127.0.0.1", 5000),
+        },
+        [{"type": "http.request", "body": b"", "more_body": False}],
+    )
+
+    assert sent[0]["status"] == 200
+    assert response_body(sent) == b'{"item_id":"caf\xc3\xa9"}'
+
+
+@pytest.mark.asyncio
+async def test_asgi_raw_path_decodes_encoded_slash_before_matching() -> None:
     status, body = await call_asgi_file_lookup(
         path="/files/a/b",
         raw_path=b"/files/a%2Fb",
     )
 
-    assert status == 200
-    assert body == b'{"name":"a%2Fb"}'
+    assert status == 404
+    assert body == b"Not found: /files/a/b"
 
 
 @pytest.mark.asyncio
 async def test_asgi_raw_path_ignores_query_separator_defensively() -> None:
     status, body = await call_asgi_file_lookup(
         path="/wrong",
-        raw_path=b"/files/a%2Fb?debug=true",
+        raw_path=b"/files/%2e%2e?debug=true",
     )
 
     assert status == 200
-    assert body == b'{"name":"a%2Fb"}'
+    assert body == b'{"name":".."}'
 
 
 @pytest.mark.asyncio
@@ -114,6 +141,17 @@ async def test_asgi_malformed_raw_path_falls_back_to_decoded_path() -> None:
     status, body = await call_asgi_file_lookup(
         path="/files/fallback",
         raw_path=b"/files/\xff",
+    )
+
+    assert status == 200
+    assert body == b'{"name":"fallback"}'
+
+
+@pytest.mark.asyncio
+async def test_asgi_invalid_percent_encoded_utf8_falls_back_to_decoded_path() -> None:
+    status, body = await call_asgi_file_lookup(
+        path="/files/fallback",
+        raw_path=b"/files/%ff",
     )
 
     assert status == 200

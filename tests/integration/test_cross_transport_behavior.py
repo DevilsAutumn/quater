@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from inspect import isawaitable
 from io import BytesIO
 from typing import Any, cast
@@ -76,6 +77,17 @@ class RSGIStreamTransport:
         raise AssertionError("unexpected streaming response")
 
 
+@dataclass(frozen=True, slots=True)
+class PathParamCase:
+    name: str
+    asgi_path: str
+    asgi_raw_path: bytes
+    rsgi_path: str
+    wsgi_path: str
+    expected_status: int
+    expected_body: bytes
+
+
 async def asgi_response(
     app: Quater,
     *,
@@ -121,6 +133,45 @@ async def asgi_response(
     return cast(int, start["status"]), headers, body
 
 
+async def asgi_path_response(
+    app: Quater,
+    *,
+    path: str,
+    raw_path: bytes,
+) -> tuple[int, bytes]:
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> ASGIMessage:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Mapping[str, Any]) -> None:
+        sent.append(dict(message))
+
+    await app.asgi(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "raw_path": raw_path,
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost")],
+            "client": ("127.0.0.1", 5000),
+        },
+        receive,
+        send,
+    )
+    start = next(
+        message for message in sent if message["type"] == "http.response.start"
+    )
+    body = b"".join(
+        cast(bytes, message.get("body", b""))
+        for message in sent
+        if message["type"] == "http.response.body"
+    )
+    return cast(int, start["status"]), body
+
+
 def wsgi_response(
     app: Quater,
     *,
@@ -157,6 +208,38 @@ def wsgi_response(
     return status_code, dict(headers), body
 
 
+def wsgi_path_response(app: Quater, *, path: str) -> tuple[int, bytes]:
+    captured: dict[str, object] = {}
+
+    def start_response(
+        status: str,
+        headers: list[tuple[str, str]],
+        exc_info: object | None = None,
+    ) -> object:
+        captured["status"] = status
+        captured["headers"] = headers
+        return None
+
+    body = b"".join(
+        app.wsgi(
+            {
+                "REQUEST_METHOD": "GET",
+                "PATH_INFO": path,
+                "QUERY_STRING": "",
+                "SERVER_NAME": "localhost",
+                "SERVER_PORT": "80",
+                "SERVER_PROTOCOL": "HTTP/1.1",
+                "wsgi.input": BytesIO(b""),
+                "wsgi.url_scheme": "http",
+                "REMOTE_ADDR": "127.0.0.1",
+            },
+            start_response,
+        )
+    )
+    status_code = int(str(captured["status"]).split(" ", 1)[0])
+    return status_code, body
+
+
 async def rsgi_response(
     app: Quater,
     *,
@@ -178,6 +261,22 @@ async def rsgi_response(
     return protocol.status, dict(protocol.headers), protocol.body
 
 
+async def rsgi_path_response(app: Quater, *, path: str) -> tuple[int, bytes]:
+    protocol = RSGIProtocol()
+    result = app.rsgi(
+        RSGIScope(
+            method="GET",
+            path=path,
+            headers=[("host", "localhost")],
+        ),
+        protocol,
+    )
+    assert isawaitable(result)
+    await result
+    assert protocol.status is not None
+    return protocol.status, protocol.body
+
+
 def test_adapter_properties_are_cached_per_app_instance() -> None:
     app = Quater()
 
@@ -185,6 +284,117 @@ def test_adapter_properties_are_cached_per_app_instance() -> None:
     assert app.rsgi is app.rsgi
     assert app.__rsgi__ is app.rsgi
     assert app.wsgi is app.wsgi
+
+
+def make_path_param_app() -> Quater:
+    app = Quater()
+
+    @app.get("/items/{item_id}")
+    async def item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    @app.get("/files/{name}")
+    async def file(name: str) -> dict[str, str]:
+        return {"name": name}
+
+    return app
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    (
+        PathParamCase(
+            name="non_ascii",
+            asgi_path="/items/caf\u00e9",
+            asgi_raw_path=b"/items/caf%C3%A9",
+            rsgi_path="/items/caf\u00e9",
+            wsgi_path="/items/caf\u00c3\u00a9",
+            expected_status=200,
+            expected_body=b'{"item_id":"caf\xc3\xa9"}',
+        ),
+        PathParamCase(
+            name="encoded_space_is_data",
+            asgi_path="/items/red blue",
+            asgi_raw_path=b"/items/red%20blue",
+            rsgi_path="/items/red blue",
+            wsgi_path="/items/red blue",
+            expected_status=200,
+            expected_body=b'{"item_id":"red blue"}',
+        ),
+        PathParamCase(
+            name="encoded_percent_is_data",
+            asgi_path="/items/100%",
+            asgi_raw_path=b"/items/100%25",
+            rsgi_path="/items/100%",
+            wsgi_path="/items/100%",
+            expected_status=200,
+            expected_body=b'{"item_id":"100%"}',
+        ),
+        PathParamCase(
+            name="double_encoded_slash_decodes_once",
+            asgi_path="/items/a%2Fb",
+            asgi_raw_path=b"/items/a%252Fb",
+            rsgi_path="/items/a%2Fb",
+            wsgi_path="/items/a%2Fb",
+            expected_status=200,
+            expected_body=b'{"item_id":"a%2Fb"}',
+        ),
+        PathParamCase(
+            name="encoded_question_mark_is_data",
+            asgi_path="/items/name?debug",
+            asgi_raw_path=b"/items/name%3Fdebug?ignored=true",
+            rsgi_path="/items/name?debug",
+            wsgi_path="/items/name?debug",
+            expected_status=200,
+            expected_body=b'{"item_id":"name?debug"}',
+        ),
+        PathParamCase(
+            name="encoded_slash_is_segment_split",
+            asgi_path="/items/a/b",
+            asgi_raw_path=b"/items/a%2Fb",
+            rsgi_path="/items/a/b",
+            wsgi_path="/items/a/b",
+            expected_status=404,
+            expected_body=b"Not found: /items/a/b",
+        ),
+        PathParamCase(
+            name="encoded_dotdot_is_segment_value",
+            asgi_path="/files/..",
+            asgi_raw_path=b"/files/%2e%2e",
+            rsgi_path="/files/..",
+            wsgi_path="/files/..",
+            expected_status=200,
+            expected_body=b'{"name":".."}',
+        ),
+        PathParamCase(
+            name="encoded_traversal_stays_extra_segments",
+            asgi_path="/files/../../secret",
+            asgi_raw_path=b"/files/..%2F..%2Fsecret",
+            rsgi_path="/files/../../secret",
+            wsgi_path="/files/../../secret",
+            expected_status=404,
+            expected_body=b"Not found: /files/../../secret",
+        ),
+    ),
+    ids=lambda case: case.name,
+)
+async def test_encoded_path_params_match_across_http_adapters(
+    case: PathParamCase,
+) -> None:
+    app = make_path_param_app()
+    expected = (case.expected_status, case.expected_body)
+
+    assert (
+        await asgi_path_response(
+            app,
+            path=case.asgi_path,
+            raw_path=case.asgi_raw_path,
+        )
+        == expected
+    )
+    assert wsgi_path_response(app, path=case.wsgi_path) == expected
+    assert await rsgi_path_response(app, path=case.rsgi_path) == expected
 
 
 @pytest.mark.asyncio

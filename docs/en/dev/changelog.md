@@ -94,6 +94,10 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
 ### Fixed
 
+- Fixed HTTP path parameter parity across RSGI, ASGI, and WSGI. ASGI now
+  percent-decodes `raw_path` before route matching, so encoded slashes split
+  path segments the same way they do on Quater's primary Granian/RSGI path;
+  WSGI also recovers UTF-8 path bytes before dispatch. ([#78](https://github.com/DevilsAutumn/quater/issues/78))
 - Fixed protected action approval hashes to use the bound and validated handler
   arguments, including defaults and normalized scalar values, instead of the raw
   caller payload. Request and resource values stay out of the hash, so approval

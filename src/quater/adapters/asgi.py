@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, MutableMapping
 from typing import Any, Literal, TypeAlias, cast
+from urllib.parse import unquote_to_bytes
 
 from quater._finalize import run_response_finalizers
 from quater.adapters._shared import (
@@ -181,13 +182,13 @@ def _path_from_scope(scope: ASGIScope) -> str:
         return fallback
 
     path_bytes = raw_path.split(b"?", 1)[0]
-    for encoding in ("ascii", "utf-8"):
-        try:
-            path = path_bytes.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-        return path if path.startswith("/") else fallback
-    return fallback
+    if not path_bytes.startswith(b"/"):
+        return fallback
+    try:
+        path = unquote_to_bytes(path_bytes).decode("utf-8")
+    except UnicodeDecodeError:
+        return fallback
+    return path if path.startswith("/") else fallback
 
 
 async def _read_body(receive: ASGIReceive, max_body_size: int) -> bytes:

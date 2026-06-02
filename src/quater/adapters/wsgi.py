@@ -60,7 +60,7 @@ class WSGIAdapter:
     ) -> tuple[int, list[tuple[str, str]], list[bytes]]:
         request = request_from_parts(
             method=str(environ.get("REQUEST_METHOD", "GET")),
-            path=str(environ.get("PATH_INFO", "/") or "/"),
+            path=_path_from_environ(environ),
             scheme=str(environ.get("wsgi.url_scheme", "http")),
             headers=_headers_from_environ(environ),
             query_string=str(environ.get("QUERY_STRING", "")),
@@ -97,6 +97,14 @@ def _headers_from_environ(environ: WSGIEnvironment) -> HeaderItems:
             headers.append(("host", host))
 
     return tuple(headers)
+
+
+def _path_from_environ(environ: WSGIEnvironment) -> str:
+    path = str(environ.get("PATH_INFO", "/") or "/")
+    try:
+        return path.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        return path
 
 
 def _body_reader(environ: WSGIEnvironment, max_body_size: int) -> BodyReader:

@@ -151,6 +151,19 @@ def test_wsgi_request_parts_include_query_scheme_client_and_host_fallback() -> N
     )
 
 
+def test_wsgi_path_info_recovers_utf8_path_bytes() -> None:
+    app = Quater()
+
+    @app.get("/items/{item_id}")
+    async def item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    status, _, body = call_wsgi(app, base_environ(path="/items/caf\u00c3\u00a9"))
+
+    assert status == "200 OK"
+    assert body == b'{"item_id":"caf\xc3\xa9"}'
+
+
 def test_wsgi_input_stream_is_read_once_by_handler() -> None:
     app = Quater()
     stream = CountingInput(b"abc")

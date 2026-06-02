@@ -75,7 +75,7 @@ async def test_normalized_slashes_do_not_bypass_auth_or_call_wrong_handler() -> 
 
 
 @pytest.mark.asyncio
-async def test_dynamic_params_treat_encoded_and_dot_values_as_data_only() -> None:
+async def test_dynamic_params_treat_decoded_dot_values_as_data_only() -> None:
     seen: list[str] = []
     app = Quater()
 
@@ -84,16 +84,15 @@ async def test_dynamic_params_treat_encoded_and_dot_values_as_data_only() -> Non
         seen.append(name)
         return {"name": name}
 
-    encoded = await app.handle(Request(method="GET", path="/files/a%2Fb"))
+    decoded_slash = await app.handle(Request(method="GET", path="/files/a/b"))
     dotdot = await app.handle(Request(method="GET", path="/files/.."))
     traversal = await app.handle(Request(method="GET", path="/files/../../secret"))
 
-    assert encoded.status_code == 200
-    assert encoded.body == b'{"name":"a%2Fb"}'
+    assert decoded_slash.status_code == 404
     assert dotdot.status_code == 200
     assert dotdot.body == b'{"name":".."}'
     assert traversal.status_code == 404
-    assert seen == ["a%2Fb", ".."]
+    assert seen == [".."]
 
 
 def test_user_routes_cannot_claim_quater_internal_paths() -> None:
