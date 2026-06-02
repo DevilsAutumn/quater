@@ -401,7 +401,7 @@ class RouteGroup:
         self,
         *,
         prefix: str,
-        inject: Mapping[str, Resource],
+        inject: Mapping[str, Resource[Any]],
         metadata: Mapping[str, Any],
         middleware: MiddlewareStack,
     ) -> Iterator[RouteDefinition]:
@@ -547,10 +547,10 @@ def _merge_metadata(
     return merged
 
 
-def _normalize_inject(inject: ResourceMap | None) -> dict[str, Resource]:
+def _normalize_inject(inject: ResourceMap | None) -> dict[str, Resource[Any]]:
     if inject is None:
         return {}
-    normalized: dict[str, Resource] = {}
+    normalized: dict[str, Resource[Any]] = {}
     for name, resource in inject.items():
         if not isinstance(name, str) or not name.isidentifier():
             raise ConfigurationError(f"Invalid injected parameter name: {name!r}")
@@ -561,9 +561,9 @@ def _normalize_inject(inject: ResourceMap | None) -> dict[str, Resource]:
 
 
 def _merge_inject(
-    parent: Mapping[str, Resource],
-    child: Mapping[str, Resource],
-) -> dict[str, Resource]:
+    parent: Mapping[str, Resource[Any]],
+    child: Mapping[str, Resource[Any]],
+) -> dict[str, Resource[Any]]:
     merged = dict(parent)
     for name, resource in child.items():
         existing = merged.get(name)

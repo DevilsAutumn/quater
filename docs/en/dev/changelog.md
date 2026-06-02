@@ -68,10 +68,11 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   with `Quater(auth=[AuthConfig(fn, surfaces=["api", "mcp", "cli"])])`, and exactly one
   authenticator runs per request, chosen by `request.context.source`. The
   authenticator receives the real `Request`; after cheap header/token checks it
-  can call `await request.resolve(SessionDep)` to open the same request-scoped
-  resource alias that the handler injects. That resource shares the handler's
-  scope, so a session auth opens to verify the caller is the same session the
-  handler injects. `AuthContext` gained a typed `payload` slot to
+  can call `await request.resolve(resource)` to open the same request-scoped
+  resource that the handler injects through an `Annotated[T, resource]` alias.
+  That resource shares the handler's scope, so a session auth opens to verify
+  the caller is the same session the handler injects. `AuthContext` gained a
+  typed `payload` slot to
   carry the loaded object (for example the `User`) so a handler reads it back
   through a resource with no second query. A surface covered by `AuthConfig`
   protects its exposed routes by default; routes opt out with `public=True`

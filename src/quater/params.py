@@ -53,7 +53,7 @@ class BoundParameter:
     annotation: object
     default: object
     description: str | None = None
-    resource: Resource | None = None
+    resource: Resource[Any] | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -242,7 +242,7 @@ def _parameter_source(
     marker: ParameterMarker | None,
     path_param_names: frozenset[str],
     *,
-    resource: Resource | None,
+    resource: Resource[Any] | None,
 ) -> ParameterSource:
     if resource is not None:
         if name == "request" or annotation is Request:
@@ -496,7 +496,7 @@ def _allows_none(annotation: object) -> bool:
 
 def _annotation_and_markers(
     annotation: object,
-) -> tuple[object, ParameterMarker | None, Resource | None]:
+) -> tuple[object, ParameterMarker | None, Resource[Any] | None]:
     if get_origin(annotation) is not Annotated:
         return annotation, None, None
 
@@ -505,7 +505,7 @@ def _annotation_and_markers(
         return annotation, None, None
 
     marker: ParameterMarker | None = None
-    resource: Resource | None = None
+    resource: Resource[Any] | None = None
     for metadata in args[1:]:
         if isinstance(metadata, ParameterMarker):
             if marker is not None:
@@ -561,7 +561,7 @@ def _validate_bound_parameter(
     default: object,
     annotation: object,
     path_param_names: frozenset[str],
-    resource: Resource | None,
+    resource: Resource[Any] | None,
     marker: ParameterMarker | None,
 ) -> None:
     if source == "request":
@@ -706,10 +706,10 @@ async def _bind_resource_parameter(
     return await resolve_resource(resource, request, scope.cache, scope.stack)
 
 
-def _normalize_resources(inject: ResourceMap | None) -> dict[str, Resource]:
+def _normalize_resources(inject: ResourceMap | None) -> dict[str, Resource[Any]]:
     if inject is None:
         return {}
-    resources: dict[str, Resource] = {}
+    resources: dict[str, Resource[Any]] = {}
     for name, resource in inject.items():
         if not isinstance(name, str) or not name.isidentifier():
             raise RouteBindingError(f"Invalid injected parameter name: {name!r}")
@@ -720,7 +720,7 @@ def _normalize_resources(inject: ResourceMap | None) -> dict[str, Resource]:
 
 
 def _validate_all_resources_are_used(
-    resources: Mapping[str, Resource],
+    resources: Mapping[str, Resource[Any]],
     seen_names: set[str],
 ) -> None:
     for name in resources:

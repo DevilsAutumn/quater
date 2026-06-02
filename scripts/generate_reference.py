@@ -1069,7 +1069,7 @@ def render_resources(package: Any) -> str:
             "",
             "| Name | Type | Meaning |",
             "| --- | --- | --- |",
-            "| `provider` | [`ResourceProvider`](#type-resourceprovider) | "
+            "| `provider` | [`ResourceProvider[T]`](#type-resourceprovider) | "
             "Callable that creates the value. |",
             "| `scope` | [`ResourceScope`](#type-resourcescope) | "
             "Resource lifetime. Currently only `request` is supported. |",
@@ -1097,6 +1097,9 @@ def render_resources(package: Any) -> str:
             "The provider can return a plain value, an awaitable value, a sync or "
             "async",
             "context manager, or yield one value from a sync or async generator.",
+            "`Resource` is generic: `Resource(provider)` carries the provider's "
+            "resolved value type, so `await request.resolve(resource)` returns "
+            "that value type.",
             "",
             "```python",
             "async def db_session(request: Request) -> AsyncIterator[DatabaseSession]:",
@@ -1129,8 +1132,9 @@ def render_resources(package: Any) -> str:
             "| Type | Meaning |",
             "| --- | --- |",
             '| <span id="type-resourceprovider"></span>`ResourceProvider` | '
-            "Callable used by [`Resource`](#symbol-resource). It may accept no "
-            "arguments or one [`Request`](./request#symbol-request). |",
+            "Callable used by [`Resource`](#symbol-resource). It may return a "
+            "plain value, awaitable value, sync or async context manager, or a "
+            "sync or async generator that yields one value. |",
             '| <span id="type-resourcemap"></span>`ResourceMap` | Mapping of '
             "handler parameter name to [`Resource`](#symbol-resource). This is "
             "the type accepted by `inject`. |",

@@ -78,6 +78,7 @@ tests.
 | `body()` | `bytes` | Reads and caches the request body. |
 | `json()` | `Any` | Parses and caches the JSON body with Quater's JSON decoder. |
 | `form()` | [`FormData`](#symbol-formdata) | Parses and caches submitted form fields and files. |
+| `resolve(resource)` | `T` | Resolves a request-scoped [`Resource[T]`](./resources#symbol-resource) lazily from the request. |
 
 Example:
 

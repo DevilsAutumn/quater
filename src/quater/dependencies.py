@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import AsyncGenerator, Callable, Generator, Mapping
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Generator,
+    Iterator,
+    Mapping,
+)
 from contextlib import (
     AbstractAsyncContextManager,
     AbstractContextManager,
@@ -12,14 +20,35 @@ from contextlib import (
     contextmanager,
 )
 from dataclasses import dataclass, field
-from typing import Annotated, Literal, cast, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Any,
+    Generic,
+    Literal,
+    TypeAlias,
+    TypeVar,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    overload,
+)
 
 from quater.exceptions import ConfigurationError
 from quater.request import Request
 
 ResourceScope = Literal["request"]
-ResourceProvider = Callable[..., object]
-ResourceMap = Mapping[str, "Resource"]
+T = TypeVar("T")
+_ResourceProviderResult: TypeAlias = (
+    T
+    | Awaitable[T]
+    | Iterator[T]
+    | AsyncIterator[T]
+    | AbstractContextManager[T]
+    | AbstractAsyncContextManager[T]
+)
+ResourceProvider: TypeAlias = Callable[..., _ResourceProviderResult[T]]
+ResourceMap: TypeAlias = Mapping[str, "Resource[Any]"]
 StackFactory = Callable[[], AsyncExitStack]
 
 # Cache markers: a resource that has not been resolved, and one whose
@@ -33,12 +62,12 @@ class _ProviderParam:
     """One parameter of a resource provider: the request, or another resource."""
 
     name: str
-    resource: Resource | None
+    resource: Resource[Any] | None
     keyword_only: bool
 
 
-@dataclass(frozen=True, slots=True)
-class Resource:
+@dataclass(frozen=True, slots=True, init=False)
+class Resource(Generic[T]):
     """A request-scoped value that Quater can inject into route handlers.
 
     Providers may return a value, an awaitable value, a context manager, an
@@ -52,13 +81,74 @@ class Resource:
     compile, so cycles and unresolvable parameters fail at startup.
     """
 
-    provider: ResourceProvider
+    provider: ResourceProvider[T]
     scope: ResourceScope = "request"
     name: str | None = None
     _plan: tuple[_ProviderParam, ...] | None = field(
         init=False, repr=False, compare=False, default=None
     )
     _validated: bool = field(init=False, repr=False, compare=False, default=False)
+
+    @overload
+    def __init__(
+        self,
+        provider: Callable[..., Awaitable[T]],
+        scope: ResourceScope = "request",
+        name: str | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        provider: Callable[..., AsyncIterator[T]],
+        scope: ResourceScope = "request",
+        name: str | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        provider: Callable[..., Iterator[T]],
+        scope: ResourceScope = "request",
+        name: str | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        provider: Callable[..., AbstractAsyncContextManager[T]],
+        scope: ResourceScope = "request",
+        name: str | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        provider: Callable[..., AbstractContextManager[T]],
+        scope: ResourceScope = "request",
+        name: str | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        provider: Callable[..., T],
+        scope: ResourceScope = "request",
+        name: str | None = None,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        provider: Callable[..., object],
+        scope: ResourceScope = "request",
+        name: str | None = None,
+    ) -> None:
+        object.__setattr__(self, "provider", cast(ResourceProvider[T], provider))
+        object.__setattr__(self, "scope", scope)
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "_plan", None)
+        object.__setattr__(self, "_validated", False)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         if self.scope != "request":
@@ -71,7 +161,7 @@ class Resource:
         self,
         request: Request,
         stack: AsyncExitStack,
-    ) -> object:
+    ) -> T:
         """Resolve the resource once, entering cleanup into the given stack.
 
         Each call uses a fresh dependency cache. Handler binding goes through
@@ -89,7 +179,7 @@ class Resource:
         return provider_name if isinstance(provider_name, str) else "resource"
 
 
-def _reject_variadic_parameters(provider: ResourceProvider) -> None:
+def _reject_variadic_parameters(provider: Callable[..., object]) -> None:
     try:
         signature = inspect.signature(provider)
     except (TypeError, ValueError) as exc:
@@ -104,17 +194,17 @@ def _reject_variadic_parameters(provider: ResourceProvider) -> None:
             raise ConfigurationError("Resource providers cannot use *args or **kwargs")
 
 
-def _provider_hints(provider: ResourceProvider) -> Mapping[str, object]:
+def _provider_hints(provider: Callable[..., object]) -> Mapping[str, object]:
     try:
         return get_type_hints(provider, include_extras=True)
     except (NameError, TypeError):
         return {}
 
 
-def _resource_from_annotation(annotation: object) -> Resource | None:
+def _resource_from_annotation(annotation: object) -> Resource[Any] | None:
     if get_origin(annotation) is not Annotated:
         return None
-    found: Resource | None = None
+    found: Resource[Any] | None = None
     for metadata in get_args(annotation)[1:]:
         if isinstance(metadata, Resource):
             if found is not None:
@@ -125,7 +215,7 @@ def _resource_from_annotation(annotation: object) -> Resource | None:
     return found
 
 
-def _build_plan(resource: Resource) -> tuple[_ProviderParam, ...]:
+def _build_plan(resource: Resource[Any]) -> tuple[_ProviderParam, ...]:
     provider = resource.provider
     signature = inspect.signature(provider)
     hints = _provider_hints(provider)
@@ -160,7 +250,7 @@ def _build_plan(resource: Resource) -> tuple[_ProviderParam, ...]:
     return tuple(plan)
 
 
-def _ensure_plan(resource: Resource) -> tuple[_ProviderParam, ...]:
+def _ensure_plan(resource: Resource[Any]) -> tuple[_ProviderParam, ...]:
     plan = resource._plan
     if plan is None:
         plan = _build_plan(resource)
@@ -169,8 +259,8 @@ def _ensure_plan(resource: Resource) -> tuple[_ProviderParam, ...]:
 
 
 def validate_resource(
-    resource: Resource,
-    _path: list[Resource] | None = None,
+    resource: Resource[Any],
+    _path: list[Resource[Any]] | None = None,
 ) -> None:
     """Validate a resource and its dependencies at route compile time.
 
@@ -196,11 +286,11 @@ def validate_resource(
 
 
 async def resolve_resource(
-    resource: Resource,
+    resource: Resource[T],
     request: Request,
     cache: dict[int, object],
     get_stack: StackFactory,
-) -> object:
+) -> T:
     """Resolve a resource and its dependencies, caching by resource identity.
 
     Dependencies resolve first and share ``cache``, so a resource reused across
@@ -215,7 +305,7 @@ async def resolve_resource(
             f"Resource dependency cycle detected at {resource.display_name!r}"
         )
     if cached is not _UNRESOLVED:
-        return cached
+        return cast(T, cached)
     cache[key] = _RESOLVING
     try:
         args: list[object] = []
@@ -232,8 +322,11 @@ async def resolve_resource(
             else:
                 args.append(value)
         result = resource.provider(*args, **kwargs)
-        resolved = await _resolve_provider_result(
-            result, get_stack, name=resource.display_name
+        resolved = cast(
+            T,
+            await _resolve_provider_result(
+                result, get_stack, name=resource.display_name
+            ),
         )
     except BaseException:
         cache.pop(key, None)

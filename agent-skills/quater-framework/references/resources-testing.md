@@ -59,6 +59,19 @@ async def get_order(order_id: str, session: DatabaseSession) -> dict[str, object
 Injected parameters are not caller inputs. They should not appear in OpenAPI,
 MCP schemas, or CLI action schemas.
 
+`Resource` carries the provider's resolved value type. When auth or middleware
+needs to open a request-scoped resource manually, prefer the raw resource:
+
+```python
+async def authenticate(request: Request):
+    session = await request.resolve(db_session)
+    ...
+```
+
+Keep `Annotated[T, db_session]` for handler/resource-provider injection. It is
+still accepted by `request.resolve()` for compatibility, but the raw
+`Resource[T]` path is the typed no-cast form.
+
 ## Testing HTTP
 
 Use `TestClient` to exercise the Quater request path without opening a port:

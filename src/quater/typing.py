@@ -69,9 +69,9 @@ class ApprovalRequest:
     context: RequestContext = field(default_factory=RequestContext)
 
 
-# An authenticator receives the request. Use ``await request.resolve(SessionDep)``
+# An authenticator receives the request. Use ``await request.resolve(resource)``
 # inside it when a request-scoped resource is needed after cheap checks pass.
-# ``SessionDep`` is the same ``Annotated[T, resource]`` alias handlers inject.
+# Handlers can still inject the same resource through ``Annotated[T, resource]``.
 Authenticator: TypeAlias = Callable[["Request"], Awaitable[AuthContext | None]]
 ActionApproval: TypeAlias = Callable[[ApprovalRequest], Awaitable[bool]]
 LifespanHook: TypeAlias = Callable[[], Awaitable[None]]

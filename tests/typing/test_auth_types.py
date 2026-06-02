@@ -38,10 +38,10 @@ SessionDep = Annotated[Session, session_resource]
 
 
 async def authenticate_with_resource(ctx: Request) -> AuthContext | None:
-    session = await ctx.resolve(SessionDep)
+    session = await ctx.resolve(session_resource)
     assert_type(session, Session)
-    raw_session = await ctx.resolve(session_resource)
-    assert_type(raw_session, object)
+    alias_session = await ctx.resolve(SessionDep)
+    assert_type(alias_session, object)
     return AuthContext(subject="typed")
 
 

@@ -42,12 +42,12 @@ async def me(request: Request) -> dict[str, object]:
 
 The authenticator receives the real `Request` and returns an `AuthContext`
 (returning `None`, or anything that is not an `AuthContext`, denies the
-request). Do cheap checks first, then call `await request.resolve(SessionDep)`
-only when auth needs a request-scoped resource. `SessionDep` is the same
-`Annotated[T, resource]` alias the handler injects. The resolved value shares
-the request's scope, so a session auth opens to verify the caller is the
-**same** session the handler later injects — no second connection, no double
-lookup.
+request). Do cheap checks first, then call
+`await request.resolve(session_resource)` only when auth needs a request-scoped
+resource. The handler can inject that same resource through
+`Annotated[T, session_resource]`. The resolved value shares the request's
+scope, so a session auth opens to verify the caller is the **same** session the
+handler later injects — no second connection, no double lookup.
 
 Sharing is by resource identity: reuse a single module-level `Resource` in both
 the authenticator and the handler's `Annotated` alias. Two separate `Resource`
@@ -56,8 +56,8 @@ see [Resources and Injection](./resources#one-scope-per-request).
 
 ::: note Validation timing
 Resources injected into handlers are validated when routes compile. A resource
-used only through `await request.resolve(SessionDep)` is validated when it is
-first resolved. Reusing the same `SessionDep` in a handler, or in another
+used only through `await request.resolve(resource)` is validated when it is
+first resolved. Reusing that same resource in a handler alias, or in another
 compiled resource graph, gives you startup validation too.
 :::
 
@@ -118,7 +118,7 @@ async def authenticate(request: Request) -> AuthContext:
     token = request.headers.get("authorization")
     if token is None:
         raise HTTPError("Unauthorized", status_code=401)
-    session = await request.resolve(SessionDep)
+    session = await request.resolve(db_session)
     user = await user_from_token(session, token)
     if user is None:
         raise HTTPError("Unauthorized", status_code=401)

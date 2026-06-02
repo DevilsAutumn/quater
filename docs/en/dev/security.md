@@ -86,10 +86,10 @@ startup with route names.
 Check the cheap thing first. An authenticator that reads only the `Request`
 header rejects a no-token request before any database session opens, so a
 bad-token flood can't drain the connection pool. When auth needs the database,
-call `await request.resolve(SessionDep)` only after the token/header shape has
-passed cheap validation, where `SessionDep` is the same `Annotated[T, resource]`
-alias the handler injects. Authenticator resource parameters are rejected at
-startup because they would open resources too early.
+call `await request.resolve(session_resource)` only after the token/header shape
+has passed cheap validation. Handlers can inject that same resource through
+`Annotated[T, session_resource]`. Authenticator resource parameters are
+rejected at startup because they would open resources too early.
 :::
 
 ## Surface Auth

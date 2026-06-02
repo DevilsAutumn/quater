@@ -154,6 +154,27 @@ async def session_resource(request: Request) -> AsyncIterator[DatabaseSession]:
         yield session
 ```
 
+`Resource` is generic: `Resource(session_resource)` carries the resolved value
+type from the provider. That matters when app code resolves a resource manually,
+usually inside authentication:
+
+```python
+db_session = Resource(session_resource)
+
+
+async def authenticate(request: Request):
+    token = request.headers.get("authorization")
+    if token is None:
+        raise HTTPError("Unauthorized", status_code=401)
+    session = await request.resolve(db_session)
+    return await authenticate_token(session, token)
+```
+
+Use `await request.resolve(resource)` for the typed no-cast path. Handler
+parameters should still use `inject={...}` or `Annotated[T, resource]`. Passing
+an `Annotated` alias to `request.resolve()` is accepted for compatibility, but
+the raw `Resource[T]` is the form type checkers can follow precisely.
+
 ## Resources That Depend On Resources
 
 A provider can ask for other resources, the same way a handler does — with

@@ -203,19 +203,20 @@ class Request:
         return scope
 
     @overload
-    async def resolve(self, dependency: type[T]) -> T: ...
+    async def resolve(self, dependency: Resource[T]) -> T: ...
 
     @overload
-    async def resolve(self, dependency: Resource) -> object: ...
+    async def resolve(self, dependency: object) -> object: ...
 
-    async def resolve(self, dependency: type[T] | Resource) -> T | object:
+    async def resolve(self, dependency: object) -> object:
         """Resolve a request-scoped resource lazily from this request.
 
         Auth code uses this when it needs a resource after cheap request checks
-        have passed. Pass either the raw ``Resource`` or the handler's
-        ``Annotated[T, resource]`` alias. The value comes from the same cache
-        and exit stack used by handler injection, so resolving here and
-        injecting the same resource later opens it once and tears it down once.
+        have passed. Pass the raw ``Resource`` for a typed return value.
+        ``Annotated[T, resource]`` aliases are still accepted for compatibility.
+        The value comes from the same cache and exit stack used by handler
+        injection, so resolving here and injecting the same resource later
+        opens it once and tears it down once.
         """
 
         from quater.dependencies import resolve_resource
@@ -308,14 +309,14 @@ def _coerce_body_reader(body: RequestBody) -> BodyReader:
     return body
 
 
-def _resource_from_dependency(dependency: object) -> Resource:
+def _resource_from_dependency(dependency: object) -> Resource[object]:
     from quater.dependencies import Resource
 
     if isinstance(dependency, Resource):
         return dependency
 
     if get_origin(dependency) is Annotated:
-        found: Resource | None = None
+        found: Resource[object] | None = None
         for metadata in get_args(dependency)[1:]:
             if isinstance(metadata, Resource):
                 if found is not None:

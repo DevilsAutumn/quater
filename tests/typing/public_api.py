@@ -29,7 +29,7 @@ resource = Resource(load_resource)
 
 assert_type(app, Quater)
 assert_type(group, RouteGroup)
-assert_type(resource, Resource)
+assert_type(resource, Resource[str])
 assert_type(app.name, str | None)
 assert_type(app.state, State)
 assert_type(Query(), Any)

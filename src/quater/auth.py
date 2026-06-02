@@ -6,11 +6,11 @@ surfaces (``api``/``mcp``/``cli``). Exactly one runs per request, chosen by
 :class:`~quater.request.Request` and returns an :class:`AuthContext`.
 
 Auth resources are intentionally lazy: do cheap request checks first, then call
-``await request.resolve(SessionDep)`` only when a database/session/resource is
-actually needed. ``SessionDep`` is the same ``Annotated[T, resource]`` alias the
-handler injects. The resolved value shares the same request scope that handler
-injection uses, so the handler can inject the same resource later without a
-second open.
+``await request.resolve(resource)`` only when a database/session/resource is
+actually needed. Handlers can inject that same resource through
+``Annotated[T, resource]``. The resolved value shares the same request scope
+that handler injection uses, so the handler can inject the same resource later
+without a second open.
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ def _validate_authenticator_signature(auth: AuthConfig) -> None:
             raise ConfigurationError(
                 f"AuthConfig authenticator {auth.display_name!r} cannot declare "
                 "resource parameters; do cheap checks first, then use "
-                "await request.resolve(SessionDep)"
+                "await request.resolve(resource)"
             )
         if parameter.name == "request" or _annotation_base(annotation) is Request:
             request_params += 1

@@ -30,7 +30,7 @@ usually provides.
 | File uploads over MCP/CLI | HTTP routes support form fields and multipart uploads. MCP tools and CLI actions do not expose `File` parameters yet. | Keep upload routes HTTP-only, then expose a separate route for the follow-up operation if agents or operators need it. |
 | Remote action protocol | The Quater CLI uses it, but it is not a stable third-party protocol yet. | Treat it as Quater-owned until the framework stabilizes. |
 | OpenAPI depth | Core schemas are generated, but OpenAPI polish is still younger than FastAPI. | Check generated docs before publishing a public API. |
-| Resolve-only resources | Resources used only through `await request.resolve(SessionDep)` are validated when first resolved, not when routes compile. | Reuse the same `SessionDep` in a handler or another compiled resource graph when you want startup validation. |
+| Resolve-only resources | Resources used only through `await request.resolve(resource)` are validated when first resolved, not when routes compile. | Reuse the same resource in a handler alias or another compiled resource graph when you want startup validation. |
 
 ## Why These Limits Exist
 

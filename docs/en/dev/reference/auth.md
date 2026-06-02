@@ -33,7 +33,7 @@ AuthConfig(authenticator: Authenticator, *, surfaces: Iterable[str], name: str |
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `authenticator` | [`Authenticator`](#symbol-authenticator) | required | Receives the `Request`; use `await request.resolve(SessionDep)` after cheap checks when auth needs a resource. |
+| `authenticator` | [`Authenticator`](#symbol-authenticator) | required | Receives the `Request`; use `await request.resolve(resource)` after cheap checks when auth needs a resource. |
 | `surfaces` | `Iterable[str]` | required | Surfaces this covers: any of `"api"`, `"mcp"`, `"cli"`. Each surface may be covered by at most one `AuthConfig`. |
 | `name` | `str \| None` | `None` | Optional name used in diagnostics. |
 
@@ -124,9 +124,9 @@ Added in `0.1.0a3`.
 
 Callable type for an authenticator. It receives the `Request`; resource
 parameters are rejected so no-token requests can fail before opening a database
-session. Use `await request.resolve(SessionDep)` after cheap checks when auth
-needs a request-scoped resource, where `SessionDep` is the same
-`Annotated[T, resource]` alias the handler injects.
+session. Use `await request.resolve(resource)` after cheap checks when auth
+needs a request-scoped resource. Handlers can inject that same resource through
+`Annotated[T, resource]`.
 
 ```python
 Authenticator = Callable[[Request], Awaitable[AuthContext | None]]

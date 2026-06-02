@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
 from contextlib import AsyncExitStack, contextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 import pytest
 
@@ -241,7 +241,7 @@ def test_unresolvable_provider_parameter_is_rejected_at_compile_time() -> None:
         app.compile_routes()
 
 
-def _compile_with_resource(resource: Resource) -> None:
+def _compile_with_resource(resource: Resource[Any]) -> None:
     app = Quater()
 
     @app.get("/x", inject={"value": resource})

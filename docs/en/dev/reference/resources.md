@@ -17,7 +17,7 @@ Added in `0.1.0a1`.
 
 ```python
 Resource(
-    provider: ResourceProvider,
+    provider: ResourceProvider[T],
     scope: ResourceScope = "request",
     name: str | None = None,
 ) -> None
@@ -25,7 +25,7 @@ Resource(
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `provider` | `ResourceProvider` | required | Callable that creates the value. |
+| `provider` | `ResourceProvider[T]` | required | Callable that creates the value. |
 | `scope` | `ResourceScope` | `"request"` | Lifetime. Only `"request"` exists today. |
 | `name` | `str \| None` | `None` | Name used in resource error messages. |
 
@@ -95,7 +95,7 @@ finishes.
 | Member | Return | Description |
 | --- | --- | --- |
 | `display_name` | `str` | `name`, provider `__name__`, or `"resource"`. |
-| `resolve(request, stack)` | `object` | Resolves the resource for one handler call. Application code usually does not call this directly. |
+| `resolve(request, stack)` | `T` | Resolves the resource for one handler call. Application code usually does not call this directly. |
 
 ## What Can Go Wrong
 

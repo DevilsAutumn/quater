@@ -52,7 +52,7 @@ class Session:
         return {"id": "u1"}
 
 
-def _session_resource(ledger: Ledger) -> Resource:
+def _session_resource(ledger: Ledger) -> Resource[Session]:
     async def provider(request: Request) -> AsyncIterator[Session]:
         session = Session(ledger)
         try:
@@ -107,7 +107,7 @@ async def test_authenticator_and_handler_share_one_session(surface: str) -> None
     seen: dict[str, int] = {}
 
     async def authenticate(request: Request) -> AuthContext:
-        session = await request.resolve(SessionDep)
+        session = await request.resolve(session_resource)
         seen["auth_session"] = id(session)
         return AuthContext(subject="u1")
 
@@ -140,10 +140,9 @@ async def test_authenticator_and_handler_share_one_session(surface: str) -> None
 async def test_payload_is_read_back_without_a_second_query() -> None:
     ledger = Ledger()
     session_resource = _session_resource(ledger)
-    SessionDep = Annotated[Session, session_resource]
 
     async def authenticate(request: Request) -> AuthContext:
-        session = await request.resolve(SessionDep)
+        session = await request.resolve(session_resource)
         user = session.query_user()
         return AuthContext(subject=user["id"], payload=user)
 
@@ -298,7 +297,7 @@ async def test_bad_token_never_opens_auth_resource_on_any_surface(
     async def authenticate(request: Request) -> AuthContext:
         if request.headers.get("authorization") != "Bearer valid":
             raise HTTPError("Unauthorized", status_code=401)
-        session = await request.resolve(SessionDep)
+        session = await request.resolve(session_resource)
         user = session.query_user()
         return AuthContext(subject=user["id"], payload=user)
 
@@ -569,10 +568,9 @@ def test_public_list_deduplicates_repeated_surfaces() -> None:
 async def test_resources_opened_for_discovery_auth_are_torn_down() -> None:
     ledger = Ledger()
     session_resource = _session_resource(ledger)
-    SessionDep = Annotated[Session, session_resource]
 
     async def authenticate(request: Request) -> AuthContext:
-        session = await request.resolve(SessionDep)
+        session = await request.resolve(session_resource)
         session.query_user()
         return AuthContext(subject="u1")
 
