@@ -371,8 +371,16 @@ async def _async_generator_context(
 
     try:
         yield value
-    except BaseException:
-        await generator.aclose()
+    except BaseException as exc:
+        try:
+            await generator.athrow(type(exc), exc, exc.__traceback__)
+        except StopAsyncIteration:
+            pass
+        except BaseException as thrown:
+            if thrown is not exc:
+                raise
+        else:
+            raise RuntimeError(f"Resource provider {name!r} yielded more than once")
         raise
     else:
         try:
@@ -394,8 +402,16 @@ def _generator_context(
 
     try:
         yield value
-    except BaseException:
-        generator.close()
+    except BaseException as exc:
+        try:
+            generator.throw(type(exc), exc, exc.__traceback__)
+        except StopIteration:
+            pass
+        except BaseException as thrown:
+            if thrown is not exc:
+                raise
+        else:
+            raise RuntimeError(f"Resource provider {name!r} yielded more than once")
         raise
     else:
         try:

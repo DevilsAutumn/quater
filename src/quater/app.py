@@ -771,7 +771,7 @@ class Quater:
         except Exception as exc:
             # Authentication or routing may have opened resources on the request scope
             # before failing; tear them down in reverse order.
-            await request._aclose_resources()
+            await request._aexit_resources_for_error(exc)
             response = default_exception_response(exc, debug=self.config.debug)
             return await self._finalize_request(
                 response,

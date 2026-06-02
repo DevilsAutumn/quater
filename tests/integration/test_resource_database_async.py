@@ -122,6 +122,48 @@ async def test_uncommitted_writes_roll_back_when_handler_raises(
     assert database.order_items("u_bob") == ["gizmo"]
 
 
+@pytest.mark.asyncio
+async def test_provider_commit_on_success_rolls_back_when_handler_raises(
+    database: Database,
+) -> None:
+    app = Quater()
+    install_async_db(app, database)
+    events: list[str] = []
+
+    async def unit_of_work_provider(request: Request) -> AsyncIterator[AsyncSession]:
+        session = async_sessions(request)()
+        events.append("open")
+        try:
+            yield session
+        except Exception:
+            events.append("rollback")
+            await session.rollback()
+            raise
+        else:
+            events.append("commit")
+            await session.commit()
+        finally:
+            events.append("close")
+            await session.close()
+
+    unit_of_work = Resource(unit_of_work_provider, name="unit_of_work")
+
+    @app.post("/orders", inject={"db": unit_of_work})
+    async def create_order(db: AsyncSession) -> dict[str, str]:
+        db.add(Order(user_id="u_bob", item="stapler", qty=7))
+        await db.flush()
+        raise RuntimeError("boom")
+
+    before = database.order_count()
+    async with TestClient(app) as client:
+        response = await client.post("/orders")
+
+    assert response.status_code == 500
+    assert database.order_count() == before
+    assert database.order_items("u_bob") == ["gizmo"]
+    assert events == ["open", "rollback", "close"]
+
+
 # --- Resource-on-resource over one shared session (issues #52/#53) ------------
 # The Annotated[T, resource] aliases live at module scope so get_type_hints can
 # resolve them. Per-request state is wired through app.state inside each test.

@@ -99,14 +99,15 @@ class HandlerPlan:
         return kwargs
 
     async def call(self, request: Request, path_params: Mapping[str, object]) -> object:
-        if not any(parameter.source == "resource" for parameter in self.parameters):
-            return await self.handler(**await self.bind(request, path_params))
-
         try:
             kwargs = await self.bind(request, path_params)
-            return await self.handler(**kwargs)
-        finally:
-            await request._aclose_resources()
+            result = await self.handler(**kwargs)
+        except BaseException as exc:
+            await request._aexit_resources_for_error(exc)
+            raise
+
+        await request._aclose_resources()
+        return result
 
     async def call_response(
         self,
@@ -115,16 +116,11 @@ class HandlerPlan:
     ) -> Response:
         from quater.response import normalize_response
 
-        if not any(parameter.source == "resource" for parameter in self.parameters):
-            return normalize_response(
-                await self.handler(**await self.bind(request, path_params))
-            )
-
         try:
             kwargs = await self.bind(request, path_params)
             response = normalize_response(await self.handler(**kwargs))
-        except BaseException:
-            await request._aclose_resources()
+        except BaseException as exc:
+            await request._aexit_resources_for_error(exc)
             raise
 
         if request.has_open_resources:

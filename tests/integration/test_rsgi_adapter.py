@@ -10,6 +10,7 @@ import pytest
 from quater import (
     BytesResponse,
     EmptyResponse,
+    HTTPError,
     Quater,
     Request,
     Resource,
@@ -129,6 +130,39 @@ async def call_rsgi(app: Quater, path: str, protocol: FakeHTTPProtocol) -> None:
     result = app.rsgi(FakeRSGIScope(path=path), protocol)
     assert isawaitable(result)
     await result
+
+
+@pytest.mark.asyncio
+async def test_rsgi_preserves_handler_error_when_resource_rollback_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    app = Quater(debug=True)
+    events: list[str] = []
+    caplog.set_level("ERROR", logger="quater.finalize")
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except HTTPError:
+            events.append("rollback")
+            raise RuntimeError("rollback failed") from None
+        finally:
+            events.append("close")
+
+    @app.get("/bad", inject={"value": Resource(provider)})
+    async def bad(value: str) -> dict[str, str]:
+        raise HTTPError("bad input", status_code=400)
+
+    protocol = FakeHTTPProtocol()
+
+    await call_rsgi(app, "/bad", protocol)
+
+    assert protocol.status == 400
+    assert protocol.response_body == b"bad input"
+    assert events == ["open", "rollback", "close"]
+    assert "Resource cleanup failed" in caplog.text
+    assert "rollback failed" in caplog.text
 
 
 @pytest.mark.asyncio

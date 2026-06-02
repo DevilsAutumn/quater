@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import pytest
 
-from quater import AuthConfig, AuthContext, Quater, Request
+from quater import AuthConfig, AuthContext, HTTPError, Quater, Request, Resource
 
 
 @pytest.mark.asyncio
@@ -113,6 +115,79 @@ async def test_auth_errors_do_not_leak_authorization_values() -> None:
     assert response.status_code == 500
     assert response.body == b"Internal Server Error"
     assert secret_token.encode() not in response.body
+
+
+@pytest.mark.asyncio
+async def test_auth_resource_sees_auth_error_and_preserves_primary_status(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "session"
+        except HTTPError:
+            events.append("rollback")
+            raise RuntimeError("rollback failed") from None
+        finally:
+            events.append("close")
+
+    resource = Resource(provider)
+    caplog.set_level("ERROR", logger="quater.finalize")
+
+    async def authenticate(request: Request) -> AuthContext:
+        await request.resolve(resource)
+        raise HTTPError("Unauthorized", status_code=401)
+
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
+
+    @app.get("/private")
+    async def private() -> dict[str, bool]:
+        return {"ok": True}
+
+    response = await app.handle(Request(method="GET", path="/private"))
+
+    assert response.status_code == 401
+    assert response.body == b"Unauthorized"
+    assert events == ["open", "rollback", "close"]
+    assert "Resource cleanup failed" in caplog.text
+    assert "rollback failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_auth_resource_sees_later_handler_error() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "session"
+        except RuntimeError as exc:
+            events.append(f"rollback:{exc}")
+            raise
+        else:
+            events.append("commit")
+        finally:
+            events.append("close")
+
+    resource = Resource(provider)
+
+    async def authenticate(request: Request) -> AuthContext:
+        await request.resolve(resource)
+        return AuthContext(subject="user_1")
+
+    app = Quater(debug=True, auth=[AuthConfig(authenticate, surfaces=["api"])])
+
+    @app.get("/private")
+    async def private() -> dict[str, bool]:
+        raise RuntimeError("handler failed")
+
+    response = await app.handle(Request(method="GET", path="/private"))
+
+    assert response.status_code == 500
+    assert response.body == b"RuntimeError: handler failed"
+    assert events == ["open", "rollback:handler failed", "close"]
 
 
 @pytest.mark.asyncio

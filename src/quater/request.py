@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -31,6 +33,7 @@ RequestBody: TypeAlias = bytes | BodyReader | None
 T = TypeVar("T")
 
 _UNSET = object()
+_logger = logging.getLogger("quater.finalize")
 
 
 class _BodyReadFailure:
@@ -74,6 +77,19 @@ class _ResourceScope:
         self._stack = None
         self.cache.clear()
         await stack.aclose()
+
+    async def aexit(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool:
+        stack = self._stack
+        if stack is None:
+            return False
+        self._stack = None
+        self.cache.clear()
+        return bool(await stack.__aexit__(exc_type, exc, traceback))
 
 
 class Request:
@@ -245,6 +261,21 @@ class Request:
         scope = self._resource_scope
         if scope is not None:
             await scope.aclose()
+
+    async def _aexit_resources(self, exc: BaseException | None = None) -> bool:
+        scope = self._resource_scope
+        if scope is None:
+            return False
+        if exc is None:
+            await scope.aclose()
+            return False
+        return await scope.aexit(type(exc), exc, exc.__traceback__)
+
+    async def _aexit_resources_for_error(self, exc: BaseException) -> None:
+        try:
+            await self._aexit_resources(exc)
+        except Exception:
+            _logger.exception("Resource cleanup failed")
 
     async def body(self) -> bytes:
         cached = self._body_cache

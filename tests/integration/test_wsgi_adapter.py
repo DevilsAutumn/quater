@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from quater import Quater, Request, Resource, Response, StreamResponse
+from quater import HTTPError, Quater, Request, Resource, Response, StreamResponse
 from quater.adapters.wsgi import WSGIEnvironment
 
 
@@ -66,6 +66,36 @@ def base_environ(
     for name, value in (headers or {}).items():
         environ[f"HTTP_{name.upper().replace('-', '_')}"] = value
     return environ
+
+
+def test_wsgi_preserves_handler_error_when_resource_rollback_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    events: list[str] = []
+    app = Quater(debug=True)
+    caplog.set_level("ERROR", logger="quater.finalize")
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except HTTPError:
+            events.append("rollback")
+            raise RuntimeError("rollback failed") from None
+        finally:
+            events.append("close")
+
+    @app.get("/bad", inject={"value": Resource(provider)})
+    async def bad(value: str) -> dict[str, str]:
+        raise HTTPError("bad input", status_code=400)
+
+    status, _headers, body = call_wsgi(app, base_environ(path="/bad"))
+
+    assert status == "400 Bad Request"
+    assert body == b"bad input"
+    assert events == ["open", "rollback", "close"]
+    assert "Resource cleanup failed" in caplog.text
+    assert "rollback failed" in caplog.text
 
 
 def test_wsgi_route_response_maps_status_headers_and_body() -> None:

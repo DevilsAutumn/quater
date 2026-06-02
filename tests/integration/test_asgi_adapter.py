@@ -8,6 +8,7 @@ import pytest
 from quater import (
     AuthConfig,
     AuthContext,
+    HTTPError,
     Quater,
     Request,
     Resource,
@@ -52,6 +53,49 @@ def response_headers(messages: list[dict[str, object]]) -> dict[str, str]:
         name.decode("latin-1"): value.decode("latin-1")
         for name, value in cast(list[tuple[bytes, bytes]], start["headers"])
     }
+
+
+@pytest.mark.asyncio
+async def test_asgi_preserves_handler_error_when_resource_rollback_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    events: list[str] = []
+    app = Quater(debug=True)
+    caplog.set_level("ERROR", logger="quater.finalize")
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except HTTPError:
+            events.append("rollback")
+            raise RuntimeError("rollback failed") from None
+        finally:
+            events.append("close")
+
+    @app.get("/bad", inject={"value": Resource(provider)})
+    async def bad(value: str) -> dict[str, str]:
+        raise HTTPError("bad input", status_code=400)
+
+    sent = await call_asgi(
+        app.asgi,
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/bad",
+            "scheme": "http",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost")],
+            "client": ("127.0.0.1", 5000),
+        },
+        [{"type": "http.request", "body": b"", "more_body": False}],
+    )
+
+    assert sent[0]["status"] == 400
+    assert response_body(sent) == b"bad input"
+    assert events == ["open", "rollback", "close"]
+    assert "Resource cleanup failed" in caplog.text
+    assert "rollback failed" in caplog.text
 
 
 async def call_asgi_file_lookup(

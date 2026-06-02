@@ -12,7 +12,7 @@ from typing import Annotated
 
 import pytest
 
-from quater import Quater, Request, Resource, StreamResponse, TestClient
+from quater import HTTPError, Quater, Request, Resource, StreamResponse, TestClient
 from quater.params import build_handler_plan
 
 
@@ -80,6 +80,156 @@ async def test_resources_close_in_reverse_order_of_opening() -> None:
 
     assert response.body == b'{"a":"a","b":"b"}'
     assert events == ["open:a", "open:b", "close:b", "close:a"]
+
+
+@pytest.mark.asyncio
+async def test_handler_exception_is_thrown_into_resource_provider() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except RuntimeError as exc:
+            events.append(f"rollback:{exc}")
+            raise
+        else:
+            events.append("commit")
+        finally:
+            events.append("close")
+
+    app = Quater(debug=True)
+
+    @app.get("/boom", inject={"session": Resource(provider)})
+    async def boom(session: str) -> dict[str, str]:
+        raise RuntimeError("handler failed")
+
+    async with TestClient(app) as client:
+        response = await client.get("/boom")
+
+    assert response.status_code == 500
+    assert response.text == "RuntimeError: handler failed"
+    assert events == ["open", "rollback:handler failed", "close"]
+
+
+@pytest.mark.asyncio
+async def test_handler_exception_is_thrown_into_manually_resolved_resource() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except RuntimeError as exc:
+            events.append(f"rollback:{exc}")
+            raise
+        else:
+            events.append("commit")
+        finally:
+            events.append("close")
+
+    resource = Resource(provider)
+    app = Quater(debug=True)
+
+    @app.get("/boom")
+    async def boom(request: Request) -> dict[str, str]:
+        await request.resolve(resource)
+        raise RuntimeError("handler failed")
+
+    async with TestClient(app) as client:
+        response = await client.get("/boom")
+
+    assert response.status_code == 500
+    assert response.text == "RuntimeError: handler failed"
+    assert events == ["open", "rollback:handler failed", "close"]
+
+
+@pytest.mark.asyncio
+async def test_http_error_is_thrown_into_resource_provider() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except HTTPError as exc:
+            events.append(f"rollback:{exc.status_code}")
+            raise
+        else:
+            events.append("commit")
+        finally:
+            events.append("close")
+
+    app = Quater()
+
+    @app.get("/bad", inject={"session": Resource(provider)})
+    async def bad(session: str) -> dict[str, str]:
+        raise HTTPError("bad input", status_code=400)
+
+    async with TestClient(app) as client:
+        response = await client.get("/bad")
+
+    assert response.status_code == 400
+    assert response.text == "bad input"
+    assert events == ["open", "rollback:400", "close"]
+
+
+@pytest.mark.asyncio
+async def test_teardown_error_does_not_clobber_handler_http_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        finally:
+            events.append("cleanup")
+            raise RuntimeError("cleanup failed")
+
+    app = Quater(debug=True)
+    caplog.set_level("ERROR", logger="quater.finalize")
+
+    @app.get("/bad", inject={"session": Resource(provider)})
+    async def bad(session: str) -> dict[str, str]:
+        raise HTTPError("bad input", status_code=400)
+
+    async with TestClient(app) as client:
+        response = await client.get("/bad")
+
+    assert response.status_code == 400
+    assert response.text == "bad input"
+    assert events == ["open", "cleanup"]
+    assert "Resource cleanup failed" in caplog.text
+    assert "cleanup failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_resource_provider_cannot_swallow_handler_exception() -> None:
+    events: list[str] = []
+
+    async def provider() -> AsyncIterator[str]:
+        events.append("open")
+        try:
+            yield "primary"
+        except RuntimeError:
+            events.append("swallowed")
+        finally:
+            events.append("close")
+
+    app = Quater(debug=True)
+
+    @app.get("/boom", inject={"session": Resource(provider)})
+    async def boom(session: str) -> dict[str, str]:
+        raise RuntimeError("handler failed")
+
+    async with TestClient(app) as client:
+        response = await client.get("/boom")
+
+    assert response.status_code == 500
+    assert response.text == "RuntimeError: handler failed"
+    assert events == ["open", "swallowed", "close"]
 
 
 @pytest.mark.asyncio
