@@ -147,7 +147,9 @@ def print_remote_preflight(body: dict[str, object], *, action_name: str) -> None
     print(f"  {method} {path}")
     print(f"  arguments hash: {arguments_hash}")
     print(f"  protected action: {_yes_no(needs_approval)}")
-    print(f"  approval token: {'provided' if approval_provided else 'missing' if needs_approval else 'not required'}")
+    print(
+        f"  approval token: {'provided' if approval_provided else 'missing' if needs_approval else 'not required'}"
+    )
 
 
 async def print_response(response: Response, *, as_json: bool) -> int:
