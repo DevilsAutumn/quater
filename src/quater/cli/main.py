@@ -23,6 +23,7 @@ from quater.cli.output import (
     print_action_summary_list,
     print_json,
     print_preflight,
+    print_remote_preflight,
     print_response,
 )
 from quater.cli.parsing import parse_action_arguments, parse_headers
@@ -269,9 +270,7 @@ def _remote_call(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
     if namespace.as_json:
         print_json(response.body)
     elif "dry_run" in response.body:
-        print(f"Dry run OK: {response.body.get('action', action_name)}")
-        print(f"  {response.body.get('method', '')} {response.body.get('path', '')}")
-        print(f"  arguments hash: {response.body.get('arguments_hash', '')}")
+        print_remote_preflight(response.body, action_name=action_name)
     elif "error" in response.body:
         error = response.body["error"]
         message = error.get("message", "") if isinstance(error, dict) else str(error)

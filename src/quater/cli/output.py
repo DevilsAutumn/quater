@@ -134,6 +134,22 @@ def print_preflight(result: ActionPreflightResult, *, as_json: bool) -> None:
     print(f"  approval token: {_approval_token_status(result)}")
 
 
+def print_remote_preflight(body: dict[str, object], *, action_name: str) -> None:
+    """Print a remote dry-run response in the same 5-key format as print_preflight."""
+    action = body.get("action", action_name)
+    method = body.get("method", "")
+    path = body.get("path", "")
+    arguments_hash = body.get("arguments_hash", "")
+    needs_approval = bool(body.get("needs_approval", False))
+    approval_provided = bool(body.get("approval_token_provided", False))
+
+    print(f"Dry run OK: {action}")
+    print(f"  {method} {path}")
+    print(f"  arguments hash: {arguments_hash}")
+    print(f"  protected action: {_yes_no(needs_approval)}")
+    print(f"  approval token: {'provided' if approval_provided else 'missing' if needs_approval else 'not required'}")
+
+
 async def print_response(response: Response, *, as_json: bool) -> int:
     try:
         payload = await response_payload(response)
