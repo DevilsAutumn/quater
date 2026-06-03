@@ -11,7 +11,11 @@ This page records public release notes for Quater.
 
 Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
-## 0.1.0a3(under developement)
+## 0.1.0b1 (under development)
+
+This is Quater's first beta release train. It keeps the project pre-0.1, but
+marks the HTTP/MCP/CLI surface model, per-surface auth, resource lifecycle, and
+testing helpers as ready for broader evaluation.
 
 ### Added
 

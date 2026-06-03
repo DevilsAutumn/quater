@@ -8,7 +8,7 @@ if (
   !requestedVersion ||
   !/^v?\d+\.\d+(?:\.\d+)?(?:a\d+|b\d+|rc\d+)?(?:-[0-9A-Za-z.-]+)?$/.test(requestedVersion)
 ) {
-  console.error('Usage: npm run docs:snapshot -- 0.1.0a2 [--force]')
+  console.error('Usage: npm run docs:snapshot -- 0.1.0b1 [--force]')
   process.exit(1)
 }
 

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "quater"
-version = "0.1.0a2"
+version = "0.1.0b1"
 description = "The Python framework for building applications that humans use and agents can safely operate."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["api", "async", "granian", "rsgi", "mcp"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",

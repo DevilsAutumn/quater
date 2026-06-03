@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.1.0-alpha.2"
+version = "0.1.0-beta.1"
 dependencies = [
  "matchit",
  "pyo3",

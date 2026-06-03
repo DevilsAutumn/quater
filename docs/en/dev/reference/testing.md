@@ -145,7 +145,7 @@ tools_call(
 
 ## CliTestClient {#symbol-clitestclient}
 
-Added in `0.1.0a3`.
+Added in `0.1.0b1`.
 
 Remote-action helper bound to a `TestClient`. Use `client.cli` in most tests. It
 calls actions and reads the action manifest through the same remote-action

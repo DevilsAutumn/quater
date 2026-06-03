@@ -22,7 +22,7 @@ from quater import (
 
 ## AuthConfig {#symbol-authconfig}
 
-Added in `0.1.0a3`.
+Added in `0.1.0b1`.
 
 One authenticator bound to one or more request surfaces. Pass a list to
 `Quater(auth=[...])`; exactly one runs per request, chosen by source.
@@ -52,7 +52,7 @@ app = Quater(auth=[AuthConfig(authenticate, surfaces=["api", "mcp", "cli"])])
 
 ## AuthContext {#symbol-authcontext}
 
-Added in `0.1.0a1`. `payload` added in `0.1.0a3`.
+Added in `0.1.0a1`. `payload` added in `0.1.0b1`.
 
 Authenticated identity returned by an authenticator.
 
@@ -120,7 +120,7 @@ Return `True` to allow execution. Return `False` to deny it.
 
 ## Authenticator {#symbol-authenticator}
 
-Added in `0.1.0a3`.
+Added in `0.1.0b1`.
 
 Callable type for an authenticator. It receives the `Request`; resource
 parameters are rejected so no-token requests can fail before opening a database
