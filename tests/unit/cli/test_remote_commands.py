@@ -569,7 +569,7 @@ def test_cli_remote_call_error_json_flag_prints_full_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    body = {"error": {"message": "User not found"}}
+    body: dict[str, object] = {"error": {"message": "User not found"}}
     _setup_remote_call(tmp_path, monkeypatch, body, status_code=404)
     capsys.readouterr()
 
