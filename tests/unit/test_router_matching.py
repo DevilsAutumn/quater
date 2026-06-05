@@ -66,11 +66,11 @@ async def test_nested_path_params_are_bound_by_name_and_type() -> None:
         return {"org": org, "user_id": user_id, "slug": slug}
 
     response = await app.handle(
-        Request(method="GET", path="/orgs/acme/users/-42/posts/hello-world")
+        Request(method="GET", path="/orgs/acme/users/42/posts/hello-world")
     )
 
     assert response.status_code == 200
-    assert response.body == b'{"org":"acme","user_id":-42,"slug":"hello-world"}'
+    assert response.body == b'{"org":"acme","user_id":42,"slug":"hello-world"}'
 
 
 @pytest.mark.asyncio
@@ -159,7 +159,7 @@ async def test_typed_path_param_rejection_does_not_call_handler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signed_integer_path_params_follow_python_int_semantics() -> None:
+async def test_int_converter_accepts_canonical_ascii_digits() -> None:
     app = Quater()
 
     @app.get("/numbers/{value:int}")
@@ -167,13 +167,75 @@ async def test_signed_integer_path_params_follow_python_int_semantics() -> None:
         return {"value": value}
 
     for path, body in (
-        ("/numbers/+7", b'{"value":7}'),
-        ("/numbers/-7", b'{"value":-7}'),
+        ("/numbers/0", b'{"value":0}'),
+        ("/numbers/7", b'{"value":7}'),
+        ("/numbers/12345", b'{"value":12345}'),
+        # Leading zeros are still canonical ASCII digits and map to the int.
         ("/numbers/007", b'{"value":7}'),
     ):
         response = await app.handle(Request(method="GET", path=path))
         assert response.status_code == 200
         assert response.body == body
+
+
+@pytest.mark.asyncio
+async def test_int_converter_rejects_signed_values() -> None:
+    app = Quater()
+    calls = 0
+
+    @app.get("/numbers/{value:int}")
+    async def number(value: int) -> dict[str, int]:
+        nonlocal calls
+        calls += 1
+        return {"value": value}
+
+    for path in ("/numbers/+7", "/numbers/-7", "/numbers/-0", "/numbers/+0"):
+        response = await app.handle(Request(method="GET", path=path))
+        assert response.status_code == 404, path
+
+    assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_int_converter_rejects_underscore_grouping() -> None:
+    app = Quater()
+
+    @app.get("/numbers/{value:int}")
+    async def number(value: int) -> dict[str, int]:
+        return {"value": value}
+
+    for path in ("/numbers/1_000", "/numbers/1_0_0", "/numbers/_1", "/numbers/1_"):
+        response = await app.handle(Request(method="GET", path=path))
+        assert response.status_code == 404, path
+
+
+@pytest.mark.asyncio
+async def test_int_converter_rejects_non_ascii_digits() -> None:
+    app = Quater()
+
+    @app.get("/numbers/{value:int}")
+    async def number(value: int) -> dict[str, int]:
+        return {"value": value}
+
+    # Arabic-Indic, Devanagari, and fullwidth digits are all rejected even
+    # though Python's int() would happily parse them.
+    for path in ("/numbers/٣", "/numbers/१२३", "/numbers/５"):
+        response = await app.handle(Request(method="GET", path=path))
+        assert response.status_code == 404, path
+
+
+@pytest.mark.asyncio
+async def test_int_converter_rejects_surrounding_whitespace() -> None:
+    app = Quater()
+
+    @app.get("/numbers/{value:int}")
+    async def number(value: int) -> dict[str, int]:
+        return {"value": value}
+
+    # Python's int() strips surrounding ASCII whitespace; the converter must not.
+    for path in ("/numbers/ 7", "/numbers/7 ", "/numbers/\t7", "/numbers/7\n"):
+        response = await app.handle(Request(method="GET", path=path))
+        assert response.status_code == 404, repr(path)
 
 
 @pytest.mark.asyncio
@@ -191,6 +253,22 @@ async def test_method_not_allowed_requires_valid_path_converters() -> None:
     assert dict(valid_path.headers)["allow"] == "GET"
     assert invalid_path.status_code == 404
     assert "allow" not in dict(invalid_path.headers)
+
+
+@pytest.mark.asyncio
+async def test_non_canonical_int_is_not_reported_as_method_not_allowed() -> None:
+    app = Quater()
+
+    @app.get("/items/{id:int}")
+    async def get_item(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    # A non-canonical id must not even resolve the route shape, so an otherwise
+    # unsupported method reports 404 rather than 405.
+    response = await app.handle(Request(method="DELETE", path="/items/+1"))
+
+    assert response.status_code == 404
+    assert "allow" not in dict(response.headers)
 
 
 @pytest.mark.asyncio

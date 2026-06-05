@@ -11,6 +11,15 @@ This page records public release notes for Quater.
 
 Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
+## Unreleased
+
+### Fixed
+
+- Fixed `:int` path parameters so only ASCII digit segments match integer
+  routes. Signed values, underscore grouping, Unicode digits, and surrounding
+  whitespace now fall through as non-matching paths instead of resolving to the
+  same handler.
+
 ## 0.1.0b1
 
 This is Quater's first beta release train. It keeps the project pre-0.1, but

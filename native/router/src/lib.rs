@@ -170,21 +170,32 @@ fn set_int_param(
     name: &str,
     raw_value: &str,
 ) -> PyResult<bool> {
+    // The `:int` converter only matches one canonical URL form: a non-empty run
+    // of ASCII digits, `[0-9]+`. This rejects signs (`+5`, `-7`), digit grouping
+    // (`1_000`), surrounding whitespace, and non-ASCII digits (`٣`, `１`) that a
+    // bare `int()` would otherwise accept, so distinct URLs cannot alias the
+    // same id.
+    if !is_canonical_ascii_int(raw_value) {
+        return Ok(false);
+    }
+
     if let Ok(value) = raw_value.parse::<i64>() {
         dict.set_item(name, value)?;
         return Ok(true);
     }
 
+    // The value is all ASCII digits but exceeds i64; fall back to Python's
+    // arbitrary-precision int. This cannot reintroduce non-canonical forms
+    // because `raw_value` is already validated as `[0-9]+`.
     let builtins = PyModule::import(py, "builtins")?;
     let int_type = builtins.getattr("int")?;
-    match int_type.call1((raw_value,)) {
-        Ok(value) => {
-            dict.set_item(name, value)?;
-            Ok(true)
-        }
-        Err(error) if error.is_instance_of::<PyValueError>(py) => Ok(false),
-        Err(error) => Err(error),
-    }
+    let value = int_type.call1((raw_value,))?;
+    dict.set_item(name, value)?;
+    Ok(true)
+}
+
+fn is_canonical_ascii_int(raw_value: &str) -> bool {
+    !raw_value.is_empty() && raw_value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn normalize_request_path(path: &str) -> Cow<'_, str> {
