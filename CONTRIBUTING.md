@@ -110,8 +110,9 @@ Please discuss these before writing code:
 - Large refactors
 - Release or packaging changes
 
-Quater is still pre-release, so API changes can happen. But they should happen
-deliberately, with the contract written down before the implementation lands.
+Quater is still moving quickly, so breaking API changes can happen in any
+release. They should happen deliberately, with the contract written down before
+the implementation lands.
 
 ## Code Expectations
 
@@ -185,6 +186,13 @@ To check docs:
 ```bash
 npm run docs:build
 ```
+
+`docs/en/dev` is the only docs source tree. Release docs are frozen by Git tag:
+build that checkout with `npm run docs:build:stable` to publish it under
+`/en/stable/`. Do not copy the docs into per-version folders for normal patch or
+minor releases. To test the production shape without creating a tag, run
+`npm run docs:build:site`; it builds both `/en/stable/` and `/en/dev/` from the
+current checkout into one previewable `dist` directory.
 
 ## Checks Before Opening A PR
 

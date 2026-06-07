@@ -5,10 +5,10 @@ dependencies.
 
 Full docs:
 
-- Resources and state: https://quater.devilsautumn.com/en/latest/resources
-- Testing: https://quater.devilsautumn.com/en/latest/testing
-- Resources reference: https://quater.devilsautumn.com/en/latest/reference/resources
-- Testing reference: https://quater.devilsautumn.com/en/latest/reference/testing
+- Resources and state: https://quater.devilsautumn.com/en/stable/resources
+- Testing: https://quater.devilsautumn.com/en/stable/testing
+- Resources reference: https://quater.devilsautumn.com/en/stable/reference/resources
+- Testing reference: https://quater.devilsautumn.com/en/stable/reference/testing
 
 ## State
 

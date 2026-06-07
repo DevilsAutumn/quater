@@ -1,7 +1,14 @@
 {
     "$schema": "https://openapi.vercel.sh/vercel.json",
+    "buildCommand": "npm run docs:build:site",
+    "outputDirectory": "docs/.vitepress/dist",
+    "installCommand": "npm ci",
     "cleanUrls": true,
     "trailingSlash": false,
+    "redirects": [
+        { "source": "/en", "destination": "/en/stable", "permanent": true },
+        { "source": "/en/", "destination": "/en/stable", "permanent": true }
+    ],
     "git": {
         "deploymentEnabled": {
             "main": true,

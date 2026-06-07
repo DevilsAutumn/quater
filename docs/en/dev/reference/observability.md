@@ -1,3 +1,7 @@
+---
+description: Reference for Quater access-log and MCP audit event types.
+---
+
 # Observability Reference
 
 This page documents access-log and MCP audit event types.

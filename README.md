@@ -11,7 +11,7 @@
   <a href="https://github.com/DevilsAutumn/quater/blob/main/LICENSE">
     <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
   </a>
-  <a href="https://quater.devilsautumn.com/en/dev/">
+  <a href="https://quater.devilsautumn.com/en/stable/">
     <img alt="Docs" src="https://img.shields.io/badge/docs-quater.devilsautumn.com-blue">
   </a>
 </p>
@@ -257,8 +257,10 @@ In the latest run, Quater used Granian/RSGI, while FastAPI used Uvicorn with uvl
 
 ## Current Status
 
-Quater is in pre-release stage. The documented top-level imports are the public surface,
-but names and defaults can still change before the first stable release.
+Quater is still moving quickly. Current versions are `0.x.x`, and any release
+can potentially include breaking changes. Pin the exact version that works with
+your app, read the release notes before upgrading, and run your tests after each
+upgrade.
 
 ## Documentation
 
@@ -314,4 +316,13 @@ npm install
 npm run docs:reference
 npm run docs:dev
 npm run docs:build
+npm run docs:build:stable
+npm run docs:build:site
 ```
+
+`docs/en/dev` is the only docs source tree. `npm run docs:build` publishes it
+under `/en/dev/`; `npm run docs:build:stable` publishes the current checkout
+under `/en/stable/`, so release docs are frozen by the Git tag instead of copied
+into the repo. Use `npm run docs:build:site` to test the deployable production
+shape locally; it builds both `/en/stable/` and `/en/dev/` into one `dist`
+directory without creating a tag.

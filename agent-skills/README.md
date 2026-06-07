@@ -10,7 +10,7 @@ This folder contains portable agent skills for Quater.
 The full Quater documentation lives at:
 
 ```text
-https://quater.devilsautumn.com/en/latest/
+https://quater.devilsautumn.com/en/stable/
 ```
 
 Use the docs as the canonical reference. The skill references are intentionally

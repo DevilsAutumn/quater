@@ -4,7 +4,7 @@ Use Quater CLI actions when the `quater` command is available or the user has a
 configured remote. This is the preferred way for an agent to operate a Quater
 app from a terminal.
 
-Full docs: https://quater.devilsautumn.com/en/latest/actions
+Full docs: https://quater.devilsautumn.com/en/stable/actions
 
 ## Rules For Agents
 

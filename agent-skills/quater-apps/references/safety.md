@@ -4,8 +4,8 @@ Use these rules when operating a Quater application for a human or another agent
 
 Full docs:
 
-- Security: https://quater.devilsautumn.com/en/latest/security
-- Deployment: https://quater.devilsautumn.com/en/latest/deployment
+- Security: https://quater.devilsautumn.com/en/stable/security
+- Deployment: https://quater.devilsautumn.com/en/stable/deployment
 
 ## Never Leak Secrets
 

@@ -204,9 +204,9 @@ flowchart LR
 
 ## Known Limitations
 
-See [Known Limitations](/en/dev/known-limitations) for the current pre-release
-gaps, including WebSockets, built-in ORM support, background jobs, rate limiting,
-MCP streaming, and OpenAPI depth.
+See [Known Limitations](/en/dev/known-limitations) for the current gaps,
+including WebSockets, built-in ORM support, background jobs, rate limiting, MCP
+streaming, and OpenAPI depth.
 
 ## Also See
 

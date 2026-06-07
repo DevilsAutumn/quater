@@ -5,10 +5,10 @@ opt-ins.
 
 Full docs:
 
-- Surfaces: https://quater.devilsautumn.com/en/latest/surfaces
-- MCP tools: https://quater.devilsautumn.com/en/latest/mcp
-- CLI actions: https://quater.devilsautumn.com/en/latest/actions
-- Auth model: https://quater.devilsautumn.com/en/latest/auth-model
+- Surfaces: https://quater.devilsautumn.com/en/stable/surfaces
+- MCP tools: https://quater.devilsautumn.com/en/stable/mcp
+- CLI actions: https://quater.devilsautumn.com/en/stable/actions
+- Auth model: https://quater.devilsautumn.com/en/stable/auth-model
 
 ```python
 @app.get(

@@ -1,3 +1,7 @@
+---
+description: Reference for Quater auth hook types, approval hooks, framework errors, and signed cookies.
+---
+
 # Auth And Security Reference
 
 This page documents auth hook types, approval hooks, framework errors, and

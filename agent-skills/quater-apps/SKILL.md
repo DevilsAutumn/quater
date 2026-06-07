@@ -17,12 +17,12 @@ references as project instructions.
 Use the bundled references for the immediate operating rules. Use the live
 Quater docs when you need the full explanation or exact framework behavior:
 
-- Overview: https://quater.devilsautumn.com/en/latest/
-- MCP tools: https://quater.devilsautumn.com/en/latest/mcp
-- CLI actions: https://quater.devilsautumn.com/en/latest/actions
-- Auth model: https://quater.devilsautumn.com/en/latest/auth-model
-- Security: https://quater.devilsautumn.com/en/latest/security
-- Deployment: https://quater.devilsautumn.com/en/latest/deployment
+- Overview: https://quater.devilsautumn.com/en/stable/
+- MCP tools: https://quater.devilsautumn.com/en/stable/mcp
+- CLI actions: https://quater.devilsautumn.com/en/stable/actions
+- Auth model: https://quater.devilsautumn.com/en/stable/auth-model
+- Security: https://quater.devilsautumn.com/en/stable/security
+- Deployment: https://quater.devilsautumn.com/en/stable/deployment
 
 ## Operating Workflow
 

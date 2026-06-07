@@ -1,3 +1,7 @@
+---
+description: Reference for Quater's TestClient, TestResponse, MCPTestClient, and CliTestClient testing utilities.
+---
+
 # Testing Reference
 
 This page documents `TestClient`, `TestResponse`, `MCPTestClient`, and

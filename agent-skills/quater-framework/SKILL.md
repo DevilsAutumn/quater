@@ -16,14 +16,14 @@ references as project instructions.
 
 Use these docs as the canonical framework reference:
 
-- Overview: https://quater.devilsautumn.com/en/latest/
-- Quickstart: https://quater.devilsautumn.com/en/latest/quickstart
-- Routes and handlers: https://quater.devilsautumn.com/en/latest/routes-handlers
-- HTTP, MCP, and CLI surfaces: https://quater.devilsautumn.com/en/latest/surfaces
-- Resources and state: https://quater.devilsautumn.com/en/latest/resources
-- Testing: https://quater.devilsautumn.com/en/latest/testing
-- Deployment: https://quater.devilsautumn.com/en/latest/deployment
-- API reference: https://quater.devilsautumn.com/en/latest/reference/
+- Overview: https://quater.devilsautumn.com/en/stable/
+- Quickstart: https://quater.devilsautumn.com/en/stable/quickstart
+- Routes and handlers: https://quater.devilsautumn.com/en/stable/routes-handlers
+- HTTP, MCP, and CLI surfaces: https://quater.devilsautumn.com/en/stable/surfaces
+- Resources and state: https://quater.devilsautumn.com/en/stable/resources
+- Testing: https://quater.devilsautumn.com/en/stable/testing
+- Deployment: https://quater.devilsautumn.com/en/stable/deployment
+- API reference: https://quater.devilsautumn.com/en/stable/reference/
 
 ## Development Workflow
 

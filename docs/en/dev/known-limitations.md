@@ -11,13 +11,13 @@ your project today.
 ## Prerequisites
 
 Read [Why Quater Exists](/en/dev/why-quater) first. This page is about the
-current pre-release framework, not the long-term ambition.
+current framework, not the long-term ambition.
 
 ## Current Limits
 
-Quater is pre-release. It is useful for evaluating the human-and-agent backend
-model, but it does not yet cover every feature a mature production framework
-usually provides.
+Quater is still moving quickly. It is useful for evaluating the
+human-and-agent backend model, but it does not yet cover every feature a mature
+production framework usually provides.
 
 | Area | Current state | What to do today |
 | --- | --- | --- |
@@ -38,8 +38,8 @@ Quater is trying to get the core model right first: one backend operation,
 normal API access, safe agent access, safe operator access, typed binding,
 explicit auth, resources, tests, and production checks.
 
-Adding every feature too early would make the public surface harder to change
-before the first stable release.
+Adding every feature too early would make the public surface harder to improve
+while Quater is still moving quickly.
 
 ## What Can Go Wrong
 
@@ -53,8 +53,7 @@ contract.
 
 ## Also See
 
-- [Stability](/en/dev/stability): what is public before the first stable
-  release.
+- [Stability](/en/dev/stability): version pinning and upgrade expectations.
 - [Changelog / Release Notes](/en/dev/changelog): what changed in each
   release.
 - [Deployment](/en/dev/deployment): what Quater does and does not check for

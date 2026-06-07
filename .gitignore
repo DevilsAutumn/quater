@@ -17,6 +17,7 @@ dist/
 node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+.docs-channels/
 
 # Virtual environments
 .venv/

@@ -9,9 +9,9 @@ This page records public release notes for Quater.
 
 ## Prerequisites
 
-Read [Stability](/en/dev/stability) before depending on the pre-release API.
+Read [Stability](/en/dev/stability) before upgrading Quater versions.
 
-## Unreleased
+## 0.1.0
 
 ### Fixed
 
@@ -32,9 +32,9 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
 
 ## 0.1.0b1
 
-This is Quater's first beta release train. It keeps the project pre-0.1, but
-marks the HTTP/MCP/CLI surface model, per-surface auth, resource lifecycle, and
-testing helpers as ready for broader evaluation.
+This started Quater's beta release train for 0.1. It marked the HTTP/MCP/CLI
+surface model, per-surface auth, resource lifecycle, and testing helpers as
+ready for broader evaluation before the final `0.1.0` release.
 
 ### Added
 
@@ -240,5 +240,5 @@ No public API is deprecated in this alpha.
 ## Also See
 
 - [Known Limitations](/en/dev/known-limitations): current gaps.
-- [Stability](/en/dev/stability): public API expectations before 1.0.
+- [Stability](/en/dev/stability): version pinning and upgrade expectations.
 - [Quickstart](/en/dev/quickstart): first working app.

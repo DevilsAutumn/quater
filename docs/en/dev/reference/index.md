@@ -1,3 +1,7 @@
+---
+description: Reference for every public symbol exported from the quater package, with exact names, signatures, and defaults.
+---
+
 # Reference
 
 This reference documents every public symbol exported from `quater`.
@@ -49,6 +53,6 @@ on it.
 
 ## Also See
 
-- [Stability](/en/dev/stability): import boundary rules during pre-release.
+- [Stability](/en/dev/stability): version pinning and upgrade expectations.
 - [Public API](/en/dev/api): human explanation before the reference.
 - [Quickstart](/en/dev/quickstart): first working app.

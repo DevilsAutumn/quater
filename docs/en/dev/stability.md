@@ -1,12 +1,11 @@
 ---
-title: Quater API stability
-description: Understand Quater's pre-release API stability policy, public import boundary, internal modules, and compatibility expectations.
+title: Quater versions and stability
+description: Understand Quater's version policy, public import boundary, internal modules, and compatibility expectations.
 ---
 
-# Stability
+# Versions And Stability
 
-This page explains which Quater APIs you can rely on during the pre-release
-period.
+This page explains how to pick and upgrade Quater versions.
 
 ## Prerequisites
 
@@ -15,9 +14,12 @@ import, wrap, or extend in application code.
 
 ## Current Promise
 
-Quater is pre-release. The project can still fix names, defaults, and contracts
-before they become stable. The documented top-level imports are the API you
-should try first.
+Quater is still moving quickly. Current versions are `0.x.x`, and any release
+can potentially include breaking changes. Pin the exact Quater version that
+works with your app, read the release notes before upgrading, and run your
+tests after each upgrade.
+
+The documented top-level imports are the API you should try first.
 
 ```python
 from quater import Quater, Request, Resource, RouteGroup
@@ -80,17 +82,32 @@ directly on them yet. Use `quater actions ...` and `quater call ...`.
 ## Changelog And Migration
 
 Quater release notes live in [Changelog / Release Notes](/en/dev/changelog).
-While the project is pre-release, pin the exact version you test:
+Pin the exact version you test:
 
 ```bash
-python -m pip install quater
+python -m pip install "quater==0.1.0"
 ```
 
 If you use [uv](https://docs.astral.sh/uv/), pin with
-`uv add quater` instead.
+`uv add "quater==0.1.0"` instead.
 
-When a release contains a breaking change, the release note should include a
-before-and-after snippet.
+Upgrade deliberately: read the release notes, update the pin, run your app's
+tests, and make any needed code changes before deploying the new version.
+
+## Documentation Builds
+
+Quater keeps one documentation source tree in `docs/en/dev`. A release does not
+copy that tree into a versioned folder. The Git tag freezes the source docs for
+that package version.
+
+The docs site has two published channels:
+
+- `/en/stable/`: built from the latest released tag with
+  `QUATER_DOCS_CHANNEL=stable`.
+- `/en/dev/`: built from `main` for unreleased work.
+
+Use the changelog for exact package release notes. Only add long-lived archived
+docs if a future compatibility line needs different guides for real users.
 
 ## What Can Go Wrong
 
@@ -108,5 +125,5 @@ before-and-after snippet.
 
 - [Public API](/en/dev/api): what application code should import.
 - [Reference](/en/dev/reference/): exact signatures.
-- [Known Limitations](/en/dev/known-limitations): current pre-release gaps.
+- [Known Limitations](/en/dev/known-limitations): current gaps.
 - [Deployment](/en/dev/deployment): direct server risks and production checks.

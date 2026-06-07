@@ -253,3 +253,20 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  refresh-docs:
+    # Stable docs track the latest release tag, so rebuild the Vercel site once
+    # the package actually ships. Skipped automatically for TestPyPI dry runs
+    # (publish-pypi does not run, so this job's dependency is unmet).
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel docs rebuild
+        env:
+          DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "VERCEL_DEPLOY_HOOK secret not set; skipping docs rebuild." >&2
+            exit 0
+          fi
+          curl -fsS -X POST "$DEPLOY_HOOK"

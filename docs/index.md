@@ -29,7 +29,7 @@ software than screens meant for humans. The answer is not to bypass your
 backend. The answer is to expose the right backend views directly, with
 clear inputs and real safety boundaries.
 
-This site documents Quater's current pre-release API. If you are evaluating the
+This site documents Quater's current 0.x API. If you are evaluating the
 framework, start with the [Quickstart](/en/dev/quickstart), then read the
 [Manual](/en/dev/) to understand how HTTP, MCP, and CLI access fit together.
 

@@ -5,7 +5,7 @@ tools through an MCP-capable runtime. Do not hand-write JSON-RPC requests with
 Node, Python, curl, or custom HTTP unless the user explicitly asks for protocol
 debugging.
 
-Full docs: https://quater.devilsautumn.com/en/latest/mcp
+Full docs: https://quater.devilsautumn.com/en/stable/mcp
 
 Quater's MCP endpoint is normally:
 

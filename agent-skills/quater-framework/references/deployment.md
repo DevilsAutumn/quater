@@ -4,8 +4,8 @@ Use Quater's CLI for local development and production startup.
 
 Full docs:
 
-- Deployment: https://quater.devilsautumn.com/en/latest/deployment
-- Security: https://quater.devilsautumn.com/en/latest/security
+- Deployment: https://quater.devilsautumn.com/en/stable/deployment
+- Security: https://quater.devilsautumn.com/en/stable/security
 
 ## Development
 

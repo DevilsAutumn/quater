@@ -1,19 +1,21 @@
-import { readdirSync } from "node:fs";
 import { Buffer } from "node:buffer";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
 import type { DefaultTheme, HeadConfig } from "vitepress";
 
 type DocsVersion = {
   label: string;
-  directory: string;
   base: string;
   index: string;
 };
 
 const language = "en";
-const currentDirectory = "dev";
+const sourceDirectory = "dev";
+const docsChannel =
+  process.env.QUATER_DOCS_CHANNEL === "stable" ? "stable" : "dev";
+const publishedDirectory = docsChannel;
+// Only the stable channel is indexed. Dev mirrors unreleased changes, so it is
+// kept out of search results to avoid duplicate content competing with stable.
+const robotsContent = docsChannel === "stable" ? "index,follow" : "noindex,follow";
 const siteUrl = "https://quater.devilsautumn.com";
 const socialImageUrl = `${siteUrl}/logo-white-bg.svg`;
 const defaultDescription =
@@ -29,47 +31,13 @@ const structuredData = {
   runtimePlatform: "Python 3.11+",
   license: "https://opensource.org/licenses/MIT",
 };
-const docsRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-const versionRoot = path.join(docsRoot, language);
-
-function compareReleaseVersions(left: string, right: string): number {
-  const leftParts = left.split("-")[0]?.split(".").map(Number) ?? [];
-  const rightParts = right.split("-")[0]?.split(".").map(Number) ?? [];
-
-  for (let index = 0; index < 3; index += 1) {
-    const diff = (rightParts[index] ?? 0) - (leftParts[index] ?? 0);
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-
-  return right.localeCompare(left);
-}
-
-function readDocsVersions(): DocsVersion[] {
-  const releases = readdirSync(versionRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== currentDirectory)
-    .map((entry) => entry.name)
-    .sort(compareReleaseVersions);
-
-  return [
-    {
-      label: "Dev",
-      directory: currentDirectory,
-      base: `/${language}/${currentDirectory}/`,
-      index: `/${language}/${currentDirectory}/index`,
-    },
-    ...releases.map((release) => ({
-      label: release,
-      directory: release,
-      base: `/${language}/${release}/`,
-      index: `/${language}/${release}/index`,
-    })),
-  ];
-}
+const sourcePrefix = `/${language}/${sourceDirectory}`;
+const publishedPrefix = `/${language}/${publishedDirectory}`;
+const currentDocs: DocsVersion = {
+  label: publishedDirectory === "stable" ? "Stable" : "Dev",
+  base: `${publishedPrefix}/`,
+  index: `${publishedPrefix}/index`,
+};
 
 function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
   return [
@@ -137,18 +105,31 @@ function sidebarFor(version: DocsVersion): DefaultTheme.SidebarItem[] {
   ];
 }
 
-const docsVersions = readDocsVersions();
-const currentDocs = docsVersions[0];
 const versionSidebars = Object.fromEntries(
-  docsVersions.map((version) => [version.base, sidebarFor(version)]),
+  [[currentDocs.base, sidebarFor(currentDocs)]],
 ) as DefaultTheme.SidebarMulti;
 
-const versionItems = docsVersions.map((version) => ({
-  text: version.label,
-  link: version.index,
-}));
+// In the stable build, transformHtml rewrites "/en/dev/" navigation links to
+// "/en/stable/". The version switcher must still point at the dev channel, so it
+// uses a sentinel the rewrite ignores and restores afterwards.
+const devIndexLink = `/${language}/dev/index`;
+const devChannelSentinel = "/__quater-dev-channel__/index";
+const versionItems = [
+  { text: "Stable", link: `/${language}/stable/index` },
+  { text: "Dev", link: docsChannel === "stable" ? devChannelSentinel : devIndexLink },
+];
 
-const currentBase = currentDocs?.base ?? `/${language}/${currentDirectory}/`;
+const currentBase = currentDocs.base;
+const rewrites =
+  publishedDirectory === sourceDirectory
+    ? undefined
+    : (id: string) =>
+        id.startsWith(`${language}/${sourceDirectory}/`)
+          ? id.replace(
+              `${language}/${sourceDirectory}/`,
+              `${language}/${publishedDirectory}/`,
+            )
+          : id;
 
 const nav: DefaultTheme.NavItem[] = [
   { text: "Guide", link: `${currentBase}quickstart` },
@@ -166,7 +147,14 @@ const pypiIcon = {
 };
 
 function canonicalUrl(page: string): string {
-  const pathWithoutExtension = page.replace(/\.md$/, "");
+  const publishedPage =
+    publishedDirectory === sourceDirectory
+      ? page
+      : page.replace(
+          `${language}/${sourceDirectory}/`,
+          `${language}/${publishedDirectory}/`,
+        );
+  const pathWithoutExtension = publishedPage.replace(/\.md$/, "");
   const cleanPath = pathWithoutExtension.replace(/(^|\/)index$/, "$1");
   const pathname = cleanPath === "" ? "/" : `/${cleanPath}`;
   return new URL(pathname, siteUrl).toString();
@@ -179,7 +167,7 @@ function metadataTags(
 ): HeadConfig[] {
   return [
     ["link", { rel: "canonical", href: url }],
-    ["meta", { name: "robots", content: "index,follow" }],
+    ["meta", { name: "robots", content: robotsContent }],
     [
       "meta",
       {
@@ -192,6 +180,7 @@ function metadataTags(
     ["meta", { property: "og:description", content: description }],
     ["meta", { property: "og:url", content: url }],
     ["meta", { property: "og:image", content: socialImageUrl }],
+    ["meta", { property: "og:image:alt", content: "Quater" }],
     ["meta", { name: "twitter:card", content: "summary" }],
     ["meta", { name: "twitter:title", content: title }],
     ["meta", { name: "twitter:description", content: description }],
@@ -205,6 +194,8 @@ export default defineConfig({
   description: defaultDescription,
   cleanUrls: true,
   lastUpdated: true,
+  outDir: process.env.QUATER_DOCS_OUT_DIR,
+  rewrites,
   sitemap: {
     hostname: siteUrl,
   },
@@ -215,6 +206,19 @@ export default defineConfig({
       description || defaultDescription,
       canonicalUrl(page),
     );
+  },
+
+  transformHtml(code) {
+    if (publishedDirectory === sourceDirectory) {
+      return code;
+    }
+    // Rewrite only navigation link targets, never literal prose or inline code
+    // (e.g. text documenting the "docs/en/dev" source tree or the "/en/dev/"
+    // channel). Then restore the version switcher's dev link.
+    return code
+      .replaceAll(`href="${sourcePrefix}/`, `href="${publishedPrefix}/`)
+      .replaceAll(`src="${sourcePrefix}/`, `src="${publishedPrefix}/`)
+      .replaceAll(devChannelSentinel, devIndexLink);
   },
 
   vite: {

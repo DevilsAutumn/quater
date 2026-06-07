@@ -1,3 +1,7 @@
+---
+description: Reference for Quater, RouteGroup, AppConfig, CORSConfig, and __version__, the application objects and their configuration options.
+---
+
 # Application Reference
 
 This page documents `Quater`, `RouteGroup`, `AppConfig`, `CORSConfig`, and
@@ -330,7 +334,7 @@ print(__version__)
 Expected output:
 
 ```text
-0.1.0b1
+0.1.0
 ```
 
 ## What Can Go Wrong

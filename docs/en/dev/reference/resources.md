@@ -1,3 +1,7 @@
+---
+description: Reference for Resource, Quater's scoped dependency-injection primitive for app-owned values.
+---
+
 # Resources Reference
 
 This page documents `Resource`, the scoped injection primitive.
