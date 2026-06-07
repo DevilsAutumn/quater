@@ -12,6 +12,10 @@ ACTIONS_RPC_PATH = "/__quater__/actions/call"
 MAX_ACTION_RESPONSE_BYTES = 1024 * 1024
 
 
+class ActionResponseTooLargeError(Exception):
+    """Raised when a CLI action response exceeds the configured size limit."""
+
+
 def action_manifest(
     registry: ActionRegistry,
     *,
@@ -86,7 +90,9 @@ async def response_body(
 ) -> bytes:
     if not isinstance(response, StreamResponse):
         if len(response.body) > max_response_size:
-            raise ValueError(_response_limit_message(max_response_size))
+            raise ActionResponseTooLargeError(
+                _response_limit_message(max_response_size)
+            )
         return response.body
 
     chunks: list[bytes] = []
@@ -94,7 +100,9 @@ async def response_body(
     async for chunk in response.body_iterator:
         size += len(chunk)
         if size > max_response_size:
-            raise ValueError(_response_limit_message(max_response_size))
+            raise ActionResponseTooLargeError(
+                _response_limit_message(max_response_size)
+            )
         chunks.append(chunk)
     return b"".join(chunks)
 

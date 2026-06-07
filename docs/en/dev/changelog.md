@@ -23,6 +23,9 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   same non-canonical values as HTTP instead of accepting Python `int()` aliases.
 - Fixed RSGI request body limits so chunked uploads without `Content-Length`
   return `413 Payload Too Large` as soon as the stream crosses `max_body_size`.
+- Fixed remote CLI action calls so handler `ValueError`s and streaming response
+  failures return `500 action_failed` instead of being mistaken for
+  `response_too_large`. ([#97](https://github.com/DevilsAutumn/quater/issues/97))
 
 ## 0.1.0b1
 

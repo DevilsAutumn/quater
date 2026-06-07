@@ -5,7 +5,11 @@ from collections.abc import AsyncIterator
 import pytest
 
 from quater import JSONResponse, Response, StreamResponse
-from quater.protocol.actions import MAX_ACTION_RESPONSE_BYTES, response_payload
+from quater.protocol.actions import (
+    MAX_ACTION_RESPONSE_BYTES,
+    ActionResponseTooLargeError,
+    response_payload,
+)
 
 
 async def stream_chunks(*chunks: bytes) -> AsyncIterator[bytes]:
@@ -61,10 +65,27 @@ async def test_action_response_payload_supports_streaming_responses() -> None:
 
 
 @pytest.mark.asyncio
+async def test_action_response_payload_allows_exact_configured_size() -> None:
+    plain_response = Response(b"okay")
+    streaming_response = StreamResponse(stream_chunks(b"ok", b"ay"))
+
+    assert await response_payload(plain_response, max_response_size=4) == {
+        "ok": True,
+        "status_code": 200,
+        "body": "okay",
+    }
+    assert await response_payload(streaming_response, max_response_size=4) == {
+        "ok": True,
+        "status_code": 200,
+        "body": "okay",
+    }
+
+
+@pytest.mark.asyncio
 async def test_action_response_payload_rejects_oversized_plain_responses() -> None:
     response = Response(b"x" * (MAX_ACTION_RESPONSE_BYTES + 1))
 
-    with pytest.raises(ValueError, match="exceeded 1 MiB"):
+    with pytest.raises(ActionResponseTooLargeError, match="exceeded 1 MiB"):
         await response_payload(response)
 
 
@@ -74,5 +95,5 @@ async def test_action_response_payload_rejects_oversized_streaming_responses() -
         stream_chunks(b"x" * MAX_ACTION_RESPONSE_BYTES, b"x"),
     )
 
-    with pytest.raises(ValueError, match="exceeded 1 MiB"):
+    with pytest.raises(ActionResponseTooLargeError, match="exceeded 1 MiB"):
         await response_payload(response)

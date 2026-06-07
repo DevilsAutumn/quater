@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 
 import pytest
 
@@ -12,6 +13,7 @@ from quater import (
     Quater,
     Request,
     Response,
+    StreamResponse,
     TextResponse,
 )
 from quater.protocol.actions import (
@@ -522,6 +524,40 @@ async def test_remote_action_handler_errors_do_not_leak_details() -> None:
         raise RuntimeError("database password is secret")
 
     status, body = await action_rpc(app, {"action": "danger", "arguments": {}})
+
+    assert status == 500
+    assert body["error"] == {"code": "action_failed", "message": "Action call failed"}
+    assert "secret" not in json.dumps(body)
+
+
+@pytest.mark.asyncio
+async def test_remote_action_handler_value_errors_are_action_failures() -> None:
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
+
+    @app.post("/danger", cli=True, description="Run dangerous action.")
+    async def danger() -> dict[str, bool]:
+        raise ValueError("validation secret")
+
+    status, body = await action_rpc(app, {"action": "danger", "arguments": {}})
+
+    assert status == 500
+    assert body["error"] == {"code": "action_failed", "message": "Action call failed"}
+    assert "secret" not in json.dumps(body)
+
+
+@pytest.mark.asyncio
+async def test_remote_action_stream_value_errors_are_action_failures() -> None:
+    app = Quater(auth=[AuthConfig(authenticate, surfaces=["cli"])])
+
+    async def chunks() -> AsyncIterator[bytes]:
+        yield b"partial"
+        raise ValueError("stream secret")
+
+    @app.get("/stream", cli=True, description="Stream response.")
+    async def stream() -> StreamResponse:
+        return StreamResponse(chunks())
+
+    status, body = await action_rpc(app, {"action": "stream", "arguments": {}})
 
     assert status == 500
     assert body["error"] == {"code": "action_failed", "message": "Action call failed"}

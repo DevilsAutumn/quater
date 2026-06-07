@@ -66,6 +66,7 @@ from quater.observability import (
 from quater.protocol.actions import (
     ACTIONS_MANIFEST_PATH,
     ACTIONS_RPC_PATH,
+    ActionResponseTooLargeError,
     action_manifest,
     preflight_payload,
     response_payload,
@@ -1046,22 +1047,6 @@ class Quater:
                 approval_token=approval_token,
                 debug=self.config.debug,
             )
-            try:
-                payload = await response_payload(
-                    response,
-                    max_response_size=self.config.max_action_response_size,
-                )
-            except Exception:
-                await run_response_finalizers(response)
-                raise
-            status_code = response.status_code if response.status_code >= 400 else 200
-            return move_response_finalizers(
-                response,
-                JSONResponse(
-                    payload,
-                    status_code=status_code,
-                ),
-            )
         except ApprovalRequiredError as exc:
             return _action_error_response(
                 "approval_required",
@@ -1082,14 +1067,33 @@ class Quater:
             return _action_error_response("bad_request", exc.detail, 400)
         except HTTPError as exc:
             return _action_error_response("http_error", exc.detail, exc.status_code)
-        except ValueError:
+        except Exception:
+            return _action_error_response("action_failed", "Action call failed", 500)
+
+        try:
+            payload = await response_payload(
+                response,
+                max_response_size=self.config.max_action_response_size,
+            )
+        except ActionResponseTooLargeError:
+            await run_response_finalizers(response)
             return _action_error_response(
                 "response_too_large",
                 "Response too large",
                 502,
             )
         except Exception:
+            await run_response_finalizers(response)
             return _action_error_response("action_failed", "Action call failed", 500)
+
+        status_code = response.status_code if response.status_code >= 400 else 200
+        return move_response_finalizers(
+            response,
+            JSONResponse(
+                payload,
+                status_code=status_code,
+            ),
+        )
 
     def _openapi_schema_document(self) -> dict[str, object]:
         if self._openapi_schema is None:
