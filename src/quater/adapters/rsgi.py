@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Iterable
 from typing import Protocol, TypeAlias, cast
 
 from quater._finalize import run_response_finalizers
@@ -42,6 +42,8 @@ class RSGIHTTPStreamTransport(Protocol):
 
 class RSGIHTTPProtocol(Protocol):
     async def __call__(self) -> bytes: ...
+
+    def __aiter__(self) -> AsyncIterator[bytes]: ...
 
     def response_empty(self, status: int, headers: list[tuple[str, str]]) -> None: ...
 
@@ -129,12 +131,27 @@ class RSGIAdapter:
 
 def _body_reader(protocol: RSGIHTTPProtocol, max_body_size: int) -> BodyReader:
     async def read() -> bytes:
-        body = await protocol()
-        if len(body) > max_body_size:
-            raise PayloadTooLargeError
-        return body
+        return await _read_body(protocol, max_body_size)
 
     return read
+
+
+async def _read_body(protocol: RSGIHTTPProtocol, max_body_size: int) -> bytes:
+    chunks: list[bytes] = []
+    body_size = 0
+    async for chunk in protocol:
+        if not chunk:
+            continue
+        body_size += len(chunk)
+        if body_size > max_body_size:
+            raise PayloadTooLargeError
+        chunks.append(chunk)
+
+    if not chunks:
+        return b""
+    if len(chunks) == 1:
+        return chunks[0]
+    return b"".join(chunks)
 
 
 def _has_header(headers: Iterable[tuple[str, str]], name: str) -> bool:

@@ -21,6 +21,8 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   same handler.
 - Fixed MCP and CLI action calls for `:int` path parameters so they reject the
   same non-canonical values as HTTP instead of accepting Python `int()` aliases.
+- Fixed RSGI request body limits so chunked uploads without `Content-Length`
+  return `413 Payload Too Large` as soon as the stream crosses `max_body_size`.
 
 ## 0.1.0b1
 

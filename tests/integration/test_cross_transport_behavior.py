@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncGenerator, Mapping
 from dataclasses import dataclass
 from inspect import isawaitable
 from io import BytesIO
@@ -42,13 +42,18 @@ class RSGIScope:
 
 
 class RSGIProtocol:
-    def __init__(self) -> None:
+    def __init__(self, request_body: bytes = b"") -> None:
+        self._request_body = request_body
         self.status: int | None = None
         self.headers: list[tuple[str, str]] = []
-        self.body = b""
+        self.response_body = b""
 
     async def __call__(self) -> bytes:
-        return b""
+        return self._request_body
+
+    async def __aiter__(self) -> AsyncGenerator[bytes, None]:
+        if self._request_body:
+            yield self._request_body
 
     def response_empty(self, status: int, headers: list[tuple[str, str]]) -> None:
         self.status = status
@@ -62,7 +67,7 @@ class RSGIProtocol:
     ) -> None:
         self.status = status
         self.headers = headers
-        self.body = body
+        self.response_body = body
 
     def response_stream(
         self,
@@ -258,7 +263,7 @@ async def rsgi_response(
     assert isawaitable(result)
     await result
     assert protocol.status is not None
-    return protocol.status, dict(protocol.headers), protocol.body
+    return protocol.status, dict(protocol.headers), protocol.response_body
 
 
 async def rsgi_path_response(app: Quater, *, path: str) -> tuple[int, bytes]:
@@ -274,7 +279,7 @@ async def rsgi_path_response(app: Quater, *, path: str) -> tuple[int, bytes]:
     assert isawaitable(result)
     await result
     assert protocol.status is not None
-    return protocol.status, protocol.body
+    return protocol.status, protocol.response_body
 
 
 def test_adapter_properties_are_cached_per_app_instance() -> None:
@@ -472,7 +477,7 @@ async def test_app_object_is_callable_for_all_http_transports() -> None:
     assert str(wsgi_captured["status"]).startswith("200 ")
     assert wsgi_body == b'{"subject":"wsgi"}'
     assert protocol.status == 200
-    assert protocol.body == b'{"subject":"rsgi"}'
+    assert protocol.response_body == b'{"subject":"rsgi"}'
 
 
 def make_app(auth_subjects: list[str], handler_calls: list[str]) -> Quater:

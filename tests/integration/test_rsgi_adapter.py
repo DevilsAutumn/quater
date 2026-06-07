@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable
 from dataclasses import dataclass
 from inspect import isawaitable
 from typing import cast
@@ -55,8 +55,9 @@ class FailingStreamTransport(FakeStreamTransport):
 
 
 class FakeHTTPProtocol:
-    def __init__(self, body: bytes = b"") -> None:
-        self.body = body
+    def __init__(self, body: bytes = b"", chunks: list[bytes] | None = None) -> None:
+        self._request_body = body
+        self._chunks = chunks
         self.read_calls = 0
         self.kind: str | None = None
         self.status: int | None = None
@@ -66,7 +67,13 @@ class FakeHTTPProtocol:
 
     async def __call__(self) -> bytes:
         self.read_calls += 1
-        return self.body
+        return self._request_body
+
+    async def __aiter__(self) -> AsyncGenerator[bytes, None]:
+        chunks = self._chunks if self._chunks is not None else [self._request_body]
+        for chunk in chunks:
+            self.read_calls += 1
+            yield chunk
 
     def response_empty(self, status: int, headers: list[tuple[str, str]]) -> None:
         self.kind = "empty"
@@ -369,6 +376,42 @@ async def test_rsgi_request_body_is_lazy_and_cached_by_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rsgi_multiple_body_chunks_reach_handler_without_loss() -> None:
+    app = Quater()
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    protocol = FakeHTTPProtocol(chunks=[b"hello ", b"world"])
+    result = app.rsgi(FakeRSGIScope(method="POST", path="/echo"), protocol)
+
+    assert isawaitable(result)
+    await result
+    assert protocol.status == 200
+    assert protocol.response_body == b"hello world"
+    assert protocol.read_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_rsgi_body_limit_allows_exact_limit_across_chunks() -> None:
+    app = Quater(max_body_size=5)
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    protocol = FakeHTTPProtocol(chunks=[b"", b"12", b"", b"345"])
+    result = app.rsgi(FakeRSGIScope(method="POST", path="/echo"), protocol)
+
+    assert isawaitable(result)
+    await result
+    assert protocol.status == 200
+    assert protocol.response_body == b"12345"
+    assert protocol.read_calls == 4
+
+
+@pytest.mark.asyncio
 async def test_rsgi_body_limit_returns_safe_error() -> None:
     app = Quater(max_body_size=2)
 
@@ -383,6 +426,24 @@ async def test_rsgi_body_limit_returns_safe_error() -> None:
     await result
     assert protocol.status == 413
     assert protocol.response_body == b"Payload Too Large"
+
+
+@pytest.mark.asyncio
+async def test_rsgi_body_limit_stops_reading_oversized_chunked_body() -> None:
+    app = Quater(max_body_size=4)
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    protocol = FakeHTTPProtocol(chunks=[b"12", b"345", b"ignored"])
+    result = app.rsgi(FakeRSGIScope(method="POST", path="/echo"), protocol)
+
+    assert isawaitable(result)
+    await result
+    assert protocol.status == 413
+    assert protocol.response_body == b"Payload Too Large"
+    assert protocol.read_calls == 2
 
 
 @pytest.mark.asyncio
