@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "quater"
-version = "0.1.0b1"
+version = "0.1.0"
 description = "The Python framework for building applications that humans use and agents can safely operate."
 readme = "README.md"
 requires-python = ">=3.11"

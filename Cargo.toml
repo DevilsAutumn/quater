@@ -1,6 +1,6 @@
 [package]
 name = "router"
-version = "0.1.0-beta.1"
+version = "0.1.0"
 edition = "2021"
 description = "Native route matcher for Quater."
 license = "MIT"
