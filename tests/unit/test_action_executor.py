@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import Literal, cast
 
 import msgspec
 import pytest
@@ -344,6 +344,33 @@ async def test_action_required_header_null_is_rejected() -> None:
             {"request_id": None},
             source="cli",
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["mcp", "cli"])
+@pytest.mark.parametrize("user_id", ["-5", "+7", "1_000", "١٢٣", " 7", "7\n"])
+async def test_action_int_path_argument_rejects_non_canonical_values(
+    source: Literal["mcp", "cli"],
+    user_id: str,
+) -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
+    handler_calls = 0
+
+    @app.get("/users/{id:int}", tool=True, cli=True, description="Fetch one user.")
+    async def get_user(id: int) -> dict[str, int]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"id": id}
+
+    with pytest.raises(BadRequestError, match="Invalid path argument: id"):
+        await execute_action(
+            action_for(app, "get_user"),
+            Request(method="POST", path="/__quater__/actions/call"),
+            {"id": user_id},
+            source=source,
+        )
+
+    assert handler_calls == 0
 
 
 @pytest.mark.asyncio

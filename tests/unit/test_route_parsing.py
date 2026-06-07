@@ -10,7 +10,12 @@ from __future__ import annotations
 import pytest
 
 from quater.exceptions import RouteBindingError
-from quater.routing import ParamSegment, StaticSegment, parse_route_pattern
+from quater.routing import (
+    ParamSegment,
+    StaticSegment,
+    convert_int_path_value,
+    parse_route_pattern,
+)
 
 
 def test_root_path_has_no_segments() -> None:
@@ -27,7 +32,7 @@ def test_static_and_param_segments_are_parsed() -> None:
     assert pattern.param_names == frozenset({"id"})
     assert pattern.segments == (
         StaticSegment("users"),
-        ParamSegment(name="id", converter_name="int", converter=int),
+        ParamSegment(name="id", converter_name="int", converter=convert_int_path_value),
         StaticSegment("posts"),
     )
     assert pattern.shape == (
@@ -35,6 +40,20 @@ def test_static_and_param_segments_are_parsed() -> None:
         ("param", "int"),
         ("static", "posts"),
     )
+
+
+@pytest.mark.parametrize(("raw_value", "expected"), [("0", 0), ("42", 42), ("007", 7)])
+def test_int_path_converter_accepts_canonical_ascii_digits(
+    raw_value: str,
+    expected: int,
+) -> None:
+    assert convert_int_path_value(raw_value) == expected
+
+
+@pytest.mark.parametrize("raw_value", ["-5", "+7", "1_000", "١٢٣", " 7", "7\n"])
+def test_int_path_converter_rejects_non_canonical_values(raw_value: str) -> None:
+    with pytest.raises(ValueError, match="invalid int path value"):
+        convert_int_path_value(raw_value)
 
 
 def test_default_converter_is_str() -> None:

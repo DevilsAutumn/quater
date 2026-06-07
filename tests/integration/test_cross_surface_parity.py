@@ -367,6 +367,37 @@ def test_declared_inputs_bind_identically_across_surfaces(
     assert calls == [expected, expected, expected, expected]
 
 
+@pytest.mark.parametrize("item_id", ["-5", "+7", "1_000", "١٢٣"])
+def test_int_path_params_reject_non_canonical_values_across_surfaces(
+    item_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    app, calls = make_parity_app()
+    module_target = register_app_module(monkeypatch, app)
+
+    results = call_all_surfaces(
+        app,
+        module_target,
+        valid_arguments(item_id=item_id),
+        capsys,
+    )
+
+    assert {surface: result.ok for surface, result in results.items()} == {
+        "http": False,
+        "mcp": False,
+        "local_cli": False,
+        "remote_cli": False,
+    }
+    assert {surface: result.message for surface, result in results.items()} == {
+        "http": f"Not found: /inventory/{item_id}",
+        "mcp": "Invalid path argument: item_id",
+        "local_cli": "Invalid path argument: item_id",
+        "remote_cli": "Invalid path argument: item_id",
+    }
+    assert calls == []
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [

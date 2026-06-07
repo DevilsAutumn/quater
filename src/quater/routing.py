@@ -11,6 +11,15 @@ from quater.exceptions import RouteBindingError
 ParamConverter: TypeAlias = Callable[[str], object]
 
 
+def convert_int_path_value(raw_value: str) -> int:
+    """Convert the canonical ``:int`` path form shared by every surface."""
+    # Match the native router's `[0-9]+` rule. Plain int() is not validation:
+    # it accepts signs, underscores, whitespace, and non-ASCII digits.
+    if not raw_value or not raw_value.isascii() or not raw_value.isdigit():
+        raise ValueError("invalid int path value")
+    return int(raw_value)
+
+
 @dataclass(slots=True, frozen=True)
 class StaticSegment:
     value: str
@@ -90,7 +99,7 @@ def _parse_param_segment(raw_segment: str, names: set[str]) -> ParamSegment:
     if converter_name == "str":
         converter: ParamConverter = str
     elif converter_name == "int":
-        converter = int
+        converter = convert_int_path_value
     else:
         raise RouteBindingError(f"Unsupported path converter: {converter_name!r}")
 

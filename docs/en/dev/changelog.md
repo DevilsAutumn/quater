@@ -19,6 +19,8 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
   routes. Signed values, underscore grouping, Unicode digits, and surrounding
   whitespace now fall through as non-matching paths instead of resolving to the
   same handler.
+- Fixed MCP and CLI action calls for `:int` path parameters so they reject the
+  same non-canonical values as HTTP instead of accepting Python `int()` aliases.
 
 ## 0.1.0b1
 
