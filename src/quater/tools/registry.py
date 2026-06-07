@@ -12,7 +12,7 @@ from quater.middleware import MiddlewareStack
 from quater.params import HandlerPlan, build_handler_plan
 from quater.request import Request
 from quater.response import Response
-from quater.routing import RoutePattern, parse_route_pattern
+from quater.routing import RoutePattern, parse_route_pattern, path_param_converters
 from quater.tools.descriptions import resolve_tool_description
 from quater.tools.schema import tool_input_schema
 from quater.typing import ActionApproval
@@ -81,6 +81,7 @@ def build_tool_registry(routes: tuple[RouteDefinition, ...]) -> ToolRegistry:
         handler_plan = build_handler_plan(
             route.handler,
             path_param_names=pattern.param_names,
+            path_param_converters=path_param_converters(pattern),
             inject=route.inject,
         )
         if any(parameter.source == "file" for parameter in handler_plan.parameters):

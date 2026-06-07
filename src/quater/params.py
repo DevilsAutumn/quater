@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from math import isfinite
 from types import UnionType
@@ -12,12 +13,22 @@ from typing import (
     Any,
     Literal,
     Union,
+    cast,
     get_args,
     get_origin,
     get_type_hints,
 )
 
-from quater._parameters import ParameterMarker
+from quater._parameters import (
+    Body,
+    Cookie,
+    File,
+    Form,
+    Header,
+    ParameterMarker,
+    Path,
+    Query,
+)
 from quater.core import Handler
 from quater.dependencies import Resource, ResourceMap, validate_resource
 from quater.exceptions import BadRequestError, RequestJSONError, RouteBindingError
@@ -113,6 +124,7 @@ def build_handler_plan(
     handler: Handler,
     *,
     path_param_names: frozenset[str],
+    path_param_converters: Mapping[str, str] | None = None,
     inject: ResourceMap | None = None,
 ) -> HandlerPlan:
     if not inspect.iscoroutinefunction(handler):
@@ -121,12 +133,16 @@ def build_handler_plan(
     signature = inspect.signature(handler)
     try:
         type_hints = get_type_hints(handler, include_extras=True)
-    except (NameError, TypeError):
+    except (NameError, SyntaxError, TypeError):
         type_hints = handler.__annotations__
     body_parameters = 0
     form_parameters = 0
     file_parameters = 0
     resources = _normalize_resources(inject)
+    converters = _normalize_path_param_converters(
+        path_param_names,
+        path_param_converters,
+    )
     parameters: list[BoundParameter] = []
     seen_names: set[str] = set()
 
@@ -176,6 +192,7 @@ def build_handler_plan(
             default=default,
             annotation=annotation,
             path_param_names=path_param_names,
+            path_param_converters=converters,
             resource=resource,
             marker=marker,
         )
@@ -474,6 +491,11 @@ def _allows_none(annotation: object) -> bool:
 def _annotation_and_markers(
     annotation: object,
 ) -> tuple[object, ParameterMarker | None, Resource[Any] | None]:
+    if isinstance(annotation, str):
+        parsed = _string_annotation_and_markers(annotation)
+        if parsed is not None:
+            return parsed
+
     if get_origin(annotation) is not Annotated:
         return annotation, None, None
 
@@ -495,6 +517,56 @@ def _annotation_and_markers(
                 )
             resource = metadata
     return args[0], marker, resource
+
+
+def _string_annotation_and_markers(
+    annotation: str,
+) -> tuple[object, ParameterMarker | None, Resource[Any] | None] | None:
+    try:
+        node = ast.parse(annotation, mode="eval").body
+    except SyntaxError:
+        return None
+    if not isinstance(node, ast.Subscript):
+        return None
+    if ast.unparse(node.value) not in {
+        "Annotated",
+        "typing.Annotated",
+        "typing_extensions.Annotated",
+    }:
+        return None
+    if not isinstance(node.slice, ast.Tuple):
+        return None
+    args = tuple(node.slice.elts)
+
+    marker: ParameterMarker | None = None
+    for metadata in args[1:]:
+        parsed_marker = _string_parameter_marker(metadata)
+        if parsed_marker is None:
+            continue
+        if marker is not None:
+            raise RouteBindingError("Only one parameter marker is supported")
+        marker = parsed_marker
+
+    return _normalize_string_path_annotation(ast.unparse(args[0])), marker, None
+
+
+def _string_parameter_marker(node: ast.AST) -> ParameterMarker | None:
+    if not isinstance(node, ast.Call):
+        return None
+    factory = _STRING_PARAMETER_MARKERS.get(ast.unparse(node.func))
+    if factory is None:
+        return None
+    try:
+        args = [ast.literal_eval(arg) for arg in node.args]
+        kwargs = {
+            keyword.arg: ast.literal_eval(keyword.value)
+            for keyword in node.keywords
+            if keyword.arg is not None
+        }
+        marker = factory(*args, **kwargs)
+    except (TypeError, ValueError):
+        return None
+    return cast(ParameterMarker, marker)
 
 
 def _default_and_marker(value: object) -> tuple[object, ParameterMarker | None]:
@@ -538,6 +610,7 @@ def _validate_bound_parameter(
     default: object,
     annotation: object,
     path_param_names: frozenset[str],
+    path_param_converters: Mapping[str, str],
     resource: Resource[Any] | None,
     marker: ParameterMarker | None,
 ) -> None:
@@ -562,6 +635,12 @@ def _validate_bound_parameter(
             )
         if default is not _EMPTY:
             raise RouteBindingError(f"Path parameter {name!r} cannot define a default")
+        _validate_path_parameter_annotation(
+            name,
+            request_name=request_name,
+            annotation=annotation,
+            converter_name=path_param_converters.get(request_name, "str"),
+        )
         return
     if source == "header":
         _validate_header_name(request_name)
@@ -609,6 +688,123 @@ def _validate_scalar_annotation(
     raise RouteBindingError(
         f"{source.title()} parameter {name!r} must use str, int, float, or bool"
     )
+
+
+def _normalize_path_param_converters(
+    path_param_names: frozenset[str],
+    path_param_converters: Mapping[str, str] | None,
+) -> Mapping[str, str]:
+    if path_param_converters is not None:
+        return path_param_converters
+    return {name: "str" for name in path_param_names}
+
+
+def _validate_path_parameter_annotation(
+    name: str,
+    *,
+    request_name: str,
+    annotation: object,
+    converter_name: str,
+) -> None:
+    stripped = _normalize_path_annotation(annotation)
+    if stripped in {_EMPTY, Any, object}:
+        return
+
+    expected_annotation = _PATH_CONVERTER_ANNOTATIONS[converter_name]
+    if stripped is expected_annotation:
+        return
+
+    subject = f"Path parameter {name!r}"
+    if request_name != name:
+        subject = f"{subject} for route parameter {request_name!r}"
+    route_segment = _path_segment_label(request_name, converter_name)
+    message = (
+        f"{subject} is annotated as {_annotation_label(stripped)} but route path "
+        f"uses {route_segment}."
+    )
+    expected_segment = _path_segment_for_annotation(request_name, stripped)
+    if expected_segment is not None:
+        message = f"{message} Use {expected_segment} or change the annotation."
+    else:
+        message = (
+            f"{message} Path parameter annotations must match a supported route "
+            "converter."
+        )
+    raise RouteBindingError(message)
+
+
+def _normalize_path_annotation(annotation: object) -> object:
+    stripped = _strip_optional(annotation)
+    if not isinstance(stripped, str):
+        return stripped
+    return _normalize_string_path_annotation(stripped)
+
+
+def _normalize_string_path_annotation(annotation: str) -> object:
+    normalized = annotation.replace(" ", "")
+    for prefix in ("Optional[", "typing.Optional["):
+        if normalized.startswith(prefix) and normalized.endswith("]"):
+            return _normalize_string_path_annotation(normalized[len(prefix) : -1])
+
+    if "|" in normalized:
+        parts = [
+            part
+            for part in normalized.split("|")
+            if part not in {"None", "NoneType", "type(None)"}
+        ]
+        if len(parts) == 1:
+            return _normalize_string_path_annotation(parts[0])
+
+    return {
+        "Any": Any,
+        "typing.Any": Any,
+        "object": object,
+        "builtins.object": object,
+        "str": str,
+        "builtins.str": str,
+        "int": int,
+        "builtins.int": int,
+    }.get(normalized, annotation)
+
+
+def _path_segment_label(name: str, converter_name: str) -> str:
+    if converter_name == "str":
+        return f"{{{name}}}"
+    return f"{{{name}:{converter_name}}}"
+
+
+def _path_segment_for_annotation(name: str, annotation: object) -> str | None:
+    if annotation is str:
+        return _path_segment_label(name, "str")
+    if annotation is int:
+        return _path_segment_label(name, "int")
+    return None
+
+
+def _annotation_label(annotation: object) -> str:
+    name = getattr(annotation, "__name__", None)
+    if isinstance(name, str):
+        return name
+    return repr(annotation)
+
+
+_PATH_CONVERTER_ANNOTATIONS = {"str": str, "int": int}
+_STRING_PARAMETER_MARKERS: Mapping[str, Callable[..., object]] = {
+    "Body": Body,
+    "Cookie": Cookie,
+    "File": File,
+    "Form": Form,
+    "Header": Header,
+    "Path": Path,
+    "Query": Query,
+    "quater.Body": Body,
+    "quater.Cookie": Cookie,
+    "quater.File": File,
+    "quater.Form": Form,
+    "quater.Header": Header,
+    "quater.Path": Path,
+    "quater.Query": Query,
+}
 
 
 def _validate_file_annotation(name: str, annotation: object) -> None:

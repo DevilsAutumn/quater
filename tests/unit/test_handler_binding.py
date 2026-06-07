@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 import pytest
 
-from quater import Quater, Request
+from quater import Path, Quater, Request
 from quater.response import Response, TextResponse
 from quater.typing import AuthContext
 
@@ -19,6 +21,57 @@ async def test_path_params_are_converted_and_bound_by_name() -> None:
 
     assert response.status_code == 200
     assert response.body == b'{"id":42}'
+
+
+@pytest.mark.asyncio
+async def test_path_marker_alias_survives_postponed_annotation_fallback() -> None:
+    class LocalPayload:
+        pass
+
+    app = Quater()
+
+    @app.get("/orders/{id:int}")
+    async def get_order(
+        order_id: Annotated[int, Path(alias="id")],
+        payload: LocalPayload | None = None,
+    ) -> dict[str, object]:
+        return {"order_id": order_id, "payload": payload}
+
+    @app.get("/qualified-orders/{id:int}")
+    async def get_qualified_order(
+        order_id: int,
+        payload: LocalPayload | None = None,
+    ) -> dict[str, object]:
+        return {"order_id": order_id, "payload": payload}
+
+    get_qualified_order.__annotations__["order_id"] = (
+        "typing_extensions.Annotated["
+        "int, 'route id', UnknownMeta(), quater.Path(alias='id')]"
+    )
+
+    @app.get("/literal-orders/{id:int}")
+    async def get_literal_order(
+        id: int,
+        payload: LocalPayload | None = None,
+    ) -> dict[str, object]:
+        return {"id": id, "payload": payload}
+
+    get_literal_order.__annotations__["id"] = "Annotated[int, Path(alias=object())]"
+
+    response = await app.handle(Request(method="GET", path="/orders/42"))
+    qualified_response = await app.handle(
+        Request(method="GET", path="/qualified-orders/43")
+    )
+    literal_response = await app.handle(
+        Request(method="GET", path="/literal-orders/44")
+    )
+
+    assert response.status_code == 200
+    assert response.body == b'{"order_id":42,"payload":null}'
+    assert qualified_response.status_code == 200
+    assert qualified_response.body == b'{"order_id":43,"payload":null}'
+    assert literal_response.status_code == 200
+    assert literal_response.body == b'{"id":44,"payload":null}'
 
 
 @pytest.mark.asyncio

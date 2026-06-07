@@ -10,7 +10,7 @@ from quater.actions.descriptions import resolve_action_description
 from quater.core import RouteDefinition
 from quater.exceptions import ConfigurationError
 from quater.params import HandlerPlan, build_handler_plan
-from quater.routing import RoutePattern, parse_route_pattern
+from quater.routing import RoutePattern, parse_route_pattern, path_param_converters
 from quater.tools.schema import tool_input_schema
 
 
@@ -54,6 +54,7 @@ def build_action_registry(routes: tuple[RouteDefinition, ...]) -> ActionRegistry
         handler_plan = build_handler_plan(
             route.handler,
             path_param_names=pattern.param_names,
+            path_param_converters=path_param_converters(pattern),
             inject=route.inject,
         )
         if any(parameter.source == "file" for parameter in handler_plan.parameters):

@@ -26,6 +26,9 @@ Read [Stability](/en/dev/stability) before depending on the pre-release API.
 - Fixed remote CLI action calls so handler `ValueError`s and streaming response
   failures return `500 action_failed` instead of being mistaken for
   `response_too_large`. ([#97](https://github.com/DevilsAutumn/quater/issues/97))
+- Fixed route compilation so path parameter annotations must match route
+  converters, preventing `{id}` handlers annotated as `int` from receiving
+  strings at runtime. ([#89](https://github.com/DevilsAutumn/quater/issues/89))
 
 ## 0.1.0b1
 

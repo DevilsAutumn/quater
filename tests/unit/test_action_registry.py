@@ -8,7 +8,7 @@ from quater import AuthConfig, Quater, Request
 from quater.actions import registry as action_registry_module
 from quater.actions.registry import ActionRegistry, build_action_registry
 from quater.core import RouteDefinition
-from quater.exceptions import ConfigurationError
+from quater.exceptions import ConfigurationError, RouteBindingError
 from quater.typing import ApprovalRequest, AuthContext
 
 
@@ -119,6 +119,17 @@ def test_action_registry_exposes_cli_and_tool_routes() -> None:
     assert action.description == "Mark an invoice as paid."
     assert registry.cli_actions() == (action,)
     assert registry.tool_actions() == (action,)
+
+
+def test_action_registry_rejects_path_annotation_converter_mismatch() -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    @app.get("/items/{item_id}", cli=True, description="Fetch item.")
+    async def get_item(item_id: int) -> dict[str, int]:
+        return {"item_id": item_id}
+
+    with pytest.raises(RouteBindingError, match="Path parameter 'item_id'"):
+        build_action_registry(app.routes)
 
 
 def test_duplicate_action_names_fail_when_registry_is_built() -> None:

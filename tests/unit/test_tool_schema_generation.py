@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import msgspec
+import pytest
 
 from quater import AuthConfig, Body, Header, Path, Quater, Query, Request
+from quater.exceptions import RouteBindingError
 from quater.tools.registry import build_tool_registry
 from quater.typing import AuthContext
 
@@ -84,6 +86,17 @@ def test_tool_list_payload_uses_generated_input_schema() -> None:
             },
         }
     ]
+
+
+def test_tool_registry_rejects_path_annotation_converter_mismatch() -> None:
+    app = Quater(auth=[AuthConfig(allow_mcp_auth, surfaces=["mcp"])])
+
+    @app.get("/items/{item_id}", tool=True, description="Fetch item.")
+    async def get_item(item_id: int) -> dict[str, int]:
+        return {"item_id": item_id}
+
+    with pytest.raises(RouteBindingError, match="Path parameter 'item_id'"):
+        build_tool_registry(app.routes)
 
 
 def test_tool_schema_uses_handler_names_with_marker_metadata() -> None:

@@ -17,6 +17,7 @@ from quater.routing import (
     RoutePattern,
     StaticSegment,
     parse_route_pattern,
+    path_param_converters,
 )
 
 if TYPE_CHECKING:
@@ -203,6 +204,7 @@ class Router:
         handler_plan = build_handler_plan(
             route.handler,
             path_param_names=pattern.param_names,
+            path_param_converters=path_param_converters(pattern),
             inject=route.inject,
         )
 

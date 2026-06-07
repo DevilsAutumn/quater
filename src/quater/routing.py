@@ -52,6 +52,14 @@ class RoutePattern:
         return tuple(parts)
 
 
+def path_param_converters(pattern: RoutePattern) -> dict[str, str]:
+    return {
+        segment.name: segment.converter_name
+        for segment in pattern.segments
+        if isinstance(segment, ParamSegment)
+    }
+
+
 def parse_route_pattern(path: str) -> RoutePattern:
     if not path.startswith("/"):
         raise RouteBindingError("Route paths must start with '/'")
