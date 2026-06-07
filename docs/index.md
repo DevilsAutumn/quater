@@ -9,7 +9,7 @@ hero:
   actions:
     - theme: brand
       text: Start Building
-      link: /en/dev/quickstart
+      link: /en/stable/quickstart
 
 features:
   - title: One route, three surfaces
@@ -30,8 +30,8 @@ backend. The answer is to expose the right backend views directly, with
 clear inputs and real safety boundaries.
 
 This site documents Quater's current 0.x API. If you are evaluating the
-framework, start with the [Quickstart](/en/dev/quickstart), then read the
-[Manual](/en/dev/) to understand how HTTP, MCP, and CLI access fit together.
+framework, start with the [Quickstart](/en/stable/quickstart), then read the
+[Manual](/en/stable/) to understand how HTTP, MCP, and CLI access fit together.
 
 Prerequisites: Python 3.11 or newer, async Python basics, and enough HTTP
 knowledge to read request and response examples.
@@ -113,9 +113,9 @@ surface called it: `api`, `cli`, or `mcp`.
 
 ## Also See
 
-- [Quickstart](/en/dev/quickstart): first working app.
-- [Why Quater Exists](/en/dev/why-quater): the problem behind the framework.
-- [HTTP, MCP, and CLI Surfaces](/en/dev/surfaces): how the three access paths
+- [Quickstart](/en/stable/quickstart): first working app.
+- [Why Quater Exists](/en/stable/why-quater): the problem behind the framework.
+- [HTTP, MCP, and CLI Surfaces](/en/stable/surfaces): how the three access paths
   fit together.
-- [Public API](/en/dev/api): full public surface.
-- [Deployment](/en/dev/deployment): production setup and checks.
+- [Public API](/en/stable/api): full public surface.
+- [Deployment](/en/stable/deployment): production setup and checks.

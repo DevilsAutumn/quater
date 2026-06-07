@@ -17,6 +17,7 @@ dist/
 node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+docs/en/stable/
 .docs-channels/
 
 # Virtual environments
@@ -31,3 +32,4 @@ sample_projects
 target/
 src/quater/*.so
 .bench-venv
+.gstack/

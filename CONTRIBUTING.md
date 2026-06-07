@@ -188,11 +188,10 @@ npm run docs:build
 ```
 
 `docs/en/dev` is the only docs source tree. Release docs are frozen by Git tag:
-build that checkout with `npm run docs:build:stable` to publish it under
-`/en/stable/`. Do not copy the docs into per-version folders for normal patch or
-minor releases. To test the production shape without creating a tag, run
-`npm run docs:build:site`; it builds both `/en/stable/` and `/en/dev/` from the
-current checkout into one previewable `dist` directory.
+`npm run docs:build:site` materializes the latest tag's docs as the stable
+channel and builds it alongside dev in one VitePress pass, serving `/en/stable/`
+and `/en/dev/` from one `dist` directory. Do not copy the docs into per-version
+folders.
 
 ## Checks Before Opening A PR
 

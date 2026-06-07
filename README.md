@@ -316,13 +316,11 @@ npm install
 npm run docs:reference
 npm run docs:dev
 npm run docs:build
-npm run docs:build:stable
 npm run docs:build:site
 ```
 
-`docs/en/dev` is the only docs source tree. `npm run docs:build` publishes it
-under `/en/dev/`; `npm run docs:build:stable` publishes the current checkout
-under `/en/stable/`, so release docs are frozen by the Git tag instead of copied
-into the repo. Use `npm run docs:build:site` to test the deployable production
-shape locally; it builds both `/en/stable/` and `/en/dev/` into one `dist`
-directory without creating a tag.
+`docs/en/dev` is the only docs source tree. `npm run docs:build` publishes the
+dev channel under `/en/dev/`. `npm run docs:build:site` builds the deployable
+site in one VitePress pass: the dev channel from the working tree plus a stable
+channel materialized from the latest release tag at `/en/stable/`. Release docs
+are frozen by the Git tag, never copied into the repo.

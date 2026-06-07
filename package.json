@@ -9,7 +9,6 @@
     "docs:dev": "npm run docs:reference && vitepress dev docs --host 127.0.0.1",
     "docs:build": "npm run docs:build:dev",
     "docs:build:dev": "npm run docs:reference:check && vitepress build docs",
-    "docs:build:stable": "QUATER_DOCS_CHANNEL=stable npm run docs:reference:check && QUATER_DOCS_CHANNEL=stable vitepress build docs",
     "docs:build:site": "node scripts/build-docs-site.mjs",
     "docs:preview": "vitepress preview docs --host 127.0.0.1"
   },
