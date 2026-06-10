@@ -9,7 +9,7 @@ from typing import Any, ClassVar, Literal, TypeAlias
 from urllib.parse import urlencode
 
 from quater._finalize import run_response_finalizers
-from quater.datastructures import HeaderItems, Headers
+from quater.datastructures import HeaderItems, Headers, encode_cookie_header
 from quater.request import Request
 from quater.response import Response, StreamResponse
 
@@ -700,13 +700,7 @@ def _invalid_multipart_header_char(value: str) -> bool:
 
 
 def _cookie_header(cookies: Mapping[str, str]) -> str:
-    if not cookies:
-        return ""
-
-    parsed = SimpleCookie()
-    for name, value in cookies.items():
-        parsed[name] = value
-    return "; ".join(f"{morsel.key}={morsel.coded_value}" for morsel in parsed.values())
+    return encode_cookie_header(cookies.items())
 
 
 async def _collect_response(response: Response) -> TestResponse:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
-from http.cookies import CookieError, SimpleCookie
 from re import Pattern, compile
 from string import ascii_letters, digits
 from typing import TypeAlias
@@ -17,6 +16,10 @@ RawHeaderItem: TypeAlias = tuple[object, object]
 
 _BAD_PERCENT_ESCAPE: Pattern[str] = compile(r"%(?![0-9A-Fa-f]{2})")
 _HEADER_NAME_CHARS = frozenset(f"!#$%&'*+-.^_`|~{digits}{ascii_letters}")
+# Characters allowed in a request cookie name: the RFC 2616 token chars (same
+# as header names) plus ":", which browsers and the previous SimpleCookie-based
+# parser both accept. Pairs whose name has any other character are skipped.
+_COOKIE_NAME_CHARS = _HEADER_NAME_CHARS | {":"}
 
 
 class Headers(Mapping[str, str]):
@@ -103,12 +106,21 @@ class Cookies(Mapping[str, str]):
         if not value:
             return cls()
 
-        parsed = SimpleCookie()
-        try:
-            parsed.load(value)
-        except CookieError as exc:
-            raise BadRequestError("Malformed Cookie header") from exc
-        return cls({key: morsel.value for key, morsel in parsed.items()})
+        # Parse directly instead of with SimpleCookie, which is built for
+        # Set-Cookie responses and treats names like "path" or "domain" as
+        # attributes -- dropping those cookies and every cookie that follows a
+        # leading one. Split on ";", split each pair on its first "=", skip
+        # pairs with no name or a non-token name, take the value verbatim
+        # (RFC 6265 does not dequote), and let the last value for a name win.
+        cookies: dict[str, str] = {}
+        for pair in value.split(";"):
+            name, separator, raw_value = pair.partition("=")
+            if not separator:
+                continue
+            name = name.strip()
+            if name and _COOKIE_NAME_CHARS.issuperset(name):
+                cookies[name] = raw_value.strip()
+        return cls(cookies)
 
     def __getitem__(self, key: str) -> str:
         return self._cookies[key]
@@ -118,6 +130,29 @@ class Cookies(Mapping[str, str]):
 
     def __len__(self) -> int:
         return len(self._cookies)
+
+
+def encode_cookie_header(cookies: Iterable[tuple[str, str]]) -> str:
+    """Serialize cookies into a request ``Cookie`` header.
+
+    Names must be cookie tokens and values must not contain characters that
+    would break the header (``;`` or control characters). Both raise
+    ``ValueError`` so a malformed cookie fails loudly instead of silently
+    producing a header that :meth:`Cookies.from_cookie_header` would misparse.
+    """
+    parts: list[str] = []
+    for name, value in cookies:
+        if not name or not _COOKIE_NAME_CHARS.issuperset(name):
+            raise ValueError(f"Invalid cookie name: {name!r}")
+        if any(_invalid_cookie_value_char(char) for char in value):
+            raise ValueError(f"Invalid cookie value for {name!r}: {value!r}")
+        parts.append(f"{name}={value}")
+    return "; ".join(parts)
+
+
+def _invalid_cookie_value_char(char: str) -> bool:
+    ordinal = ord(char)
+    return char == ";" or ordinal < 32 or ordinal == 127
 
 
 def normalize_response_headers(

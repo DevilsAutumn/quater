@@ -13,6 +13,7 @@ from quater.datastructures import (
     Cookies,
     Headers,
     QueryParams,
+    encode_cookie_header,
     normalize_response_headers,
 )
 from quater.exceptions import BadRequestError
@@ -114,13 +115,114 @@ class TestCookies:
         assert len(Cookies.from_cookie_header(None)) == 0
         assert len(Cookies.from_cookie_header("")) == 0
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "path",
+            "domain",
+            "expires",
+            "max-age",
+            "secure",
+            "httponly",
+            "samesite",
+            "version",
+            "comment",
+        ],
+    )
+    def test_reserved_attribute_names_are_read_as_cookies(self, name: str) -> None:
+        # These words are Set-Cookie attributes but valid request cookie names.
+        # SimpleCookie ate them as attributes; the request parser keeps them.
+        cookies = Cookies.from_cookie_header(f"{name}=value")
+
+        assert dict(cookies) == {name: "value"}
+
+    def test_leading_reserved_name_does_not_wipe_the_jar(self) -> None:
+        # A reserved word first in the header used to drop every cookie after it.
+        cookies = Cookies.from_cookie_header("path=/admin; session=SECRET")
+
+        assert dict(cookies) == {"path": "/admin", "session": "SECRET"}
+
+    def test_trailing_reserved_name_is_not_swallowed(self) -> None:
+        cookies = Cookies.from_cookie_header("session=abc; path=/admin")
+
+        assert dict(cookies) == {"session": "abc", "path": "/admin"}
+
+    def test_last_value_wins_for_repeated_names(self) -> None:
+        cookies = Cookies.from_cookie_header("a=1; a=2")
+
+        assert dict(cookies) == {"a": "2"}
+
+    def test_only_first_equals_splits_name_from_value(self) -> None:
+        cookies = Cookies.from_cookie_header("data=a=b=c")
+
+        assert dict(cookies) == {"data": "a=b=c"}
+
+    def test_surrounding_whitespace_is_stripped(self) -> None:
+        cookies = Cookies.from_cookie_header("  session = abc ;  theme= dark ")
+
+        assert dict(cookies) == {"session": "abc", "theme": "dark"}
+
+    def test_empty_value_is_kept(self) -> None:
+        cookies = Cookies.from_cookie_header("session=")
+
+        assert dict(cookies) == {"session": ""}
+
+    def test_quoted_value_is_kept_verbatim(self) -> None:
+        # RFC 6265 takes the value as-is; surrounding quotes are part of it.
+        cookies = Cookies.from_cookie_header('session="a b"')
+
+        assert dict(cookies) == {"session": '"a b"'}
+
+    def test_segments_without_equals_are_skipped(self) -> None:
+        cookies = Cookies.from_cookie_header("session=abc; broken; theme=dark")
+
+        assert dict(cookies) == {"session": "abc", "theme": "dark"}
+
+    def test_segments_with_empty_name_are_skipped(self) -> None:
+        cookies = Cookies.from_cookie_header("=orphan; session=abc")
+
+        assert dict(cookies) == {"session": "abc"}
+
+    def test_colon_in_name_is_kept(self) -> None:
+        # Browsers and the previous parser accept ":" in cookie names; dropping
+        # it would silently lose a valid cookie.
+        cookies = Cookies.from_cookie_header("user:id=abc; theme=dark")
+
+        assert dict(cookies) == {"user:id": "abc", "theme": "dark"}
+
     def test_malformed_segments_are_dropped_not_fatal(self) -> None:
-        # SimpleCookie is lenient: an unparseable segment is skipped while valid
-        # morsels are still returned, so a junk Cookie header never crashes the
-        # request. The control-character segment is dropped and "a" survives.
+        # A segment whose name is not an RFC token (here a control character) is
+        # skipped while valid cookies still come through, so a junk Cookie header
+        # never crashes the request.
         cookies = Cookies.from_cookie_header("a=b; \x00=c")
 
         assert dict(cookies) == {"a": "b"}
+
+
+class TestEncodeCookieHeader:
+    def test_serializes_pairs_including_reserved_names(self) -> None:
+        header = encode_cookie_header([("path", "/admin"), ("session", "a b")])
+
+        assert header == "path=/admin; session=a b"
+
+    def test_round_trips_through_from_cookie_header(self) -> None:
+        pairs = [("path", "/admin"), ("session", "a b"), ("user:id", "7")]
+        parsed = Cookies.from_cookie_header(encode_cookie_header(pairs))
+
+        assert dict(parsed) == dict(pairs)
+
+    def test_empty_input_yields_empty_header(self) -> None:
+        assert encode_cookie_header([]) == ""
+
+    @pytest.mark.parametrize("name", ["", "a;b", "a=b", "my cookie", "a\x00b"])
+    def test_invalid_name_raises(self, name: str) -> None:
+        with pytest.raises(ValueError, match="Invalid cookie name"):
+            encode_cookie_header([(name, "x")])
+
+    @pytest.mark.parametrize("value", ["a;b", "a\nb", "a\x7fb", "a\tb"])
+    def test_value_that_breaks_the_header_raises(self, value: str) -> None:
+        with pytest.raises(ValueError, match="Invalid cookie value"):
+            encode_cookie_header([("session", value)])
 
 
 class TestNormalizeResponseHeaders:

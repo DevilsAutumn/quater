@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from http.cookies import SimpleCookie
 from inspect import Signature
 from types import UnionType
 from typing import Literal, Protocol, Union, get_args, get_origin
@@ -20,6 +19,7 @@ from quater.actions.approval import (
     require_action_approval,
 )
 from quater.core import RouteDefinition
+from quater.datastructures import encode_cookie_header
 from quater.exceptions import BadRequestError
 from quater.middleware import MiddlewareStack, compile_middleware_pipeline
 from quater.params import BoundParameter, HandlerPlan
@@ -479,10 +479,7 @@ def _action_headers(
 
 
 def _cookie_header(cookies: tuple[tuple[str, str], ...]) -> str:
-    jar = SimpleCookie()
-    for name, value in cookies:
-        jar[name] = value
-    return "; ".join(morsel.OutputString() for morsel in jar.values())
+    return encode_cookie_header(cookies)
 
 
 def _invalid_header_value_character(char: str) -> bool:

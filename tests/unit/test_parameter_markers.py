@@ -134,31 +134,23 @@ async def test_missing_required_header_and_cookie_return_clear_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_malformed_cookie_header_returns_bad_request(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+async def test_leading_reserved_cookie_name_does_not_hide_session() -> None:
     app = Quater()
-    handler_calls = 0
 
     @app.get("/cookie")
     async def read_cookie(session: str = Cookie()) -> dict[str, str]:
-        nonlocal handler_calls
-        handler_calls += 1
         return {"session": session}
 
-    with caplog.at_level("ERROR", logger="quater.error"):
-        response = await app.handle(
-            Request(
-                method="GET",
-                path="/cookie",
-                headers={"Cookie": "session=abc; $bad=x"},
-            )
+    response = await app.handle(
+        Request(
+            method="GET",
+            path="/cookie",
+            headers={"Cookie": "path=/admin; session=abc"},
         )
+    )
 
-    assert response.status_code == 400
-    assert response.body == b"Malformed Cookie header"
-    assert handler_calls == 0
-    assert not caplog.records
+    assert response.status_code == 200
+    assert json.loads(response.body) == {"session": "abc"}
 
 
 @pytest.mark.asyncio

@@ -209,6 +209,22 @@ async def test_test_client_per_request_cookie_overrides_cookie_jar() -> None:
 
 
 @pytest.mark.asyncio
+async def test_test_client_sends_reserved_name_and_spaced_cookies() -> None:
+    app = Quater()
+
+    @app.get("/cookies")
+    async def cookies(request: Request) -> dict[str, str | None]:
+        return {name: request.cookies.get(name) for name in ("path", "session")}
+
+    # "path" is a Set-Cookie attribute word; the test client must still be able
+    # to send it, and a value with a space must round-trip unchanged.
+    client = TestClient(app, cookies={"path": "/admin", "session": "a b"})
+    response = await client.get("/cookies")
+
+    assert response.json() == {"path": "/admin", "session": "a b"}
+
+
+@pytest.mark.asyncio
 async def test_test_client_collects_streaming_responses() -> None:
     app = Quater()
 

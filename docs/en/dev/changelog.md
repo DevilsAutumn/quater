@@ -21,6 +21,18 @@ cut.
 - Internal cleanup: removed unused internal helpers and added PUT route test
   coverage. No public API change.
 
+### Fixed
+
+- Fixed request `Cookie` header parsing so cookies named after Set-Cookie
+  attributes (`path`, `domain`, `expires`, `max-age`, `secure`, `httponly`,
+  `samesite`, `version`, `comment`) are read correctly. The header is now parsed
+  directly instead of with `SimpleCookie`, so a reserved-word cookie no longer
+  drops itself or, when it leads the header, every cookie after it. Malformed
+  segments are skipped instead of failing the request. The `TestClient` and the
+  MCP/CLI action surfaces can now also send those reserved names, keeping cookie
+  arguments at parity with HTTP.
+  ([#107](https://github.com/DevilsAutumn/quater/issues/107))
+
 ## 0.1.0
 
 ### Fixed

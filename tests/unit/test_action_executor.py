@@ -228,6 +228,26 @@ async def test_action_header_and_cookie_arguments_are_available_to_handler() -> 
 
 
 @pytest.mark.asyncio
+async def test_action_cookie_argument_with_reserved_name_reaches_handler() -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    @app.get("/audit", cli=True, description="Read audit state.")
+    async def audit(path: str = Cookie()) -> dict[str, str]:
+        return {"path": path}
+
+    # "path" is a Set-Cookie attribute word; building the synthetic request must
+    # not drop it, so MCP and CLI stay at parity with HTTP.
+    response = await execute_action(
+        action_for(app, "audit"),
+        Request(method="POST", path="/__quater__/actions/call"),
+        {"path": "/admin"},
+        source="cli",
+    )
+
+    assert response.body == b'{"path":"/admin"}'
+
+
+@pytest.mark.asyncio
 async def test_action_requests_do_not_inherit_transport_headers_or_cookies() -> None:
     app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
 
