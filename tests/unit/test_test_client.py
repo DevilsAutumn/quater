@@ -88,6 +88,20 @@ async def test_test_client_posts_json_body() -> None:
 
 
 @pytest.mark.asyncio
+async def test_test_client_puts_json_body() -> None:
+    app = Quater()
+
+    @app.put("/items/{item_id:int}")
+    async def replace(item_id: int, payload: dict[str, object]) -> dict[str, object]:
+        return {"item_id": item_id, "payload": payload}
+
+    response = await TestClient(app).put("/items/7", json={"name": "Ada"})
+
+    assert response.status_code == 200
+    assert response.json() == {"item_id": 7, "payload": {"name": "Ada"}}
+
+
+@pytest.mark.asyncio
 async def test_test_client_posts_form_and_file_bodies() -> None:
     app = Quater()
 

@@ -126,6 +126,30 @@ async def test_route_group_root_route_joins_to_prefix_without_trailing_slash() -
 
 
 @pytest.mark.asyncio
+async def test_route_group_put_route_joins_to_prefix() -> None:
+    app = Quater()
+    group = RouteGroup(prefix="/api")
+
+    @group.put("/items/{item_id:int}")
+    async def replace(item_id: int, payload: dict[str, object]) -> dict[str, object]:
+        return {"item_id": item_id, "payload": payload}
+
+    app.include(group)
+
+    response = await app.handle(
+        Request(
+            method="PUT",
+            path="/api/items/7",
+            headers=[("content-type", "application/json")],
+            body=b'{"name":"Ada"}',
+        )
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.body) == {"item_id": 7, "payload": {"name": "Ada"}}
+
+
+@pytest.mark.asyncio
 async def test_route_group_middleware_order_matches_http_routes() -> None:
     app = Quater()
     events: list[str] = []

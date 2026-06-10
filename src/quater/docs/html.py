@@ -204,10 +204,6 @@ def _list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
-def _string(value: object, default: str) -> str:
-    return value if isinstance(value, str) else default
-
-
 def _asset(base_path: str, asset_name: str) -> str:
     return escape(join_path(base_path, asset_name), quote=True)
 

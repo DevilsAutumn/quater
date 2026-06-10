@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Protocol, TypeAlias
+from typing import TypeAlias
 
 from quater._finalize import move_response_finalizers
 from quater.exceptions import HTTPError
@@ -22,13 +22,6 @@ ExceptionMiddleware: TypeAlias = Callable[
     Awaitable[Response | None],
 ]
 _ERROR_LOGGER = logging.getLogger("quater.error")
-
-
-class ExceptionHandler(Protocol):
-    """Callable registered for one exception type."""
-
-    async def __call__(self, request: Request, exc: Exception) -> Response | None:
-        """Return a response, or None to let another handler try."""
 
 
 @dataclass(slots=True, frozen=True)

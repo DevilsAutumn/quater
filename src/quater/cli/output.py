@@ -28,15 +28,6 @@ def print_json(value: object, *, file: TextIO | None = None) -> None:
     file.write("\n")
 
 
-def print_action_list(
-    actions: Iterable[ActionDefinition],
-    *,
-    as_json: bool,
-) -> None:
-    summaries = action_summaries(actions)
-    print_action_summary_list(summaries, as_json=as_json)
-
-
 def action_summaries(actions: Iterable[ActionDefinition]) -> list[dict[str, object]]:
     return [action_summary(action) for action in actions]
 
