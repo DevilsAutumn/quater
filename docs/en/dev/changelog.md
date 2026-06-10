@@ -11,6 +11,16 @@ This page records public release notes for Quater.
 
 Read [Stability](/en/dev/stability) before upgrading Quater versions.
 
+## Latest
+
+Unreleased changes on `main`. Renamed to the version number when the release is
+cut.
+
+### Changed
+
+- Internal cleanup: removed unused internal helpers and added PUT route test
+  coverage. No public API change.
+
 ## 0.1.0
 
 ### Fixed
