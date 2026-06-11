@@ -110,7 +110,11 @@ def test_user_routes_cannot_claim_quater_internal_paths() -> None:
 
 
 @given(segments=st.lists(path_segment_strategy(), min_size=2, max_size=5))
-@settings(max_examples=80, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=80,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 def test_fuzzed_extra_path_segments_never_match_one_dynamic_segment(
     segments: list[str],
 ) -> None:
@@ -135,7 +139,7 @@ def test_fuzzed_extra_path_segments_never_match_one_dynamic_segment(
 
 
 @given(segment=path_segment_strategy())
-@settings(max_examples=80)
+@settings(max_examples=80, deadline=None)
 def test_fuzzed_single_path_segment_is_bound_verbatim(segment: str) -> None:
     async def run_case() -> None:
         app = Quater()

@@ -30,6 +30,11 @@ cut.
   reference accordingly, and added test coverage for both the CLI and MCP
   surfaces. ([#74](https://github.com/DevilsAutumn/quater/issues/74))
 
+- Fixed intermittent CI failures in the router path-safety fuzz tests by
+  disabling the Hypothesis 200 ms deadline, so a slow generated example no
+  longer fails the run. Test-only; no public API change.
+  ([#96](https://github.com/DevilsAutumn/quater/issues/96))
+
 - Fixed request `Cookie` header parsing so cookies named after Set-Cookie
   attributes (`path`, `domain`, `expires`, `max-age`, `secure`, `httponly`,
   `samesite`, `version`, `comment`) are read correctly. The header is now parsed
