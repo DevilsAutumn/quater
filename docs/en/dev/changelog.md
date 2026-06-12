@@ -16,6 +16,8 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
+## 0.1.1
+
 ### Changed
 
 - Internal cleanup: removed unused internal helpers and added PUT route test
