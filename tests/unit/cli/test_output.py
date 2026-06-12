@@ -4,13 +4,15 @@ import json
 
 import pytest
 
-from quater import Response
+from quater import JSONResponse, Response
 from quater.actions.executor import ActionPreflightResult
 from quater.cli.output import (
     filter_action_summaries,
+    print_action_envelope,
     print_action_summary_detail,
     print_action_summary_list,
     print_preflight,
+    print_preflight_payload,
     print_response,
 )
 
@@ -258,3 +260,131 @@ async def test_print_response_returns_exit_status_and_runs_finalizers(
         "status_code": 403,
         "body": "denied",
     }
+
+
+@pytest.mark.asyncio
+async def test_print_response_renders_json_body_not_python_repr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    response = JSONResponse({"id": "ord_1001", "shipped": True})
+
+    assert await print_response(response, as_json=False) == 0
+
+    out = capsys.readouterr().out
+    assert json.loads(out) == {"id": "ord_1001", "shipped": True}
+    assert "'id'" not in out  # not a Python dict repr
+
+
+def test_print_action_envelope_renders_body_as_json_by_default(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    print_action_envelope(
+        {"ok": True, "status_code": 200, "body": {"id": "ord_1001", "paid": True}},
+        status_code=200,
+        as_json=False,
+    )
+
+    out = capsys.readouterr().out
+    assert json.loads(out) == {"id": "ord_1001", "paid": True}
+    assert "'id'" not in out
+
+
+def test_print_action_envelope_json_mode_keeps_full_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    print_action_envelope(
+        {"ok": True, "status_code": 200, "body": {"id": 7}},
+        status_code=200,
+        as_json=True,
+    )
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "status_code": 200,
+        "body": {"id": 7},
+    }
+
+
+def test_print_action_envelope_prints_text_body_and_empty_status(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    print_action_envelope(
+        {"ok": True, "status_code": 200, "body": "pong"},
+        status_code=200,
+        as_json=False,
+    )
+    assert capsys.readouterr().out == "pong\n"
+
+    print_action_envelope(
+        {"ok": True, "status_code": 204, "body": ""},
+        status_code=204,
+        as_json=False,
+    )
+    assert capsys.readouterr().out == "status: 204\n"
+
+
+def test_print_action_envelope_shows_error_envelope_detail(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # An error envelope carries no "body"; the failure detail must survive.
+    print_action_envelope(
+        {"ok": False, "error": {"code": "bad_request", "message": "Missing id"}},
+        status_code=400,
+        as_json=False,
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "ok": False,
+        "error": {"code": "bad_request", "message": "Missing id"},
+    }
+
+
+def test_print_preflight_payload_renders_dry_run_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    print_preflight_payload(
+        {
+            "ok": True,
+            "dry_run": True,
+            "action": "users.lock",
+            "method": "POST",
+            "path": "/users/7/lock",
+            "arguments_hash": "sha256:test",
+            "needs_approval": True,
+            "approval_token_provided": False,
+        },
+        as_json=False,
+    )
+
+    out = capsys.readouterr().out
+    assert "Dry run OK: users.lock" in out
+    assert "POST /users/7/lock" in out
+    assert "protected action: yes" in out
+    assert "approval token: missing" in out
+
+
+def test_print_preflight_payload_shows_error_envelope_raw(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A failed dry run returns an error envelope, not a preflight payload.
+    print_preflight_payload(
+        {"ok": False, "error": {"code": "unknown_action", "message": "Unknown action"}},
+        as_json=False,
+    )
+    assert json.loads(capsys.readouterr().out)["error"]["code"] == "unknown_action"
+
+    # Even if a non-conforming remote sets dry_run alongside ok=false, the human
+    # output must not print "Dry run OK" while the call exits non-zero.
+    print_preflight_payload(
+        {
+            "ok": False,
+            "dry_run": True,
+            "action": "users.lock",
+            "error": {"code": "approval_denied", "message": "Denied"},
+        },
+        as_json=False,
+    )
+    out = capsys.readouterr().out
+    assert "Dry run OK" not in out
+    assert json.loads(out)["error"]["code"] == "approval_denied"

@@ -359,6 +359,128 @@ def test_cli_remote_call_sends_arguments_and_approval(
     assert json.loads(captured.out)["ok"] is True
 
 
+def _stub_remote_call(
+    monkeypatch: pytest.MonkeyPatch,
+    response: RemoteResponse,
+) -> None:
+    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+        return {"protocol": "quater-actions.v1", "actions": []}
+
+    def fake_call_action(
+        base_url: str,
+        *,
+        token: str | None,
+        action: str,
+        arguments: dict[str, object],
+        dry_run: bool,
+        approval_token: str | None,
+    ) -> RemoteResponse:
+        return response
+
+    monkeypatch.setattr("quater.cli.main.fetch_manifest", fake_fetch_manifest)
+    monkeypatch.setattr("quater.cli.main.call_action", fake_call_action)
+
+
+def test_cli_remote_call_unwraps_body_unless_json_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("QUATER_HOME", str(tmp_path / ".quater"))
+    _stub_remote_call(
+        monkeypatch,
+        RemoteResponse(status_code=200, body={"ok": True, "body": {"id": 7}}),
+    )
+
+    assert (
+        main(["connect", "billing", "https://api.example.com", "--token", "secret"])
+        == 0
+    )
+    capsys.readouterr()
+
+    assert main(["call", "billing", "users.get", "--id", "7"]) == 0
+    default_out = capsys.readouterr().out
+
+    assert main(["--json", "call", "billing", "users.get", "--id", "7"]) == 0
+    json_out = capsys.readouterr().out
+
+    # The --json flag controls envelope-vs-body: default unwraps to the action
+    # body, --json keeps the full RPC envelope. The two must differ, which is the
+    # behavior the old code (always printing the envelope) got wrong.
+    assert json.loads(default_out) == {"id": 7}
+    assert "'id'" not in default_out  # not a Python repr
+    assert json.loads(json_out) == {"ok": True, "body": {"id": 7}}
+    assert default_out != json_out
+
+
+def test_cli_remote_call_error_envelope_is_not_swallowed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("QUATER_HOME", str(tmp_path / ".quater"))
+    _stub_remote_call(
+        monkeypatch,
+        RemoteResponse(
+            status_code=400,
+            body={"ok": False, "error": {"code": "bad_request", "message": "Bad id"}},
+        ),
+    )
+
+    assert (
+        main(["connect", "billing", "https://api.example.com", "--token", "secret"])
+        == 0
+    )
+    capsys.readouterr()
+
+    code = main(["call", "billing", "users.get", "--id", "x"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    # No "body" key on an error envelope — the failure detail must still surface.
+    assert json.loads(captured.out)["error"]["code"] == "bad_request"
+
+
+def test_cli_remote_call_dry_run_matches_local_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("QUATER_HOME", str(tmp_path / ".quater"))
+    _stub_remote_call(
+        monkeypatch,
+        RemoteResponse(
+            status_code=200,
+            body={
+                "ok": True,
+                "dry_run": True,
+                "action": "users.lock",
+                "method": "POST",
+                "path": "/users/7/lock",
+                "arguments_hash": "sha256:test",
+                "needs_approval": True,
+                "approval_token_provided": False,
+            },
+        ),
+    )
+
+    assert (
+        main(["connect", "billing", "https://api.example.com", "--token", "secret"])
+        == 0
+    )
+    capsys.readouterr()
+
+    code = main(["call", "billing", "users.lock", "--dry-run", "--id", "7"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Dry run OK: users.lock" in captured.out
+    assert "POST /users/7/lock" in captured.out
+    assert "arguments hash: sha256:test" in captured.out
+    assert "protected action: yes" in captured.out
+    assert "approval token: missing" in captured.out
+
+
 def test_cli_remote_call_rejects_empty_token_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

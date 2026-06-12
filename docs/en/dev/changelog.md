@@ -35,6 +35,15 @@ cut.
   longer fails the run. Test-only; no public API change.
   ([#96](https://github.com/DevilsAutumn/quater/issues/96))
 
+- Fixed `quater call` output. Remote `call` ignored the global `--json` flag and
+  always printed the raw RPC envelope; it now honors `--json` and shares the local
+  `call` formatter. Without `--json`, `call` renders the response body as JSON for
+  both local and remote calls — local previously printed a Python `repr`
+  (`{'id': 'ord_1001'}` now becomes `{"id": "ord_1001"}`) and remote previously
+  printed the whole envelope. With `--json` it prints the full action envelope,
+  and remote dry runs now show the same summary as local.
+  ([#75](https://github.com/DevilsAutumn/quater/issues/75))
+
 - Fixed request `Cookie` header parsing so cookies named after Set-Cookie
   attributes (`path`, `domain`, `expires`, `max-age`, `secure`, `httponly`,
   `samesite`, `version`, `comment`) are read correctly. The header is now parsed

@@ -113,16 +113,24 @@ def print_action_summary_detail(
 
 
 def print_preflight(result: ActionPreflightResult, *, as_json: bool) -> None:
-    payload = preflight_payload(result)
+    print_preflight_payload(preflight_payload(result), as_json=as_json)
+
+
+def print_preflight_payload(payload: Mapping[str, object], *, as_json: bool) -> None:
     if as_json:
         print_json(payload)
         return
 
-    print(f"Dry run OK: {result.action}")
-    print(f"  {result.method} {result.path}")
-    print(f"  arguments hash: {result.arguments_hash}")
-    print(f"  protected action: {_yes_no(result.needs_approval)}")
-    print(f"  approval token: {_approval_token_status(result)}")
+    if not _summary_bool(payload, "dry_run") or not _summary_bool(payload, "ok"):
+        # Error or non-preflight payload — show it raw, never "Dry run OK".
+        print_json(payload)
+        return
+
+    print(f"Dry run OK: {_summary_string(payload, 'action')}")
+    print(f"  {_summary_string(payload, 'method')} {_summary_string(payload, 'path')}")
+    print(f"  arguments hash: {_summary_string(payload, 'arguments_hash')}")
+    print(f"  protected action: {_yes_no(_summary_bool(payload, 'needs_approval'))}")
+    print(f"  approval token: {_payload_approval_token_status(payload)}")
 
 
 async def print_response(response: Response, *, as_json: bool) -> int:
@@ -130,25 +138,46 @@ async def print_response(response: Response, *, as_json: bool) -> int:
         payload = await response_payload(response)
     finally:
         await run_response_finalizers(response)
-    if as_json:
-        print_json(payload)
-    else:
-        text = str(payload["body"])
-        if text:
-            print(text)
-        else:
-            print(f"status: {response.status_code}")
+    print_action_envelope(payload, status_code=response.status_code, as_json=as_json)
     return 0 if response.status_code < 400 else 1
+
+
+def print_action_envelope(
+    envelope: Mapping[str, object],
+    *,
+    status_code: int,
+    as_json: bool,
+) -> None:
+    if as_json:
+        print_json(envelope)
+        return
+
+    if "body" in envelope:
+        _print_response_body(envelope["body"], status_code=status_code)
+    else:
+        # Error envelope ({"ok": false, "error": {...}}) carries no body — show
+        # the whole thing so the failure detail is not swallowed.
+        print_json(envelope)
+
+
+def _print_response_body(body: object, *, status_code: int) -> None:
+    if isinstance(body, str):
+        if body:
+            print(body)
+        else:
+            print(f"status: {status_code}")
+        return
+    print_json(body)
 
 
 def _yes_no(value: bool) -> str:
     return "yes" if value else "no"
 
 
-def _approval_token_status(result: ActionPreflightResult) -> str:
-    if not result.needs_approval:
+def _payload_approval_token_status(payload: Mapping[str, object]) -> str:
+    if not _summary_bool(payload, "needs_approval"):
         return "not required"
-    if result.approval_token_provided:
+    if _summary_bool(payload, "approval_token_provided"):
         return "provided"
     return "missing"
 

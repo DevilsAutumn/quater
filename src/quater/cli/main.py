@@ -19,10 +19,12 @@ from quater.cli.output import (
     action_summaries,
     filter_action_summaries,
     print_action_detail,
+    print_action_envelope,
     print_action_summary_detail,
     print_action_summary_list,
     print_json,
     print_preflight,
+    print_preflight_payload,
     print_response,
 )
 from quater.cli.parsing import parse_action_arguments, parse_headers
@@ -266,7 +268,14 @@ def _remote_call(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
         dry_run=namespace.dry_run,
         approval_token=approval_token,
     )
-    print_json(response.body)
+    if namespace.dry_run:
+        print_preflight_payload(response.body, as_json=namespace.as_json)
+    else:
+        print_action_envelope(
+            response.body,
+            status_code=response.status_code,
+            as_json=namespace.as_json,
+        )
     ok = response.status_code < 400 and response.body.get("ok") is not False
     return 0 if ok else 1
 
