@@ -32,6 +32,11 @@ __all__ = ["CliTestClient", "MCPTestClient", "TestClient", "TestResponse"]
 _MCP_PATH = "/mcp"
 _MCP_PROTOCOL_VERSION = "2025-11-25"
 
+# Sentinel used to distinguish ``json=None`` (an explicit JSON null body) from a
+# caller omitting the ``json`` argument entirely. Without it, ``json=None`` is
+# indistinguishable from the default and no JSON body is sent.
+_UNSET_JSON: object = object()
+
 
 class TestResponse:
     """Collected response returned by ``TestClient``.
@@ -152,7 +157,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _UNSET_JSON,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -207,7 +212,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _UNSET_JSON,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -231,7 +236,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _UNSET_JSON,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -255,7 +260,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _UNSET_JSON,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -279,7 +284,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _UNSET_JSON,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -573,9 +578,13 @@ def _request_body(
     data: FormDataInput | None,
     files: FilesInput | None,
 ) -> tuple[bytes, str | None]:
-    if json is not None and content is not None:
+    explicit_json = json is not _UNSET_JSON
+    if explicit_json and content is not None:
         raise ValueError("Use either json or content, not both")
-    provided = sum(value is not None for value in (json, content, data, files))
+    json_for_count = None if json is _UNSET_JSON else json
+    provided = sum(
+        value is not None for value in (json_for_count, content, data, files)
+    )
     if provided > 1 and not (data is not None and files is not None and provided == 2):
         raise ValueError("Use one request body style")
     if files is not None:
@@ -584,7 +593,7 @@ def _request_body(
         return urlencode(_flatten_form_mapping(data)).encode("utf-8"), (
             "application/x-www-form-urlencoded"
         )
-    if json is not None:
+    if explicit_json:
         from quater.serialization import dumps_json
 
         return dumps_json(json), "application/json"

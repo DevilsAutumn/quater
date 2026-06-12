@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator
 
 import pytest
@@ -140,6 +141,58 @@ async def test_test_client_rejects_ambiguous_body_arguments() -> None:
         await client.post("/echo", json={"name": "Ada"}, content=b"{}")
     with pytest.raises(ValueError, match="Use one request body style"):
         await client.post("/echo", json={"name": "Ada"}, data={"name": "Ada"})
+
+
+@pytest.mark.asyncio
+async def test_test_client_sends_explicit_json_null_body() -> None:
+    """json=None must send ``b"null"`` with ``application/json``.
+
+    The test client previously treated ``json=None`` the same as omitting the
+    argument entirely, dropping the body and skipping the content-type header.
+    An explicit null should be sent through as a real JSON null payload.
+    """
+
+    app = Quater()
+
+    async def show_payload(request: Request) -> dict[str, object]:
+        body = await request.body()
+        return {
+            "body": base64.b64encode(body).decode("ascii"),
+            "content_type": request.headers.get("content-type"),
+        }
+
+    app.post("/echo")(show_payload)
+    app.put("/echo")(show_payload)
+    app.patch("/echo")(show_payload)
+    app.delete("/echo")(show_payload)
+
+    client = TestClient(app)
+
+    # request(..., json=None) — explicit None flows through verbatim.
+    response = await client.request("POST", "/echo", json=None)
+    assert response.status_code == 200
+    assert response.json() == {
+        "body": base64.b64encode(b"null").decode("ascii"),
+        "content_type": "application/json",
+    }
+
+    # post/put/patch/delete all forward the explicit None body too.
+    for verb in (client.post, client.put, client.patch, client.delete):
+        response = await verb("/echo", json=None)
+        assert response.status_code == 200
+        assert response.json() == {
+            "body": base64.b64encode(b"null").decode("ascii"),
+            "content_type": "application/json",
+        }
+
+    # And omitting ``json`` entirely still produces an empty, content-typeless
+    # request — we only changed the explicit-None behaviour.
+    response = await client.post("/echo")
+    assert response.status_code == 200
+    assert response.json() == {
+        "body": base64.b64encode(b"").decode("ascii"),
+        "content_type": None,
+    }
 
 
 @pytest.mark.asyncio
