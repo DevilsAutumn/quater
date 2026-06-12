@@ -21,6 +21,10 @@ cut.
 - Internal cleanup: removed unused internal helpers and added PUT route test
   coverage. No public API change.
 
+- Documentation: fixed README typos and documented that bare scalar handler
+  parameters always bind from the query string (use `Body()` to read the request
+  body). Docs only; no public API change.
+
 ### Fixed
 
 - Clarified that injecting `Request` directly into an MCP tool or CLI action

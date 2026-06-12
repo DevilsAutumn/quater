@@ -60,6 +60,11 @@ shape:
 5. scalar query parameters
 6. one JSON body parameter
 
+A bare scalar parameter (no marker) binds from the **query string on every
+method**, including `POST` and `PUT` — Quater never reads it from the JSON body.
+To take a value from the request body, mark it with `Body()` or fold it into the
+body struct.
+
 Use markers when a reader should not have to guess:
 
 ```python
