@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from http.cookies import SimpleCookie
 from secrets import token_hex
-from typing import Any, ClassVar, Literal, TypeAlias
+from typing import Any, ClassVar, Final, Literal, TypeAlias
 from urllib.parse import urlencode
 
 from quater._finalize import run_response_finalizers
@@ -31,6 +31,7 @@ __all__ = ["CliTestClient", "MCPTestClient", "TestClient", "TestResponse"]
 
 _MCP_PATH = "/mcp"
 _MCP_PROTOCOL_VERSION = "2025-11-25"
+_JSON_NOT_GIVEN: Final = object()
 
 
 class TestResponse:
@@ -152,7 +153,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _JSON_NOT_GIVEN,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -207,7 +208,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _JSON_NOT_GIVEN,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -231,7 +232,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _JSON_NOT_GIVEN,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -255,7 +256,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _JSON_NOT_GIVEN,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -279,7 +280,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _JSON_NOT_GIVEN,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -573,9 +574,11 @@ def _request_body(
     data: FormDataInput | None,
     files: FilesInput | None,
 ) -> tuple[bytes, str | None]:
-    if json is not None and content is not None:
+    if json is not _JSON_NOT_GIVEN and content is not None:
         raise ValueError("Use either json or content, not both")
-    provided = sum(value is not None for value in (json, content, data, files))
+    provided = int(json is not _JSON_NOT_GIVEN) + sum(
+        value is not None for value in (content, data, files)
+    )
     if provided > 1 and not (data is not None and files is not None and provided == 2):
         raise ValueError("Use one request body style")
     if files is not None:
@@ -584,7 +587,7 @@ def _request_body(
         return urlencode(_flatten_form_mapping(data)).encode("utf-8"), (
             "application/x-www-form-urlencoded"
         )
-    if json is not None:
+    if json is not _JSON_NOT_GIVEN:
         from quater.serialization import dumps_json
 
         return dumps_json(json), "application/json"
