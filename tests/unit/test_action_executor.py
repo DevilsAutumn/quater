@@ -526,7 +526,7 @@ async def test_argument_hash_rejects_non_finite_bound_float_values(
     missing = await preflight_action(action, request, {}, source="cli")
 
     assert missing.arguments_hash == action_arguments_hash("risk", {"ratio": None})
-    with pytest.raises(BadRequestError, match="Invalid float query parameter: ratio"):
+    with pytest.raises(BadRequestError, match="Invalid float parameter: ratio"):
         await preflight_action(action, request, {"ratio": ratio}, source="cli")
 
 

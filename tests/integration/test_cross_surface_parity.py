@@ -402,22 +402,6 @@ def test_int_path_params_reject_non_canonical_values_across_surfaces(
     ("arguments", "message"),
     [
         (
-            {key: value for key, value in valid_arguments().items() if key != "active"},
-            "Missing required query parameter: active",
-        ),
-        (
-            valid_arguments(count="many"),
-            "Invalid integer query parameter: count",
-        ),
-        (
-            valid_arguments(ratio="wide"),
-            "Invalid float query parameter: ratio",
-        ),
-        (
-            valid_arguments(active="sometimes"),
-            "Invalid boolean query parameter: active",
-        ),
-        (
             {
                 key: value
                 for key, value in valid_arguments().items()
@@ -447,10 +431,6 @@ def test_int_path_params_reject_non_canonical_values_across_surfaces(
         ),
     ],
     ids=[
-        "missing-query",
-        "invalid-int",
-        "invalid-float",
-        "invalid-bool",
         "missing-header",
         "missing-cookie",
         "missing-body",
@@ -479,6 +459,61 @@ def test_declared_input_errors_match_across_surfaces(
         "mcp": message,
         "local_cli": message,
         "remote_cli": message,
+    }
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("arguments", "http_message", "agent_message"),
+    [
+        (
+            {key: value for key, value in valid_arguments().items() if key != "active"},
+            "Missing required query parameter: active",
+            "Missing required parameter: active",
+        ),
+        (
+            valid_arguments(count="many"),
+            "Invalid integer query parameter: count",
+            "Invalid integer parameter: count",
+        ),
+        (
+            valid_arguments(ratio="wide"),
+            "Invalid float query parameter: ratio",
+            "Invalid float parameter: ratio",
+        ),
+        (
+            valid_arguments(active="sometimes"),
+            "Invalid boolean query parameter: active",
+            "Invalid boolean parameter: active",
+        ),
+    ],
+    ids=["missing-query", "invalid-int", "invalid-float", "invalid-bool"],
+)
+def test_query_param_errors_drop_query_vocabulary_off_http(
+    arguments: dict[str, object],
+    http_message: str,
+    agent_message: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Scalar params bind from the query string, so HTTP keeps "query parameter",
+    # but MCP and CLI callers have no query string — they get neutral "parameter".
+    app, calls = make_parity_app()
+    module_target = register_app_module(monkeypatch, app)
+
+    results = call_all_surfaces(app, module_target, arguments, capsys)
+
+    assert {surface: result.ok for surface, result in results.items()} == {
+        "http": False,
+        "mcp": False,
+        "local_cli": False,
+        "remote_cli": False,
+    }
+    assert {surface: result.message for surface, result in results.items()} == {
+        "http": http_message,
+        "mcp": agent_message,
+        "local_cli": agent_message,
+        "remote_cli": agent_message,
     }
     assert calls == []
 

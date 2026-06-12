@@ -29,6 +29,12 @@ cut.
   logs a warning instead of dropping them silently.
   ([#87](https://github.com/DevilsAutumn/quater/issues/87))
 
+- Fixed MCP and CLI validation errors that referred to a "query parameter" for
+  scalar arguments, even though those surfaces have no query string. HTTP keeps
+  the "query parameter" wording; MCP and CLI now say "parameter" (for example
+  `Missing required parameter: name`). Header, cookie, and body wording is
+  unchanged.
+
 - Clarified that injecting `Request` directly into an MCP tool or CLI action
   handler yields the same synthetic request that `Header()`, `Cookie()`, and
   `Body()` markers produce — transport headers, cookies, and body are never

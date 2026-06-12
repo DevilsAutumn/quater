@@ -292,14 +292,18 @@ def _parameter_input_name(
 
 
 def _bind_query_parameter(request: Request, parameter: BoundParameter) -> object:
+    # Scalar params bind from the query string on every surface, but MCP and CLI
+    # callers pass them as plain arguments — "query parameter" would be wrong
+    # there, so neutralize the wording off the HTTP surface.
+    label = "query parameter" if request.context.source == "api" else "parameter"
     value = request.query.get(parameter.request_name)
     if value is None:
-        return _missing_request_value(parameter, label="query parameter")
+        return _missing_request_value(parameter, label=label)
     return convert_scalar_value(
         value,
         parameter.annotation,
         parameter.request_name,
-        source="query parameter",
+        source=label,
     )
 
 
