@@ -23,6 +23,12 @@ cut.
 
 ### Fixed
 
+- Documented WSGI as a compatibility-only interface and made it warn when
+  lifespan hooks would be silently skipped. `on_startup`/`on_shutdown` run under
+  RSGI and ASGI only; serving an app that has registered hooks through WSGI now
+  logs a warning instead of dropping them silently.
+  ([#87](https://github.com/DevilsAutumn/quater/issues/87))
+
 - Clarified that injecting `Request` directly into an MCP tool or CLI action
   handler yields the same synthetic request that `Header()`, `Cookie()`, and
   `Body()` markers produce — transport headers, cookies, and body are never

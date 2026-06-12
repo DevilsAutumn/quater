@@ -31,6 +31,10 @@ class LifespanManager:
     def state(self) -> LifespanState:
         return self._state
 
+    @property
+    def has_hooks(self) -> bool:
+        return bool(self._startup_hooks or self._shutdown_hooks)
+
     def on_startup(self, hook: LifespanHook) -> LifespanHook:
         self._ensure_mutable()
         self._startup_hooks.append(hook)

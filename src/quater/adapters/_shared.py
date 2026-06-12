@@ -26,6 +26,8 @@ class QuaterApplication(Protocol):
 
     async def shutdown(self) -> None: ...
 
+    def _warn_if_wsgi_skips_lifespan(self) -> None: ...
+
 
 def response_headers(response: Response) -> list[tuple[str, str]]:
     validate_response(response)

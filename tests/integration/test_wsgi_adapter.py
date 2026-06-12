@@ -306,3 +306,90 @@ async def test_wsgi_can_be_called_from_an_existing_event_loop() -> None:
 
     assert status == "200 OK"
     assert body == b"ok"
+
+
+def test_wsgi_warns_on_first_request_when_startup_hook_is_registered(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    app = Quater()
+
+    @app.on_startup
+    async def startup() -> None:  # pragma: no cover - never runs under WSGI
+        pass
+
+    @app.get("/hello")
+    async def hello() -> str:
+        return "ok"
+
+    with caplog.at_level("WARNING", logger="quater"):
+        call_wsgi(app, base_environ(path="/hello"))
+        # The warning fires once, not on every request.
+        call_wsgi(app, base_environ(path="/hello"))
+
+    assert caplog.text.count("compatibility-only") == 1
+    assert "on_startup/on_shutdown" in caplog.text
+
+
+def test_wsgi_warns_for_shutdown_only_lifespan_hook(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    app = Quater()
+
+    @app.on_shutdown
+    async def shutdown() -> None:  # pragma: no cover - never runs under WSGI
+        pass
+
+    @app.get("/hello")
+    async def hello() -> str:
+        return "ok"
+
+    with caplog.at_level("WARNING", logger="quater"):
+        call_wsgi(app, base_environ(path="/hello"))
+
+    assert "compatibility-only" in caplog.text
+
+
+def test_wsgi_warns_even_when_adapter_is_captured_before_hooks(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Mirrors `application = app.wsgi` declared above the @app.on_startup
+    # decorators: the adapter is cached before any hook exists, so a
+    # construction-time check would miss the warning.
+    app = Quater()
+
+    @app.get("/hello")
+    async def hello() -> str:
+        return "ok"
+
+    wsgi_app = app.wsgi  # captured first
+
+    @app.on_startup
+    async def startup() -> None:  # pragma: no cover - never runs under WSGI
+        pass
+
+    def start_response(
+        status: str,
+        headers: list[tuple[str, str]],
+        exc_info: object | None = None,
+    ) -> object:
+        return None
+
+    with caplog.at_level("WARNING", logger="quater"):
+        b"".join(wsgi_app(base_environ(path="/hello"), start_response))
+
+    assert "compatibility-only" in caplog.text
+
+
+def test_wsgi_does_not_warn_without_lifespan_hooks(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    app = Quater()
+
+    @app.get("/hello")
+    async def hello() -> str:
+        return "ok"
+
+    with caplog.at_level("WARNING", logger="quater"):
+        call_wsgi(app, base_environ(path="/hello"))
+
+    assert "compatibility-only" not in caplog.text

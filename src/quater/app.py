@@ -153,6 +153,7 @@ class Quater:
         "_routes_dirty",
         "_tool_registry",
         "_wsgi_adapter",
+        "_wsgi_lifespan_warned",
     )
 
     def __init__(
@@ -219,6 +220,7 @@ class Quater:
         self._router: Router | None = None
         self._tool_registry: ToolRegistry | None = None
         self._wsgi_adapter: WSGIAdapter | None = None
+        self._wsgi_lifespan_warned = False
         self._routes_dirty = True
 
     @property
@@ -256,6 +258,19 @@ class Quater:
             adapter = WSGIAdapter(self)
             self._wsgi_adapter = adapter
         return adapter
+
+    def _warn_if_wsgi_skips_lifespan(self) -> None:
+        # Checked on the first WSGI request (not at adapter construction): hooks
+        # may be registered after `app.wsgi` is captured, e.g. a module-level
+        # `application = app.wsgi` above the `@app.on_startup` decorators.
+        if self._wsgi_lifespan_warned or not self._lifespan.has_hooks:
+            return
+        self._wsgi_lifespan_warned = True
+        logger.warning(
+            "WSGI is a compatibility-only interface and does not run lifespan "
+            "hooks; on_startup/on_shutdown will not execute. Serve via RSGI or "
+            "ASGI for lifespan support."
+        )
 
     @property
     def __rsgi__(self) -> RSGIAdapter:

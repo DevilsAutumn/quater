@@ -374,6 +374,11 @@ async def cache_size(request: Request) -> dict[str, int]:
 
 Use `request.state` for one-request values set by middleware.
 
+Lifespan hooks run under RSGI and ASGI only. WSGI is a compatibility-only
+interface and never runs `on_startup`/`on_shutdown` — Quater logs a warning if
+hooks are registered and the app is served via WSGI. Use RSGI or ASGI when you
+depend on lifespan.
+
 ## Responses
 
 Handlers can return plain values:

@@ -150,6 +150,10 @@ WSGI explicit callable:
 wsgi_app = app.wsgi
 ```
 
+WSGI is **compatibility-only**: it serves HTTP requests but does not run lifespan
+hooks. `on_startup`/`on_shutdown` never execute under WSGI (Quater logs a warning
+if any are registered). Deploy via RSGI or ASGI when you rely on lifespan.
+
 ## Server Options
 
 | Option | Default in `dev` | Default in `run` | Meaning |

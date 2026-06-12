@@ -50,6 +50,7 @@ class WSGIAdapter:
         environ: WSGIEnvironment,
         start_response: StartResponse,
     ) -> Iterable[bytes]:
+        self._app._warn_if_wsgi_skips_lifespan()
         status_code, headers, body = _run_async(self._handle(environ))
         start_response(response_status(status_code), headers, None)
         return body
