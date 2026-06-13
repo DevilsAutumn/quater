@@ -104,6 +104,34 @@ async def test_test_client_puts_json_body() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["request", "post", "put", "patch", "delete"])
+async def test_test_client_sends_explicit_json_null(method: str) -> None:
+    app = Quater()
+
+    @app.post("/echo")
+    @app.put("/echo")
+    @app.patch("/echo")
+    @app.delete("/echo")
+    async def echo(request: Request) -> dict[str, object]:
+        return {
+            "payload": await request.json(),
+            "content_type": request.headers["content-type"],
+        }
+
+    client = TestClient(app)
+    if method == "request":
+        response = await client.request("POST", "/echo", json=None)
+    else:
+        response = await getattr(client, method)("/echo", json=None)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "payload": None,
+        "content_type": "application/json",
+    }
+
+
+@pytest.mark.asyncio
 async def test_test_client_posts_form_and_file_bodies() -> None:
     app = Quater()
 

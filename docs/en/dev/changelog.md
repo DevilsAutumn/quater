@@ -26,6 +26,11 @@ cut.
   `cookies={...}` overrides still win for that request.
   ([#129](https://github.com/DevilsAutumn/quater/issues/129))
 
+- TestClient now distinguishes omitted JSON request bodies from explicit
+  `json=None`, allowing tests to send a JSON `null` body with
+  `application/json`.
+  ([#118](https://github.com/DevilsAutumn/quater/issues/118))
+
 ## 0.2.0
 
 ### Added
