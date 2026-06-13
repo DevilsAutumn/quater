@@ -64,12 +64,15 @@ request(
     params: QueryParams | None = None,
     headers: HeaderItems | Mapping[str, str] | None = None,
     cookies: Mapping[str, str] | None = None,
-    json: object = None,
+    json: object = ...,
     content: bytes | bytearray | memoryview | str | None = None,
     data: FormDataInput | None = None,
     files: FilesInput | None = None,
 ) -> TestResponse
 ```
+
+Omit `json` to send no request body. Pass `json=None` to send a JSON `null`
+body with `application/json`.
 
 Example:
 
