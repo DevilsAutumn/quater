@@ -16,6 +16,13 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
+### Changed
+
+- Updated the documentation build dependencies to patched versions of Vite,
+  `@vitejs/plugin-vue`, and esbuild, resolving the
+  [esbuild package integrity advisory](https://github.com/advisories/GHSA-gv7w-rqvm-qjhr).
+  Build tooling only; no Quater runtime or public API change.
+
 ## 0.1.1
 
 ### Changed
