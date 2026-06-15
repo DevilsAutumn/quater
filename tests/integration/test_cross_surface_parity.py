@@ -163,13 +163,22 @@ async def call_http(
         headers["X-Unknown"] = "ignored"
         cookies["unknown_cookie"] = "ignored"
 
-    response = await TestClient(app).post(
-        path,
-        params=params,
-        headers=headers,
-        cookies=cookies,
-        json=arguments.get("payload"),
-    )
+    client = TestClient(app)
+    if "payload" in arguments:
+        response = await client.post(
+            path,
+            params=params,
+            headers=headers,
+            cookies=cookies,
+            json=arguments["payload"],
+        )
+    else:
+        response = await client.post(
+            path,
+            params=params,
+            headers=headers,
+            cookies=cookies,
+        )
     return normalize_http(response)
 
 
