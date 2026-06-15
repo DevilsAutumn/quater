@@ -31,7 +31,16 @@ __all__ = ["CliTestClient", "MCPTestClient", "TestClient", "TestResponse"]
 
 _MCP_PATH = "/mcp"
 _MCP_PROTOCOL_VERSION = "2025-11-25"
-_JSON_NOT_GIVEN: Final = object()
+
+
+class _JsonNotGiven:
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "_JSON_NOT_GIVEN"
+
+
+_JSON_NOT_GIVEN: Final = _JsonNotGiven()
 
 
 class TestResponse:
