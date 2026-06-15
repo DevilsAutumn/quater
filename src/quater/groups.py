@@ -6,12 +6,11 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import replace
 from typing import Any, TypeVar
 
-from quater.actions.descriptions import resolve_action_description
+from quater._route_definition import build_route_definition, normalize_inject
 from quater.core import (
     Handler,
     PublicSurfaces,
     RouteDefinition,
-    normalize_public,
 )
 from quater.dependencies import Resource, ResourceMap
 from quater.exceptions import ConfigurationError
@@ -22,10 +21,6 @@ from quater.middleware import (
     ExceptionHandlerEntry,
     MiddlewareStack,
     merge_middleware_stack,
-)
-from quater.tools.descriptions import (
-    normalize_route_description,
-    resolve_tool_description,
 )
 
 HandlerT = TypeVar("HandlerT", bound=Handler)
@@ -70,7 +65,7 @@ class RouteGroup:
         if group_tags:
             group_metadata["tags"] = group_tags
 
-        self.inject = _normalize_inject(inject)
+        self.inject = normalize_inject(inject)
         self.metadata = group_metadata
         self.middleware = MiddlewareStack.from_parts(
             before=before,
@@ -133,44 +128,22 @@ class RouteGroup:
 
         self._ensure_mutable()
         _validate_group_route_path(path)
-        route_name = _route_name(handler, name)
-        route_description = _resolve_route_description(
-            route_name,
-            description,
-            handler,
-            tool=tool,
-            cli=cli,
-        )
-        _validate_external_route_options(
-            route_name,
-            tool=tool,
-            cli=cli,
-            needs_approval=needs_approval,
-        )
-
-        route = RouteDefinition(
-            method=method.upper(),
+        route = build_route_definition(
+            method,
             path=path,
             handler=handler,
-            name=route_name,
-            description=route_description,
+            name=name,
+            description=description,
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            public=normalize_public(
-                public,
-                tool=tool,
-                cli=cli,
-                route_name=route_name,
-            ),
-            inject=_normalize_inject(inject),
-            metadata=dict(metadata or {}),
-            middleware=MiddlewareStack.from_parts(
-                before=before,
-                after=after,
-                around=around,
-                exception_handlers=exception_handlers,
-            ),
+            public=public,
+            inject=normalize_inject(inject),
+            metadata=metadata,
+            before=before,
+            after=after,
+            around=around,
+            exception_handlers=exception_handlers,
         )
         self._routes.append(route)
         return route
@@ -448,46 +421,6 @@ class RouteGroup:
             )
 
 
-def _route_name(handler: Handler, explicit_name: str | None) -> str:
-    if explicit_name is not None:
-        return explicit_name
-    discovered_name = getattr(handler, "__name__", None)
-    return discovered_name if isinstance(discovered_name, str) else "anonymous"
-
-
-def _resolve_route_description(
-    route_name: str,
-    description: str | None,
-    handler: Handler,
-    *,
-    tool: bool,
-    cli: bool,
-) -> str | None:
-    if tool:
-        return resolve_tool_description(route_name, description, handler)
-    if cli:
-        return resolve_action_description(
-            "CLI action",
-            route_name,
-            description,
-            handler,
-        )
-    return normalize_route_description(description)
-
-
-def _validate_external_route_options(
-    route_name: str,
-    *,
-    tool: bool,
-    cli: bool,
-    needs_approval: bool,
-) -> None:
-    if route_name == "anonymous" and (tool or cli):
-        raise ConfigurationError("Externally callable routes require a name")
-    if needs_approval and not (tool or cli):
-        raise ConfigurationError("needs_approval requires tool=True or cli=True")
-
-
 def _normalize_prefix(prefix: str) -> str:
     if not prefix:
         return ""
@@ -545,19 +478,6 @@ def _merge_metadata(
     if tags:
         merged["tags"] = tags
     return merged
-
-
-def _normalize_inject(inject: ResourceMap | None) -> dict[str, Resource[Any]]:
-    if inject is None:
-        return {}
-    normalized: dict[str, Resource[Any]] = {}
-    for name, resource in inject.items():
-        if not isinstance(name, str) or not name.isidentifier():
-            raise ConfigurationError(f"Invalid injected parameter name: {name!r}")
-        if not isinstance(resource, Resource):
-            raise TypeError("inject values must be Resource instances")
-        normalized[name] = resource
-    return normalized
 
 
 def _merge_inject(

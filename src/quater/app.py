@@ -15,9 +15,12 @@ from quater._finalize import (
     move_response_finalizers,
     run_response_finalizers,
 )
+from quater._route_definition import (
+    build_route_definition,
+    validate_external_route_options,
+)
 from quater._state import State
 from quater.actions.approval import ApprovalDeniedError, ApprovalRequiredError
-from quater.actions.descriptions import resolve_action_description
 from quater.actions.executor import execute_action, preflight_action
 from quater.auth import AuthConfig, build_auth_map, run_authenticator, validate_auth
 from quater.config import (
@@ -34,7 +37,6 @@ from quater.core import (
     PublicSurfaces,
     RouteDefinition,
     exposed_surfaces,
-    normalize_public,
 )
 from quater.cors import CORSConfig, add_cors_headers, is_cors_preflight
 from quater.datastructures import normalize_response_headers
@@ -84,10 +86,6 @@ from quater.security import (
     RequestSecurityContext,
     add_security_headers,
     prepare_request_security,
-)
-from quater.tools.descriptions import (
-    normalize_route_description,
-    resolve_tool_description,
 )
 from quater.typing import ActionApproval, LifespanHook, RequestSource
 
@@ -355,51 +353,25 @@ class Quater:
     ) -> RouteDefinition:
         """Register route metadata without compiling or matching it."""
 
-        route_name = name
-        if route_name is None:
-            discovered_name = getattr(handler, "__name__", None)
-            route_name = (
-                discovered_name if isinstance(discovered_name, str) else "anonymous"
-            )
-        route_description = self._resolve_route_description(
-            route_name,
-            description,
-            handler,
-            tool=tool,
-            cli=cli,
-        )
-        self._validate_route_exposure(
-            route_name,
-            tool=tool,
-            cli=cli,
-            needs_approval=needs_approval,
-        )
         _validate_user_route_path(path)
-
-        route = RouteDefinition(
-            method=method.upper(),
+        route = build_route_definition(
+            method,
             path=path,
             handler=handler,
-            name=route_name,
-            description=route_description,
+            name=name,
+            description=description,
             tool=tool,
             cli=cli,
             needs_approval=needs_approval,
-            public=normalize_public(
-                public,
-                tool=tool,
-                cli=cli,
-                route_name=route_name,
-            ),
-            inject=dict(inject or {}),
-            metadata=dict(metadata or {}),
-            middleware=MiddlewareStack.from_parts(
-                before=before,
-                after=after,
-                around=around,
-                exception_handlers=exception_handlers,
-            ),
+            public=public,
+            inject=inject,
+            metadata=metadata,
+            before=before,
+            after=after,
+            around=around,
+            exception_handlers=exception_handlers,
         )
+        self._validate_action_approval_config(needs_approval=route.needs_approval)
         self._register_route_definition(route)
         return route
 
@@ -1123,26 +1095,6 @@ class Quater:
             )
         return self._openapi_schema
 
-    def _resolve_route_description(
-        self,
-        route_name: str,
-        description: str | None,
-        handler: Handler,
-        *,
-        tool: bool,
-        cli: bool,
-    ) -> str | None:
-        if tool:
-            return resolve_tool_description(route_name, description, handler)
-        if cli:
-            return resolve_action_description(
-                "CLI action",
-                route_name,
-                description,
-                handler,
-            )
-        return normalize_route_description(description)
-
     def _validate_route_exposure(
         self,
         route_name: str,
@@ -1151,10 +1103,15 @@ class Quater:
         cli: bool,
         needs_approval: bool,
     ) -> None:
-        if route_name == "anonymous" and (tool or cli):
-            raise ConfigurationError("Externally callable routes require a name")
-        if needs_approval and not (tool or cli):
-            raise ConfigurationError("needs_approval requires tool=True or cli=True")
+        validate_external_route_options(
+            route_name,
+            tool=tool,
+            cli=cli,
+            needs_approval=needs_approval,
+        )
+        self._validate_action_approval_config(needs_approval=needs_approval)
+
+    def _validate_action_approval_config(self, *, needs_approval: bool) -> None:
         if needs_approval and self.action_approval is None:
             raise ConfigurationError(ACTION_APPROVAL_REQUIRED_MESSAGE)
 

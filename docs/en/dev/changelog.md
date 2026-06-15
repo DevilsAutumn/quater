@@ -23,6 +23,11 @@ cut.
   [esbuild package integrity advisory](https://github.com/advisories/GHSA-gv7w-rqvm-qjhr).
   Build tooling only; no Quater runtime or public API change.
 
+- Internal cleanup: consolidated route-definition construction shared by
+  `Quater` and `RouteGroup`, with parity coverage for route metadata,
+  resources, public surfaces, and middleware behavior. No public API change.
+  ([#119](https://github.com/DevilsAutumn/quater/issues/119))
+
 ## 0.1.1
 
 ### Changed

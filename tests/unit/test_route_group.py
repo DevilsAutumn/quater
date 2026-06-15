@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable, Iterable
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -12,6 +12,7 @@ from quater import (
     JSONResponse,
     Quater,
     Request,
+    Resource,
     Response,
     RouteGroup,
 )
@@ -79,6 +80,127 @@ def tool_text_json(body: dict[str, object]) -> dict[str, object]:
     text = first["text"]
     assert isinstance(text, str)
     return cast(dict[str, object], json.loads(text))
+
+
+@pytest.mark.asyncio
+async def test_app_and_group_routes_share_definition_construction() -> None:
+    async def value_provider() -> str:
+        return "shared"
+
+    resource = Resource(value_provider)
+    inject = {"value": resource}
+    metadata = {"feature": "routing", "tags": ["parity"]}
+    events: list[str] = []
+
+    async def route_before(request: Request) -> Response | None:
+        events.append("before")
+        return None
+
+    async def route_around(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        events.append("around_before")
+        response = await call_next(request)
+        events.append("around_after")
+        return response
+
+    async def route_after(request: Request, response: Response) -> Response:
+        events.append("after")
+        return response
+
+    async def route_exception(
+        request: Request,
+        exc: Exception,
+    ) -> Response | None:
+        return JSONResponse({"handled": True}, status_code=418)
+
+    exception_handlers = [ExceptionHandlerEntry(ValueError, route_exception)]
+
+    async def shared_handler(value: str) -> dict[str, str]:
+        """Read the shared route."""
+
+        events.append("handler")
+        return {"value": value}
+
+    direct_app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
+    grouped_app = Quater(auth=[AuthConfig(allow_auth, surfaces=["mcp", "cli"])])
+    group = RouteGroup(prefix="/api")
+
+    direct_route = direct_app.add_route(
+        "get",
+        "/shared",
+        shared_handler,
+        tool=True,
+        cli=True,
+        public=["mcp", "cli"],
+        inject=inject,
+        metadata=metadata,
+        before=[route_before],
+        after=[route_after],
+        around=[route_around],
+        exception_handlers=exception_handlers,
+    )
+    grouped_route = group.add_route(
+        "get",
+        "/shared",
+        shared_handler,
+        tool=True,
+        cli=True,
+        public=["mcp", "cli"],
+        inject=inject,
+        metadata=metadata,
+        before=[route_before],
+        after=[route_after],
+        around=[route_around],
+        exception_handlers=exception_handlers,
+    )
+
+    assert direct_route.method == grouped_route.method == "GET"
+    assert direct_route.path == grouped_route.path == "/shared"
+    assert direct_route.handler is grouped_route.handler is shared_handler
+    assert direct_route.name == grouped_route.name == "shared_handler"
+    assert (
+        direct_route.description
+        == grouped_route.description
+        == "Read the shared route."
+    )
+    assert direct_route.public == grouped_route.public == ("mcp", "cli")
+    assert direct_route.inject == grouped_route.inject == inject
+    assert direct_route.inject is not inject
+    assert grouped_route.inject is not inject
+    assert direct_route.metadata == grouped_route.metadata == metadata
+    assert direct_route.metadata is not metadata
+    assert grouped_route.metadata is not metadata
+    assert direct_route.middleware == grouped_route.middleware
+
+    direct_response = await direct_app.handle(Request(method="GET", path="/shared"))
+
+    assert direct_response.status_code == 200
+    assert direct_response.body == b'{"value":"shared"}'
+    assert events == [
+        "before",
+        "around_before",
+        "handler",
+        "around_after",
+        "after",
+    ]
+
+    events.clear()
+    grouped_app.include(group)
+    grouped_response = await grouped_app.handle(
+        Request(method="GET", path="/api/shared")
+    )
+
+    assert grouped_response.status_code == 200
+    assert grouped_response.body == b'{"value":"shared"}'
+    assert events == [
+        "before",
+        "around_before",
+        "handler",
+        "around_after",
+        "after",
+    ]
 
 
 @pytest.mark.asyncio
@@ -510,6 +632,29 @@ def test_route_group_rejects_invalid_prefixes(prefix: str) -> None:
 def test_route_group_rejects_invalid_tags(tags: object) -> None:
     with pytest.raises(ConfigurationError, match="RouteGroup tags"):
         RouteGroup(tags=cast(Iterable[str], tags))
+
+
+def test_route_group_rejects_invalid_inject_parameter_names() -> None:
+    async def provider() -> str:
+        return "bad"
+
+    with pytest.raises(ConfigurationError, match="Invalid injected parameter name"):
+        RouteGroup(inject={"bad-name": Resource(provider)})
+
+
+def test_route_group_rejects_non_resource_inject_values() -> None:
+    with pytest.raises(TypeError, match="inject values must be Resource instances"):
+        RouteGroup(inject=cast(Any, {"value": object()}))
+
+
+def test_app_route_path_validation_runs_before_public_surface_validation() -> None:
+    app = Quater()
+
+    async def handler() -> dict[str, bool]:
+        return {"ok": True}
+
+    with pytest.raises(ConfigurationError, match="reserved by Quater"):
+        app.get("/mcp", public=["mcp"])(handler)
 
 
 @pytest.mark.parametrize(
