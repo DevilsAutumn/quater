@@ -24,6 +24,13 @@ cut.
 
 ### Changed
 
+- Handler parameter annotations that Quater needs for binding now fail with a
+  clear `RouteBindingError` when they cannot be resolved at route compile time.
+  This prevents unresolved `Annotated[T, Resource]` aliases from silently
+  degrading into caller-supplied body parameters across HTTP, MCP, and CLI
+  surfaces, while explicit `inject={...}` resource parameters remain supported.
+  ([#49](https://github.com/DevilsAutumn/quater/issues/49))
+
 - Updated the documentation build dependencies to patched versions of Vite,
   `@vitejs/plugin-vue`, and esbuild, resolving the
   [esbuild package integrity advisory](https://github.com/advisories/GHSA-gv7w-rqvm-qjhr).

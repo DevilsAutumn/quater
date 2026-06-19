@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import typing
 from typing import Annotated, Any, Literal, cast
 
 import pytest
@@ -7,6 +8,10 @@ import pytest
 from quater import Path, Quater
 from quater.core import Handler
 from quater.exceptions import RouteBindingError, RouteConflictError
+
+
+class UnsupportedPathValue:
+    pass
 
 
 def test_ambiguous_dynamic_route_shapes_are_rejected() -> None:
@@ -242,48 +247,42 @@ def test_path_parameters_reject_unsupported_concrete_annotations(
     )
 
 
-def test_path_annotation_validation_handles_postponed_annotation_fallback() -> None:
-    class LocalPayload:
-        pass
-
+def test_path_annotation_validation_handles_postponed_annotations() -> None:
     app = Quater()
 
     @app.post("/items/{item_id:int}")
     async def update_item(
         item_id: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"item_id": item_id, "payload": payload}
 
     @app.post("/optional-items/{item_id:int}")
     async def update_optional_item(
         item_id: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"item_id": item_id, "payload": payload}
 
-    update_optional_item.__annotations__["item_id"] = "Optional[int]"
+    update_optional_item.__annotations__["item_id"] = "int | None"
 
     @app.post("/maybe-items/{item_id:int}")
     async def update_maybe_item(
         item_id: int | None,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"item_id": item_id, "payload": payload}
 
     app.compile_routes()
 
 
-def test_path_annotation_mismatch_rejects_after_annotation_fallback() -> None:
-    class LocalPayload:
-        pass
-
+def test_path_annotation_mismatch_rejects_postponed_annotation() -> None:
     app = Quater()
 
     @app.post("/items/{item_id}")
     async def update_item(
         item_id: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"item_id": item_id, "payload": payload}
 
@@ -295,36 +294,30 @@ def test_path_annotation_mismatch_rejects_after_annotation_fallback() -> None:
     assert "{item_id:int}" in message
 
 
-def test_path_annotation_rejects_unsupported_after_annotation_fallback() -> None:
-    class LocalPathValue:
-        pass
-
+def test_path_annotation_rejects_unsupported_concrete_path_type() -> None:
     app = Quater()
 
     @app.get("/values/{value}")
-    async def get_value(value: LocalPathValue) -> dict[str, object]:
+    async def get_value(value: UnsupportedPathValue) -> dict[str, object]:
         return {"value": value}
 
     with pytest.raises(RouteBindingError) as exc_info:
         app.compile_routes()
     message = str(exc_info.value)
     assert "Path parameter 'value'" in message
-    assert "LocalPathValue" in message
+    assert "UnsupportedPathValue" in message
     assert (
         "Path parameter annotations must match a supported route converter" in message
     )
 
 
-def test_path_union_annotation_rejects_after_annotation_fallback() -> None:
-    class LocalPayload:
-        pass
-
+def test_path_union_annotation_rejects_postponed_annotation() -> None:
     app = Quater()
 
     @app.get("/values/{value}")
     async def get_value(
         value: int | str,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"value": value, "payload": payload}
 
@@ -338,35 +331,66 @@ def test_path_union_annotation_rejects_after_annotation_fallback() -> None:
     )
 
 
-def test_path_annotation_duplicate_markers_reject_after_annotation_fallback() -> None:
-    class LocalPayload:
-        pass
+def test_path_typing_union_annotation_label_is_stable() -> None:
+    app = Quater()
 
+    @app.get("/values/{value}")
+    async def get_value(value: object) -> dict[str, object]:
+        return {"value": value}
+
+    get_value.__annotations__["value"] = typing.Union[int, str]  # noqa: UP007
+
+    with pytest.raises(RouteBindingError) as exc_info:
+        app.compile_routes()
+    message = str(exc_info.value)
+    assert "Path parameter 'value'" in message
+    assert "int | str" in message
+    assert "Union" not in message
+
+
+def test_path_opaque_annotation_label_uses_repr() -> None:
+    class OpaqueAnnotation:
+        def __repr__(self) -> str:
+            return "OpaqueAnnotation()"
+
+    app = Quater()
+
+    @app.get("/values/{value}")
+    async def get_value(value: object) -> dict[str, object]:
+        return {"value": value}
+
+    get_value.__annotations__["value"] = OpaqueAnnotation()
+
+    with pytest.raises(RouteBindingError) as exc_info:
+        app.compile_routes()
+    message = str(exc_info.value)
+    assert "Path parameter 'value'" in message
+    assert "OpaqueAnnotation()" in message
+
+
+def test_path_annotation_duplicate_markers_reject() -> None:
     app = Quater()
 
     @app.get("/values/{value:int}")
     async def get_value(
         value: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"value": value, "payload": payload}
 
-    get_value.__annotations__["value"] = "Annotated[int, Path(), Query()]"
+    get_value.__annotations__["value"] = "Annotated[int, Path(), Path()]"
 
     with pytest.raises(RouteBindingError, match="Only one parameter marker"):
         app.compile_routes()
 
 
-def test_incomplete_annotated_path_string_rejects_after_annotation_fallback() -> None:
-    class LocalPayload:
-        pass
-
+def test_incomplete_annotated_path_string_rejects() -> None:
     app = Quater()
 
     @app.get("/values/{value:int}")
     async def get_value(
         value: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"value": value, "payload": payload}
 
@@ -375,20 +399,18 @@ def test_incomplete_annotated_path_string_rejects_after_annotation_fallback() ->
     with pytest.raises(RouteBindingError) as exc_info:
         app.compile_routes()
     message = str(exc_info.value)
-    assert "Path parameter 'value'" in message
+    assert "value" in message
+    assert "could not be resolved" in message
     assert "Annotated[int]" in message
 
 
-def test_malformed_path_string_rejects_after_annotation_fallback() -> None:
-    class LocalPayload:
-        pass
-
+def test_malformed_path_string_rejects() -> None:
     app = Quater()
 
     @app.get("/values/{value:int}")
     async def get_value(
         value: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"value": value, "payload": payload}
 
@@ -397,7 +419,8 @@ def test_malformed_path_string_rejects_after_annotation_fallback() -> None:
     with pytest.raises(RouteBindingError) as exc_info:
         app.compile_routes()
     message = str(exc_info.value)
-    assert "Path parameter 'value'" in message
+    assert "value" in message
+    assert "could not be resolved" in message
     assert "Annotated[int" in message
 
 

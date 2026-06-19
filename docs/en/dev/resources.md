@@ -318,7 +318,12 @@ default, this form type-checks cleanly under strict tools with no cast or
 `# type: ignore`.
 
 Define the `Resource` (and any `Annotated` alias) at module scope so Quater can
-resolve the annotation when it compiles the route.
+resolve the annotation when it compiles the route. If Quater needs a handler
+parameter annotation to decide or validate where the value comes from, and that
+annotation cannot be resolved, it rejects the route instead of guessing that the
+parameter should come from caller input. The `inject={...}` form is explicit, so
+its value type may still be local to an application factory. Malformed
+annotations still fail during route compilation.
 
 ### Rules
 
@@ -383,6 +388,12 @@ The generated MCP and CLI schemas include `order_id`, not `session`.
 `Resource provider 'current_user' parameter 'mystery' could not be resolved: name it 'request' or annotate it with Annotated[T, resource]`
 : A provider parameter is neither named `request` nor annotated with a resource.
   Name it `request`, annotate it `Annotated[T, some_resource]`, or remove it.
+
+`Handler parameter 'session' on 'get_order' has annotation 'SessionDep' that could not be resolved`
+: A handler parameter annotation refers to a type, `Resource`, or `Annotated`
+  alias that is not resolvable from the handler's module. Move the referenced
+  type or alias to module scope, import it in that module, or use `inject=`
+  when the parameter is an app-owned resource value.
 
 `Resource dependency cycle detected: a -> b -> a`
 : A resource depends on itself, directly or through others. Break the loop.

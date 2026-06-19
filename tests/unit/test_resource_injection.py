@@ -517,6 +517,67 @@ def test_annotation_resource_is_excluded_from_schemas() -> None:
     assert action.input_schema["properties"] == {"order_id": {"type": "string"}}
 
 
+@pytest.mark.asyncio
+async def test_inject_resource_allows_unresolved_value_type_annotation() -> None:
+    events: list[str] = []
+
+    class LocalSession:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+    async def provider() -> LocalSession:
+        events.append("open")
+        return LocalSession("primary")
+
+    app = Quater()
+
+    @app.get("/orders", inject={"session": Resource(provider)})
+    async def list_orders(session: LocalSession) -> dict[str, str]:
+        return {"session": session.label}
+
+    async with TestClient(app) as client:
+        response = await client.get("/orders")
+
+    assert response.body == b'{"session":"primary"}'
+    assert events == ["open"]
+
+
+def test_inject_resource_rejects_malformed_value_type_annotation() -> None:
+    async def provider() -> FakeSession:
+        return FakeSession("primary")
+
+    app = Quater()
+
+    @app.get("/orders", inject={"session": Resource(provider)})
+    async def list_orders(session: FakeSession) -> dict[str, str]:
+        return {"session": session.label}
+
+    list_orders.__annotations__["session"] = "Annotated[FakeSession"
+
+    with pytest.raises(RouteBindingError) as exc_info:
+        app.compile_routes()
+    message = str(exc_info.value)
+    assert "session" in message
+    assert "could not be resolved" in message
+    assert "Annotated[FakeSession" in message
+
+
+def test_unresolved_annotation_resource_alias_is_rejected() -> None:
+    app = Quater()
+    session_resource = Resource(_annotation_session_provider)
+    LocalSessionDep = Annotated[FakeSession, session_resource]
+
+    @app.get("/orders")
+    async def list_orders(session: LocalSessionDep) -> dict[str, str]:
+        return {"session": session.label}
+
+    with pytest.raises(RouteBindingError) as exc_info:
+        app.compile_routes()
+    message = str(exc_info.value)
+    assert "session" in message
+    assert "could not be resolved" in message
+
+
 def test_resource_declared_in_inject_and_annotation_is_rejected() -> None:
     app = Quater()
 

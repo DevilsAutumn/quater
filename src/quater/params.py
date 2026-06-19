@@ -131,10 +131,6 @@ def build_handler_plan(
         raise RouteBindingError("Route handlers must be async functions")
 
     signature = inspect.signature(handler)
-    try:
-        type_hints = get_type_hints(handler, include_extras=True)
-    except (NameError, SyntaxError, TypeError):
-        type_hints = handler.__annotations__
     body_parameters = 0
     form_parameters = 0
     file_parameters = 0
@@ -156,9 +152,6 @@ def build_handler_plan(
                 f"Unsupported parameter kind for {name!r}: {parameter.kind!s}"
             )
 
-        annotation, annotation_marker, annotation_resource = _annotation_and_markers(
-            type_hints.get(name, parameter.annotation)
-        )
         raw_default, default_marker = _default_and_marker(parameter.default)
         if isinstance(raw_default, Resource):
             raise RouteBindingError(
@@ -166,6 +159,14 @@ def build_handler_plan(
                 "type annotation (Annotated[T, resource]), not as a default value"
             )
         resource = resources.get(name)
+        raw_annotation = _resolve_handler_parameter_annotation(
+            handler,
+            parameter,
+            resource=resource,
+        )
+        annotation, annotation_marker, annotation_resource = _annotation_and_markers(
+            raw_annotation
+        )
         if annotation_resource is not None:
             if resource is not None:
                 raise RouteBindingError(
@@ -228,6 +229,62 @@ def build_handler_plan(
         if bound_parameter.source == "resource" and bound_parameter.resource:
             validate_resource(bound_parameter.resource)
     return HandlerPlan(handler=handler, parameters=tuple(parameters))
+
+
+def _resolve_handler_parameter_annotation(
+    handler: Handler,
+    parameter: inspect.Parameter,
+    *,
+    resource: Resource[Any] | None,
+) -> object:
+    annotation = parameter.annotation
+    if annotation is _EMPTY:
+        return annotation
+    proxy = _AnnotationProxy()
+    proxy.__annotations__ = {parameter.name: annotation}
+    globalns = _callable_globalns(handler)
+    try:
+        return get_type_hints(
+            proxy,
+            globalns=globalns,
+            include_extras=True,
+        )[parameter.name]
+    except NameError as exc:
+        if resource is not None or parameter.name == "request":
+            return annotation
+        raise _unresolved_handler_annotation_error(handler, parameter, exc) from exc
+    except (SyntaxError, TypeError) as exc:
+        raise _unresolved_handler_annotation_error(handler, parameter, exc) from exc
+
+
+def _unresolved_handler_annotation_error(
+    handler: Handler,
+    parameter: inspect.Parameter,
+    exc: Exception,
+) -> RouteBindingError:
+    handler_name = getattr(
+        handler,
+        "__qualname__",
+        getattr(handler, "__name__", "handler"),
+    )
+    return RouteBindingError(
+        f"Handler parameter {parameter.name!r} on {handler_name!r} has "
+        f"annotation {parameter.annotation!r} that could not be resolved: {exc}. "
+        "Define referenced types, Resources, and Annotated aliases at module scope, "
+        "or use inject= for app-owned resource parameters."
+    )
+
+
+def _callable_globalns(handler: Handler) -> dict[str, object]:
+    target = inspect.unwrap(handler)
+    globalns = getattr(target, "__globals__", None)
+    if isinstance(globalns, dict):
+        return globalns
+    return {}
+
+
+class _AnnotationProxy:
+    __annotations__: dict[str, object]
 
 
 def _parameter_source(
@@ -786,6 +843,9 @@ def _path_segment_for_annotation(name: str, annotation: object) -> str | None:
 
 
 def _annotation_label(annotation: object) -> str:
+    origin = get_origin(annotation)
+    if origin in {UnionType, Union}:
+        return " | ".join(_annotation_label(arg) for arg in get_args(annotation))
     name = getattr(annotation, "__name__", None)
     if isinstance(name, str):
         return name

@@ -23,6 +23,10 @@ class CreateUser(msgspec.Struct):
     age: int
 
 
+class ApprovalSession:
+    pass
+
+
 USER_PAYLOAD = Body(alias="user_payload")
 DEFAULT_PAYLOAD = Body({"x": 7}, alias="payload_alias")
 
@@ -617,12 +621,9 @@ async def test_argument_hash_includes_bound_body_default_under_input_alias() -> 
 async def test_argument_hash_excludes_request_and_resource_values() -> None:
     resource_events: list[str] = []
 
-    class Session:
-        pass
-
-    async def provider() -> Session:
+    async def provider() -> ApprovalSession:
         resource_events.append("open")
-        return Session()
+        return ApprovalSession()
 
     async def approve(ctx: ApprovalRequest) -> bool:
         return True
@@ -642,7 +643,7 @@ async def test_argument_hash_excludes_request_and_resource_values() -> None:
     async def lock_user(
         id: int,
         request: Request,
-        session: Session,
+        session: ApprovalSession,
     ) -> dict[str, object]:
         return {"id": id, "source": request.context.source}
 

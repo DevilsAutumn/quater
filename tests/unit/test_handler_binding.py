@@ -24,39 +24,35 @@ async def test_path_params_are_converted_and_bound_by_name() -> None:
 
 
 @pytest.mark.asyncio
-async def test_path_marker_alias_survives_postponed_annotation_fallback() -> None:
-    class LocalPayload:
-        pass
-
+async def test_path_marker_alias_survives_postponed_annotations() -> None:
     app = Quater()
 
     @app.get("/orders/{id:int}")
     async def get_order(
         order_id: Annotated[int, Path(alias="id")],
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"order_id": order_id, "payload": payload}
 
     @app.get("/qualified-orders/{id:int}")
     async def get_qualified_order(
         order_id: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"order_id": order_id, "payload": payload}
 
     get_qualified_order.__annotations__["order_id"] = (
-        "typing_extensions.Annotated["
-        "int, 'route id', UnknownMeta(), quater.Path(alias='id')]"
+        "Annotated[int, 'route id', Path(alias='id')]"
     )
 
     @app.get("/literal-orders/{id:int}")
     async def get_literal_order(
         id: int,
-        payload: LocalPayload | None = None,
+        payload: object | None = None,
     ) -> dict[str, object]:
         return {"id": id, "payload": payload}
 
-    get_literal_order.__annotations__["id"] = "Annotated[int, Path(alias=object())]"
+    get_literal_order.__annotations__["id"] = "Annotated[int, Path()]"
 
     response = await app.handle(Request(method="GET", path="/orders/42"))
     qualified_response = await app.handle(
@@ -88,6 +84,21 @@ async def test_request_injection_uses_same_request_object() -> None:
 
     assert response.status_code == 200
     assert response.body == b'{"subject":"user_1"}'
+
+
+@pytest.mark.asyncio
+async def test_request_named_parameter_tolerates_unresolved_annotation() -> None:
+    app = Quater()
+
+    @app.get("/whoami")
+    async def whoami(request: Request) -> dict[str, str]:
+        return {"path": request.path}
+
+    whoami.__annotations__["request"] = "MissingRequest"
+    response = await app.handle(Request(method="GET", path="/whoami"))
+
+    assert response.status_code == 200
+    assert response.body == b'{"path":"/whoami"}'
 
 
 @pytest.mark.asyncio
