@@ -609,6 +609,28 @@ def test_route_groups_can_only_include_a_child_once() -> None:
         second.include(child)
 
 
+def test_route_group_rejects_self_include() -> None:
+    group = RouteGroup()
+
+    with pytest.raises(
+        ConfigurationError,
+        match="Route groups cannot include themselves",
+    ):
+        group.include(group)
+
+
+def test_route_group_rejects_include_cycle() -> None:
+    parent = RouteGroup(prefix="/parent")
+    child = RouteGroup(prefix="/child")
+    parent.include(child)
+
+    with pytest.raises(
+        ConfigurationError,
+        match="Route groups cannot include themselves",
+    ):
+        child.include(parent)
+
+
 @pytest.mark.parametrize(
     "prefix",
     (
