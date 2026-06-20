@@ -151,10 +151,10 @@ route(
 | `wsgi` | `WSGIAdapter` | Explicit WSGI callable. |
 | `include(group)` | [`RouteGroup`](#symbol-routegroup) | Include a top-level group. |
 | `add_route(...)` | `RouteDefinition` | Register a route without decorator syntax. |
-| `before_request(fn)` | `fn` | Register global before middleware. |
-| `after_response(fn)` | `fn` | Register global after middleware. |
-| `around_request(fn)` | `fn` | Register global around middleware. |
-| `exception_handler(exc_type)` | decorator | Register a global exception handler. |
+| `before_request(fn, *, surfaces=None)` | `fn` | Register global before middleware. Use `surfaces=["api"]`, `["mcp"]`, or `["cli"]` to limit where it runs. |
+| `after_response(fn, *, surfaces=None)` | `fn` | Register global after middleware. Supports the same surface filter. |
+| `around_request(fn, *, surfaces=None)` | `fn` | Register global around middleware. Supports the same surface filter. |
+| `exception_handler(exc_type, *, surfaces=None)` | decorator | Register a global exception handler. Supports the same surface filter. |
 | `on_startup(fn)` | `fn` | Register startup hook. |
 | `on_shutdown(fn)` | `fn` | Register shutdown hook. |
 | `startup()` | `None` | Compile routes and run startup hooks. |

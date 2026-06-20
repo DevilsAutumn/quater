@@ -18,6 +18,13 @@ cut.
 
 ### Added
 
+- Surface-aware global middleware and exception handlers. `before_request`,
+  `after_response`, `around_request`, and `exception_handler` now accept
+  `surfaces=[...]` so HTTP-only middleware can be registered with
+  `surfaces=["api"]`, agent-only middleware can target `["mcp", "cli"]`, and
+  the default remains all surfaces.
+  ([#62](https://github.com/DevilsAutumn/quater/issues/62))
+
 - `Response.set_cookie()` and `Response.delete_cookie()` helpers for building
   `Set-Cookie` headers without manual string formatting.
   ([#111](https://github.com/DevilsAutumn/quater/issues/111))

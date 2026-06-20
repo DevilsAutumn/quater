@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
+from functools import wraps
 from typing import TypeAlias
 
 from quater._finalize import move_response_finalizers
-from quater.exceptions import HTTPError
+from quater.exceptions import ConfigurationError, HTTPError
 from quater.request import Request
 from quater.response import Response, TextResponse
+from quater.typing import SURFACES, RequestSource
 
 RequestHandler: TypeAlias = Callable[[Request], Awaitable[Response]]
 RouteHandler: TypeAlias = Callable[[Request, Mapping[str, object]], Awaitable[Response]]
@@ -22,6 +24,8 @@ ExceptionMiddleware: TypeAlias = Callable[
     Awaitable[Response | None],
 ]
 _ERROR_LOGGER = logging.getLogger("quater.error")
+_SURFACE_SET: frozenset[RequestSource] = frozenset(SURFACES)
+ScopedSurfaces: TypeAlias = tuple[RequestSource, ...] | None
 
 
 @dataclass(slots=True, frozen=True)
@@ -52,6 +56,99 @@ class MiddlewareStack:
             around=tuple(around),
             exception_handlers=tuple(exception_handlers),
         )
+
+
+def normalize_middleware_surfaces(
+    surfaces: Iterable[str] | None,
+) -> ScopedSurfaces:
+    if surfaces is None:
+        return None
+    if isinstance(surfaces, str):
+        raise ConfigurationError(
+            "Middleware surfaces must be a list of surface names, not a string"
+        )
+
+    normalized: list[RequestSource] = []
+    seen: set[str] = set()
+    for surface in surfaces:
+        if surface not in _SURFACE_SET:
+            raise ConfigurationError(
+                f"Unknown middleware surface {surface!r}; expected one of "
+                f"{', '.join(SURFACES)}"
+            )
+        if surface in seen:
+            raise ConfigurationError(
+                f"Middleware lists surface {surface!r} more than once"
+            )
+        seen.add(surface)
+        normalized.append(surface)
+    if not normalized:
+        raise ConfigurationError("Middleware must cover at least one surface")
+    return tuple(normalized)
+
+
+def before_middleware_for_surfaces(
+    middleware: BeforeMiddleware,
+    surfaces: ScopedSurfaces,
+) -> BeforeMiddleware:
+    if surfaces is None:
+        return middleware
+
+    @wraps(middleware)
+    async def scoped(request: Request) -> Response | None:
+        if request.context.source not in surfaces:
+            return None
+        return await middleware(request)
+
+    return scoped
+
+
+def after_middleware_for_surfaces(
+    middleware: AfterMiddleware,
+    surfaces: ScopedSurfaces,
+) -> AfterMiddleware:
+    if surfaces is None:
+        return middleware
+
+    @wraps(middleware)
+    async def scoped(request: Request, response: Response) -> Response:
+        if request.context.source not in surfaces:
+            return response
+        return await middleware(request, response)
+
+    return scoped
+
+
+def around_middleware_for_surfaces(
+    middleware: AroundMiddleware,
+    surfaces: ScopedSurfaces,
+) -> AroundMiddleware:
+    if surfaces is None:
+        return middleware
+
+    @wraps(middleware)
+    async def scoped(request: Request, call_next: RequestHandler) -> Response:
+        if request.context.source not in surfaces:
+            return await call_next(request)
+        return await middleware(request, call_next)
+
+    return scoped
+
+
+def exception_handler_for_surfaces(
+    handler: ExceptionMiddleware,
+    surfaces: ScopedSurfaces,
+) -> ExceptionMiddleware:
+    if surfaces is None:
+        return handler
+
+    @wraps(handler)
+    async def scoped(request: Request, exc: Exception) -> Response | None:
+        if request.context.source not in surfaces:
+            return None
+        return await handler(request, exc)
+
+    return scoped
 
 
 def merge_middleware_stack(

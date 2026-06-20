@@ -81,6 +81,81 @@ HTTP/1.1 400 Bad Request
 Missing request id
 ```
 
+## Surface-Aware Middleware
+
+By default, global middleware and exception handlers run on every surface:
+HTTP (`"api"`), MCP (`"mcp"`), and CLI (`"cli"`). Add `surfaces=[...]` when a
+global hook only belongs on selected surfaces.
+
+```python
+from collections.abc import Awaitable, Callable
+
+from quater import JSONResponse, Quater, Request, Response, TextResponse
+
+
+app = Quater()
+
+
+@app.before_request(surfaces=["api"])
+async def require_browser_request_id(request: Request) -> Response | None:
+    if request.headers.get("x-request-id") is None:
+        return TextResponse("Missing request id", status_code=400)
+    return None
+
+
+@app.after_response(surfaces=["api"])
+async def add_browser_cookie(request: Request, response: Response) -> Response:
+    response.headers = (*response.headers, ("set-cookie", "seen=true; Path=/"))
+    return response
+
+
+@app.around_request(surfaces=["mcp", "cli"])
+async def time_agent_operation(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    response = await call_next(request)
+    print(request.context.source, request.path, response.status_code)
+    return response
+
+
+@app.exception_handler(ValueError, surfaces=["mcp", "cli"])
+async def handle_agent_value_error(
+    request: Request,
+    exc: ValueError,
+) -> JSONResponse:
+    return JSONResponse({"error": "invalid_operation"}, status_code=400)
+```
+
+Use this for HTTP-only behavior such as cookies, redirects, browser HTML error
+pages, or browser-focused security headers. MCP and CLI middleware still wraps
+the real handler response, so `time_agent_operation` sees `/orders/ord_1001`,
+not `/mcp` or `/__quater__/actions/call`.
+
+Existing manual guards still work:
+
+```python
+@app.after_response
+async def add_browser_cookie(request: Request, response: Response) -> Response:
+    if request.context.source != "api":
+        return response
+    response.headers = (*response.headers, ("set-cookie", "seen=true; Path=/"))
+    return response
+```
+
+Prefer the surface-aware registration for new code:
+
+```python
+@app.after_response(surfaces=["api"])
+async def add_browser_cookie(request: Request, response: Response) -> Response:
+    response.headers = (*response.headers, ("set-cookie", "seen=true; Path=/"))
+    return response
+```
+
+The `surfaces` argument applies to global `before_request`, `after_response`,
+`around_request`, and `exception_handler` registrations. Route-specific
+middleware keeps the same route-local behavior.
+
 ## Middleware Or Resource?
 
 If a handler needs a value, use a `Resource`. That keeps data loading,
@@ -203,17 +278,17 @@ For MCP and CLI calls, `after` and `around` middleware see the handler
 `Response`, not the protocol envelope. A timing middleware sees `/orders/123`
 and the handler's status code, not `/mcp` or `/__quater__/actions/call`.
 
-This is a behavior change if you used global middleware that assumes every
-request is an HTTP browser/API response. Cookies, redirects, HTML error pages,
-and HTTP security headers can be a poor fit for MCP or CLI tool results. Until
-Quater has surface-aware middleware opt-outs, check `request.context.source`
-inside global middleware and no-op for `"mcp"` or `"cli"` when the behavior only
-makes sense for HTTP.
+Use `surfaces=["api"]` for global middleware that assumes every request is an
+HTTP browser/API response. Cookies, redirects, HTML error pages, and HTTP
+security headers can be a poor fit for MCP or CLI tool results.
 
 ## What Can Go Wrong
 
 `Cannot register middleware after routes are compiled`
 : Register global middleware before startup, tests, or the first request.
+
+`Unknown middleware surface 'web'; expected one of api, mcp, cli`
+: `surfaces` accepts only `"api"`, `"mcp"`, and `"cli"`.
 
 `Route handlers must be async functions`
 : Middleware and exception handlers that Quater calls should use `async def`.

@@ -117,9 +117,10 @@ Middleware and exception handlers also follow the handler, not the transport
 wrapper. Global logging, timing, and error-mapping middleware runs around the
 real route handler for HTTP, MCP tools, and CLI actions. On MCP and CLI,
 middleware sees the handler response before Quater wraps it in the JSON-RPC or
-action payload. HTTP-shaped middleware such as cookies, redirects, HTML, or
-browser security headers should check `request.context.source` and skip MCP/CLI
-when that behavior does not make sense for tool callers.
+action payload. Use `surfaces=["api"]` for HTTP-shaped middleware such as
+cookies, redirects, HTML, or browser security headers when that behavior does
+not make sense for tool callers. Use `surfaces=["mcp", "cli"]` for agent-only
+timing, audit, or error-mapping middleware.
 
 ## When To Use Each Surface
 

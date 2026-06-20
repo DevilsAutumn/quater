@@ -57,7 +57,12 @@ from quater.middleware import (
     ExceptionHandlerEntry,
     ExceptionMiddleware,
     MiddlewareStack,
+    after_middleware_for_surfaces,
+    around_middleware_for_surfaces,
+    before_middleware_for_surfaces,
     default_exception_response,
+    exception_handler_for_surfaces,
+    normalize_middleware_surfaces,
 )
 from quater.observability import (
     AccessLogHook,
@@ -625,47 +630,148 @@ class Quater:
         self._routes_dirty = False
         return self._router
 
-    def before_request(self, middleware: BeforeMiddleware) -> BeforeMiddleware:
+    @overload
+    def before_request(
+        self,
+        middleware: BeforeMiddleware,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> BeforeMiddleware: ...
+
+    @overload
+    def before_request(
+        self,
+        middleware: None = None,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> Callable[[BeforeMiddleware], BeforeMiddleware]: ...
+
+    def before_request(
+        self,
+        middleware: BeforeMiddleware | None = None,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> BeforeMiddleware | Callable[[BeforeMiddleware], BeforeMiddleware]:
         """Register a global before-request middleware."""
 
         self._ensure_middleware_mutable()
-        self._middleware = MiddlewareStack(
-            before=(*self._middleware.before, middleware),
-            after=self._middleware.after,
-            around=self._middleware.around,
-            exception_handlers=self._middleware.exception_handlers,
-        )
-        return middleware
+        scoped_surfaces = normalize_middleware_surfaces(surfaces)
 
-    def after_response(self, middleware: AfterMiddleware) -> AfterMiddleware:
+        def register(actual: BeforeMiddleware) -> BeforeMiddleware:
+            self._ensure_middleware_mutable()
+            self._middleware = MiddlewareStack(
+                before=(
+                    *self._middleware.before,
+                    before_middleware_for_surfaces(actual, scoped_surfaces),
+                ),
+                after=self._middleware.after,
+                around=self._middleware.around,
+                exception_handlers=self._middleware.exception_handlers,
+            )
+            return actual
+
+        if middleware is None:
+            return register
+        return register(middleware)
+
+    @overload
+    def after_response(
+        self,
+        middleware: AfterMiddleware,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> AfterMiddleware: ...
+
+    @overload
+    def after_response(
+        self,
+        middleware: None = None,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> Callable[[AfterMiddleware], AfterMiddleware]: ...
+
+    def after_response(
+        self,
+        middleware: AfterMiddleware | None = None,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> AfterMiddleware | Callable[[AfterMiddleware], AfterMiddleware]:
         """Register a global after-response middleware."""
 
         self._ensure_middleware_mutable()
-        self._middleware = MiddlewareStack(
-            before=self._middleware.before,
-            after=(*self._middleware.after, middleware),
-            around=self._middleware.around,
-            exception_handlers=self._middleware.exception_handlers,
-        )
-        return middleware
+        scoped_surfaces = normalize_middleware_surfaces(surfaces)
 
-    def around_request(self, middleware: AroundMiddleware) -> AroundMiddleware:
+        def register(actual: AfterMiddleware) -> AfterMiddleware:
+            self._ensure_middleware_mutable()
+            self._middleware = MiddlewareStack(
+                before=self._middleware.before,
+                after=(
+                    *self._middleware.after,
+                    after_middleware_for_surfaces(actual, scoped_surfaces),
+                ),
+                around=self._middleware.around,
+                exception_handlers=self._middleware.exception_handlers,
+            )
+            return actual
+
+        if middleware is None:
+            return register
+        return register(middleware)
+
+    @overload
+    def around_request(
+        self,
+        middleware: AroundMiddleware,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> AroundMiddleware: ...
+
+    @overload
+    def around_request(
+        self,
+        middleware: None = None,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> Callable[[AroundMiddleware], AroundMiddleware]: ...
+
+    def around_request(
+        self,
+        middleware: AroundMiddleware | None = None,
+        *,
+        surfaces: Iterable[str] | None = None,
+    ) -> AroundMiddleware | Callable[[AroundMiddleware], AroundMiddleware]:
         """Register a global around-request middleware."""
 
         self._ensure_middleware_mutable()
-        self._middleware = MiddlewareStack(
-            before=self._middleware.before,
-            after=self._middleware.after,
-            around=(*self._middleware.around, middleware),
-            exception_handlers=self._middleware.exception_handlers,
-        )
-        return middleware
+        scoped_surfaces = normalize_middleware_surfaces(surfaces)
+
+        def register(actual: AroundMiddleware) -> AroundMiddleware:
+            self._ensure_middleware_mutable()
+            self._middleware = MiddlewareStack(
+                before=self._middleware.before,
+                after=self._middleware.after,
+                around=(
+                    *self._middleware.around,
+                    around_middleware_for_surfaces(actual, scoped_surfaces),
+                ),
+                exception_handlers=self._middleware.exception_handlers,
+            )
+            return actual
+
+        if middleware is None:
+            return register
+        return register(middleware)
 
     def exception_handler(
         self,
         exception_type: type[Exception],
+        *,
+        surfaces: Iterable[str] | None = None,
     ) -> Callable[[ExceptionMiddleware], ExceptionMiddleware]:
         """Register a global exception handler."""
+
+        self._ensure_middleware_mutable()
+        scoped_surfaces = normalize_middleware_surfaces(surfaces)
 
         def decorator(handler: ExceptionMiddleware) -> ExceptionMiddleware:
             self._ensure_middleware_mutable()
@@ -675,7 +781,10 @@ class Quater:
                 around=self._middleware.around,
                 exception_handlers=(
                     *self._middleware.exception_handlers,
-                    ExceptionHandlerEntry(exception_type, handler),
+                    ExceptionHandlerEntry(
+                        exception_type,
+                        exception_handler_for_surfaces(handler, scoped_surfaces),
+                    ),
                 ),
             )
             return handler

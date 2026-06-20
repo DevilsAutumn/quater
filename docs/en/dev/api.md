@@ -270,6 +270,25 @@ async def get_order(order_id: str) -> dict[str, str]:
     return {"order_id": order_id}
 ```
 
+Global middleware can target selected surfaces:
+
+```python
+@app.after_response(surfaces=["api"])
+async def add_browser_cookie(request: Request, response: Response) -> Response:
+    response.headers = (*response.headers, ("set-cookie", "seen=true; Path=/"))
+    return response
+
+
+@app.around_request(surfaces=["mcp", "cli"])
+async def audit_agent_call(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    response = await call_next(request)
+    print(request.context.source, request.path, response.status_code)
+    return response
+```
+
 You can also attach middleware to a route when only that operation needs it:
 
 ```python
@@ -297,9 +316,9 @@ Route-specific `after` middleware runs before global `after` middleware.
 Global middleware applies to the real handler on every surface. For MCP
 `tools/call` and CLI actions, `after` and `around` middleware see the handler
 response before Quater wraps it in JSON-RPC or the action RPC payload. If a
-global middleware only makes sense for HTTP responses, check
-`request.context.source == "api"` before changing cookies, redirects, HTML, or
-HTTP-only headers.
+global middleware only makes sense for HTTP responses, register it with
+`surfaces=["api"]` before changing cookies, redirects, HTML, or HTTP-only
+headers.
 
 ## Exception Handlers
 
@@ -317,7 +336,7 @@ class OrderNotFound(Exception):
 app = Quater()
 
 
-@app.exception_handler(OrderNotFound)
+@app.exception_handler(OrderNotFound, surfaces=["api"])
 async def handle_order_not_found(
     request: Request,
     exc: OrderNotFound,
@@ -326,7 +345,8 @@ async def handle_order_not_found(
 ```
 
 Route-level handlers take precedence over group handlers, and group handlers
-take precedence over global handlers.
+take precedence over global handlers. Omit `surfaces` to keep the default
+all-surface behavior for global exception handlers.
 
 ## Route Groups
 
