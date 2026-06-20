@@ -581,9 +581,8 @@ def _request_body(
     explicit_json = json is not _UNSET_JSON
     if explicit_json and content is not None:
         raise ValueError("Use either json or content, not both")
-    json_for_count = None if json is _UNSET_JSON else json
     provided = sum(
-        value is not None for value in (json_for_count, content, data, files)
+        (explicit_json, content is not None, data is not None, files is not None)
     )
     if provided > 1 and not (data is not None and files is not None and provided == 2):
         raise ValueError("Use one request body style")
