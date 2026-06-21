@@ -16,6 +16,10 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
+No unreleased changes yet.
+
+## 0.2.0
+
 ### Added
 
 - Surface-aware global middleware and exception handlers. `before_request`,

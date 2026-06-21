@@ -27,7 +27,7 @@ from quater.testing import CliTestClient, MCPTestClient, TestClient, TestRespons
 from quater.tools.audit import ToolAuditEvent
 from quater.typing import ActionApproval, ApprovalRequest, AuthContext
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "ActionApproval",

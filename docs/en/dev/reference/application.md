@@ -334,7 +334,7 @@ print(__version__)
 Expected output:
 
 ```text
-0.1.0
+0.2.0
 ```
 
 ## What Can Go Wrong
