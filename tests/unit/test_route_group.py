@@ -609,6 +609,13 @@ def test_route_groups_can_only_include_a_child_once() -> None:
         second.include(child)
 
 
+def test_route_group_include_rejects_non_route_group() -> None:
+    group = RouteGroup()
+
+    with pytest.raises(TypeError, match=r"include\(\) requires a RouteGroup"):
+        group.include(object())  # type: ignore[arg-type]
+
+
 def test_route_group_rejects_self_include() -> None:
     group = RouteGroup()
 
