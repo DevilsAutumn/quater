@@ -29,6 +29,8 @@ JSONRPCID: TypeAlias = str | int
 
 __all__ = ["CliTestClient", "MCPTestClient", "TestClient", "TestResponse"]
 
+_SENTINEL = object()
+
 _MCP_PATH = "/mcp"
 _MCP_PROTOCOL_VERSION = "2025-11-25"
 
@@ -152,7 +154,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _SENTINEL,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -207,7 +209,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _SENTINEL,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -231,7 +233,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _SENTINEL,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -255,7 +257,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _SENTINEL,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -279,7 +281,7 @@ class TestClient:
         params: QueryParams | None = None,
         headers: HeaderItems | Mapping[str, str] | None = None,
         cookies: Mapping[str, str] | None = None,
-        json: object = None,
+        json: object = _SENTINEL,
         content: RequestContent | None = None,
         data: FormDataInput | None = None,
         files: FilesInput | None = None,
@@ -573,9 +575,18 @@ def _request_body(
     data: FormDataInput | None,
     files: FilesInput | None,
 ) -> tuple[bytes, str | None]:
-    if json is not None and content is not None:
+    json_provided = json is not _SENTINEL
+    if json_provided and json is not None and content is not None:
         raise ValueError("Use either json or content, not both")
-    provided = sum(value is not None for value in (json, content, data, files))
+    provided = sum(
+        value is not None
+        for value in (
+            content,
+            data,
+            files,
+            json if json is not _SENTINEL else None,
+        )
+    )
     if provided > 1 and not (data is not None and files is not None and provided == 2):
         raise ValueError("Use one request body style")
     if files is not None:
@@ -584,7 +595,7 @@ def _request_body(
         return urlencode(_flatten_form_mapping(data)).encode("utf-8"), (
             "application/x-www-form-urlencoded"
         )
-    if json is not None:
+    if json_provided:
         from quater.serialization import dumps_json
 
         return dumps_json(json), "application/json"
