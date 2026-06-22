@@ -16,7 +16,15 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
-No unreleased changes yet.
+### Fixed
+
+- Fixed `TestClient` cookie replay so cookies stored from `Set-Cookie` respect
+  cookie path rules. A cookie set with `Path=/admin`, or set by
+  `/admin/login` without an explicit `Path`, is now sent to `/admin` routes but
+  not unrelated paths such as `/public`; matching duplicate-name cookies are
+  sent longest-path first; expired cookies are removed; and per-request
+  `cookies={...}` overrides still win for that request.
+  ([#129](https://github.com/DevilsAutumn/quater/issues/129))
 
 ## 0.2.0
 

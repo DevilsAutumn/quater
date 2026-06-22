@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from http.cookies import SimpleCookie
 
 import pytest
 
@@ -13,6 +14,7 @@ from quater import (
     StreamResponse,
     TestClient,
 )
+from quater.testing import _cookie_is_expired
 from quater.typing import AuthContext
 
 
@@ -179,7 +181,7 @@ async def test_test_client_cookie_jar_persists_response_cookies() -> None:
     async def login() -> Response:
         return JSONResponse(
             {"ok": True},
-            headers={"set-cookie": "session=abc123; Path=/; HttpOnly"},
+            headers={"set-cookie": "session=abc123; HttpOnly"},
         )
 
     @app.get("/me")
@@ -195,6 +197,214 @@ async def test_test_client_cookie_jar_persists_response_cookies() -> None:
 
 
 @pytest.mark.asyncio
+async def test_test_client_cookie_jar_respects_set_cookie_path() -> None:
+    app = Quater()
+
+    @app.get("/admin/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers=[
+                ("set-cookie", "session=admin; Path=/admin"),
+                ("set-cookie", "implicit=admin"),
+            ],
+        )
+
+    @app.get("/admin/me")
+    async def admin_me(request: Request) -> dict[str, str | None]:
+        return {
+            "implicit": request.cookies.get("implicit"),
+            "session": request.cookies.get("session"),
+        }
+
+    @app.get("/admin")
+    async def admin_index(request: Request) -> dict[str, str | None]:
+        return {
+            "implicit": request.cookies.get("implicit"),
+            "session": request.cookies.get("session"),
+        }
+
+    @app.get("/public/check")
+    async def public_check(request: Request) -> dict[str, str | None]:
+        return {
+            "implicit": request.cookies.get("implicit"),
+            "session": request.cookies.get("session"),
+        }
+
+    @app.get("/administrator")
+    async def administrator(request: Request) -> dict[str, str | None]:
+        return {
+            "implicit": request.cookies.get("implicit"),
+            "session": request.cookies.get("session"),
+        }
+
+    client = TestClient(app)
+    await client.get("/admin/login")
+    admin_response = await client.get("/admin/me")
+    admin_index_response = await client.get("/admin")
+    public_response = await client.get("/public/check")
+    prefix_response = await client.get("/administrator")
+
+    assert admin_response.json() == {"implicit": "admin", "session": "admin"}
+    assert admin_index_response.json() == {"implicit": "admin", "session": "admin"}
+    assert public_response.json() == {"implicit": None, "session": None}
+    assert prefix_response.json() == {"implicit": None, "session": None}
+
+
+@pytest.mark.asyncio
+async def test_test_client_cookie_jar_root_path_matches_every_route() -> None:
+    app = Quater()
+
+    @app.get("/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers={"set-cookie": "session=root; Path=/"},
+        )
+
+    @app.get("/public/check")
+    async def public_check(request: Request) -> dict[str, str | None]:
+        return {"session": request.cookies.get("session")}
+
+    client = TestClient(app)
+    await client.get("/login")
+    response = await client.get("/public/check")
+
+    assert response.json() == {"session": "root"}
+
+
+@pytest.mark.asyncio
+async def test_test_client_cookie_jar_sends_matching_paths_longest_first() -> None:
+    app = Quater()
+
+    @app.get("/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers=[
+                ("set-cookie", "session=admin; Path=/admin"),
+                ("set-cookie", "session=root; Path=/"),
+            ],
+        )
+
+    @app.get("/admin/me")
+    async def admin_me(request: Request) -> dict[str, str | None]:
+        return {"cookie": request.headers.get("cookie")}
+
+    @app.get("/public/check")
+    async def public_check(request: Request) -> dict[str, str | None]:
+        return {"cookie": request.headers.get("cookie")}
+
+    client = TestClient(app)
+    await client.get("/login")
+    admin_response = await client.get("/admin/me")
+    public_response = await client.get("/public/check")
+
+    assert admin_response.json() == {"cookie": "session=admin; session=root"}
+    assert public_response.json() == {"cookie": "session=root"}
+
+
+@pytest.mark.asyncio
+async def test_test_client_cookie_jar_deletes_matching_path_only() -> None:
+    app = Quater()
+
+    @app.get("/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers=[
+                ("set-cookie", "session=root; Path=/"),
+                ("set-cookie", "session=admin; Path=/admin"),
+                ("set-cookie", "negative=live; Path=/"),
+                ("set-cookie", "expired=live; Path=/"),
+                ("set-cookie", "invalid-age=live; Path=/"),
+                ("set-cookie", "invalid-expires=live; Path=/"),
+            ],
+        )
+
+    @app.get("/admin/logout")
+    async def logout() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers=[
+                ("set-cookie", "session=; Max-Age=0; Path=/admin"),
+                ("set-cookie", "negative=; Max-Age=-1; Path=/"),
+                (
+                    "set-cookie",
+                    "expired=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/",
+                ),
+                (
+                    "set-cookie",
+                    "invalid-age=; Max-Age=nope; "
+                    "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/",
+                ),
+                (
+                    "set-cookie",
+                    "invalid-expires=kept; Expires=not-a-date; Path=/",
+                ),
+            ],
+        )
+
+    @app.get("/admin/me")
+    async def admin_me(request: Request) -> dict[str, str | None]:
+        return {
+            "expired": request.cookies.get("expired"),
+            "invalid_age": request.cookies.get("invalid-age"),
+            "invalid_expires": request.cookies.get("invalid-expires"),
+            "negative": request.cookies.get("negative"),
+            "session": request.cookies.get("session"),
+        }
+
+    @app.get("/public/check")
+    async def public_check(request: Request) -> dict[str, str | None]:
+        return {
+            "expired": request.cookies.get("expired"),
+            "invalid_age": request.cookies.get("invalid-age"),
+            "invalid_expires": request.cookies.get("invalid-expires"),
+            "negative": request.cookies.get("negative"),
+            "session": request.cookies.get("session"),
+        }
+
+    client = TestClient(app)
+    await client.get("/login")
+    await client.get("/admin/logout")
+    admin_response = await client.get("/admin/me")
+    public_response = await client.get("/public/check")
+
+    assert admin_response.json() == {
+        "expired": None,
+        "invalid_age": None,
+        "invalid_expires": "kept",
+        "negative": None,
+        "session": "root",
+    }
+    assert public_response.json() == {
+        "expired": None,
+        "invalid_age": None,
+        "invalid_expires": "kept",
+        "negative": None,
+        "session": "root",
+    }
+
+
+@pytest.mark.parametrize(
+    ("expires", "is_expired"),
+    [
+        ("Thu, 01 Jan 1970 00:00:00", True),
+        ("Tue, 01 Jan 2999 00:00:00", False),
+    ],
+)
+def test_cookie_expiry_handles_timezone_less_expires(
+    expires: str,
+    is_expired: bool,
+) -> None:
+    cookie = SimpleCookie("session=value")
+    cookie["session"]["expires"] = expires
+
+    assert _cookie_is_expired(cookie["session"]) is is_expired
+
+
+@pytest.mark.asyncio
 async def test_test_client_per_request_cookie_overrides_cookie_jar() -> None:
     app = Quater()
 
@@ -202,8 +412,40 @@ async def test_test_client_per_request_cookie_overrides_cookie_jar() -> None:
     async def me(request: Request) -> dict[str, str | None]:
         return {"session": request.cookies.get("session")}
 
-    client = TestClient(app, cookies={"session": "jar"})
+    client = TestClient(app)
+    client.set_cookie("session", "jar")
     response = await client.get("/me", cookies={"session": "request"})
+    header_response = await client.get(
+        "/me",
+        headers={"cookie": "session=header"},
+        cookies={"session": "request"},
+    )
+    client.clear_cookies()
+    cleared_response = await client.get("/me")
+
+    assert response.json() == {"session": "request"}
+    assert header_response.json() == {"session": "header"}
+    assert cleared_response.json() == {"session": None}
+
+
+@pytest.mark.asyncio
+async def test_test_client_per_request_cookie_overrides_path_scoped_jar() -> None:
+    app = Quater()
+
+    @app.get("/admin/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers={"set-cookie": "session=admin; Path=/admin"},
+        )
+
+    @app.get("/public/check")
+    async def public_check(request: Request) -> dict[str, str | None]:
+        return {"session": request.cookies.get("session")}
+
+    client = TestClient(app)
+    await client.get("/admin/login")
+    response = await client.get("/public/check", cookies={"session": "request"})
 
     assert response.json() == {"session": "request"}
 
