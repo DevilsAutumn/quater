@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from http.cookies import SimpleCookie
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from http.cookies import Morsel, SimpleCookie
 from secrets import token_hex
 from typing import Any, ClassVar, Literal, TypeAlias
 from urllib.parse import urlencode
@@ -26,6 +28,7 @@ FileValue: TypeAlias = (
 )
 FilesInput: TypeAlias = Mapping[str, FileValue] | Sequence[tuple[str, FileValue]]
 JSONRPCID: TypeAlias = str | int
+CookieJar: TypeAlias = dict[tuple[str, str], str]
 
 __all__ = ["CliTestClient", "MCPTestClient", "TestClient", "TestResponse"]
 
@@ -109,7 +112,7 @@ class TestClient:
         self._scheme = scheme
         self._client = client
         self._headers = tuple(Headers(headers or ()).raw)
-        self._cookies = dict(cookies or {})
+        self._cookies: CookieJar = _cookie_jar(cookies or {})
         self._started = False
         self.mcp = MCPTestClient(self)
         self.cli = CliTestClient(self)
@@ -139,7 +142,7 @@ class TestClient:
         self._started = False
 
     def set_cookie(self, name: str, value: str) -> None:
-        self._cookies[name] = value
+        self._cookies[(name, "/")] = value
 
     def clear_cookies(self) -> None:
         self._cookies.clear()
@@ -168,6 +171,7 @@ class TestClient:
             headers,
             cookies=cookies,
             content_type=content_type,
+            path=request_path,
         )
         response = await self.app.handle(
             Request(
@@ -181,7 +185,7 @@ class TestClient:
             )
         )
         test_response = await _collect_response(response)
-        self._store_response_cookies(test_response)
+        self._store_response_cookies(test_response, request_path)
         return test_response
 
     async def get(
@@ -302,6 +306,7 @@ class TestClient:
         *,
         cookies: Mapping[str, str] | None,
         content_type: str | None,
+        path: str,
     ) -> tuple[tuple[str, str], ...]:
         merged: dict[str, str] = {"host": self._host}
         merged.update(self._headers)
@@ -310,21 +315,36 @@ class TestClient:
             merged["content-type"] = content_type
 
         if "cookie" not in merged:
-            cookie_header = _cookie_header({**self._cookies, **dict(cookies or {})})
+            cookie_pairs = _cookie_pairs_for_path(self._cookies, path)
+            if cookies:
+                explicit_cookies = dict(cookies)
+                explicit_names = set(explicit_cookies)
+                cookie_pairs = [
+                    (name, value)
+                    for name, value in cookie_pairs
+                    if name not in explicit_names
+                ]
+                cookie_pairs.extend(explicit_cookies.items())
+            cookie_header = _cookie_header(cookie_pairs)
             if cookie_header:
                 merged["cookie"] = cookie_header
 
         return tuple(merged.items())
 
-    def _store_response_cookies(self, response: TestResponse) -> None:
+    def _store_response_cookies(
+        self,
+        response: TestResponse,
+        request_path: str,
+    ) -> None:
         for header in response.headers.get_all("set-cookie"):
             parsed = SimpleCookie()
             parsed.load(header)
             for name, morsel in parsed.items():
-                if morsel["max-age"] == "0":
-                    self._cookies.pop(name, None)
+                path = _normalize_cookie_path(morsel["path"], request_path)
+                if _cookie_is_expired(morsel):
+                    self._cookies.pop((name, path), None)
                     continue
-                self._cookies[name] = morsel.value
+                self._cookies[(name, path)] = morsel.value
 
 
 class MCPTestClient:
@@ -699,8 +719,68 @@ def _invalid_multipart_header_char(value: str) -> bool:
     return ordinal < 32 or ordinal == 127 or value in {'"', "\\"}
 
 
-def _cookie_header(cookies: Mapping[str, str]) -> str:
-    return encode_cookie_header(cookies.items())
+def _cookie_jar(cookies: Mapping[str, str]) -> CookieJar:
+    return {(name, "/"): value for name, value in cookies.items()}
+
+
+def _cookie_pairs_for_path(
+    cookies: CookieJar,
+    request_path: str,
+) -> list[tuple[str, str]]:
+    selected: list[tuple[str, str, str]] = []
+    for (name, cookie_path), value in cookies.items():
+        if not _cookie_path_matches(cookie_path, request_path):
+            continue
+        selected.append((name, cookie_path, value))
+    selected.sort(key=lambda item: len(item[1]), reverse=True)
+    return [(name, value) for name, _, value in selected]
+
+
+def _normalize_cookie_path(path: str, request_path: str) -> str:
+    if not path or not path.startswith("/"):
+        return _default_cookie_path(request_path)
+    return path
+
+
+def _default_cookie_path(request_path: str) -> str:
+    rightmost_slash = request_path.rfind("/")
+    if rightmost_slash <= 0:
+        return "/"
+    return request_path[:rightmost_slash]
+
+
+def _cookie_is_expired(morsel: Morsel[str]) -> bool:
+    max_age = morsel["max-age"]
+    if max_age:
+        try:
+            return int(max_age) <= 0
+        except ValueError:
+            pass
+
+    expires = morsel["expires"]
+    if not expires:
+        return False
+    try:
+        expires_at = parsedate_to_datetime(expires)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at <= datetime.now(UTC)
+
+
+def _cookie_path_matches(cookie_path: str, request_path: str) -> bool:
+    if cookie_path == "/":
+        return True
+    if request_path == cookie_path:
+        return True
+    if not request_path.startswith(cookie_path):
+        return False
+    return cookie_path.endswith("/") or request_path[len(cookie_path)] == "/"
+
+
+def _cookie_header(cookies: Iterable[tuple[str, str]]) -> str:
+    return encode_cookie_header(cookies)
 
 
 async def _collect_response(response: Response) -> TestResponse:
