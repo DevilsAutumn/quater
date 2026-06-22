@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 
 from quater import (
     AuthConfig,
+    Body,
     JSONResponse,
     Quater,
     Request,
@@ -14,6 +16,8 @@ from quater import (
     TestClient,
 )
 from quater.typing import AuthContext
+
+ANY_BODY = Body()
 
 
 @pytest.mark.asyncio
@@ -88,6 +92,36 @@ async def test_test_client_posts_json_body() -> None:
 
 
 @pytest.mark.asyncio
+async def test_test_client_sends_explicit_json_null_body() -> None:
+    app = Quater()
+
+    async def echo(request: Request, payload: Any = ANY_BODY) -> dict[str, object]:
+        return {
+            "payload": payload,
+            "content_type": request.headers["content-type"],
+        }
+
+    app.post("/echo")(echo)
+    app.put("/echo")(echo)
+    app.patch("/echo")(echo)
+    app.delete("/echo")(echo)
+
+    client = TestClient(app)
+    responses = [
+        await client.request("POST", "/echo", json=None),
+        await client.post("/echo", json=None),
+        await client.put("/echo", json=None),
+        await client.patch("/echo", json=None),
+        await client.delete("/echo", json=None),
+    ]
+
+    assert [response.status_code for response in responses] == [200] * 5
+    assert [response.json() for response in responses] == [
+        {"payload": None, "content_type": "application/json"},
+    ] * 5
+
+
+@pytest.mark.asyncio
 async def test_test_client_puts_json_body() -> None:
     app = Quater()
 
@@ -138,8 +172,12 @@ async def test_test_client_rejects_ambiguous_body_arguments() -> None:
 
     with pytest.raises(ValueError, match="Use either json or content"):
         await client.post("/echo", json={"name": "Ada"}, content=b"{}")
+    with pytest.raises(ValueError, match="Use either json or content"):
+        await client.post("/echo", json=None, content=b"null")
     with pytest.raises(ValueError, match="Use one request body style"):
         await client.post("/echo", json={"name": "Ada"}, data={"name": "Ada"})
+    with pytest.raises(ValueError, match="Use one request body style"):
+        await client.post("/echo", json=None, data={"name": "Ada"})
 
 
 @pytest.mark.asyncio
