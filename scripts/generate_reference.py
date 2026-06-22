@@ -2354,7 +2354,9 @@ def clean_signature(value: str) -> str:
         "Callable[['AccessLogEvent'], Awaitable[None]]": (
             "Callable[[AccessLogEvent], Awaitable[None]]"
         ),
-        "_DEFAULT_METHODS": "('GET', 'POST', ...)",
+        "_DEFAULT_METHODS": (
+            "('DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT')"
+        ),
     }
     for old, new in replacements.items():
         value = value.replace(old, new)
