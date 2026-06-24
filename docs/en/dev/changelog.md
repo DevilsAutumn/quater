@@ -16,6 +16,11 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
+### Changed
+
+- CLI: improved syntax error formatting to correctly display multiline source
+  text and caret positioning for indentation and end-of-line edge cases.
+
 ### Fixed
 
 - Fixed `TestClient` cookie replay so cookies stored from `Set-Cookie` respect
