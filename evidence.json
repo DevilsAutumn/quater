@@ -1,0 +1,13 @@
+{
+  "summary": "Generated Sourcey API documentation for Quater and opened PR #154 to upstream. The site contains 9 core API module pages and covers 30+ methods.",
+  "observations": [
+    "Ecosystem: Python / Web Framework",
+    "Repo: https://github.com/DevilsAutumn/quater",
+    "Commit: latest branch add-sourcey-docs",
+    "License: MIT",
+    "Adapter: Sourcey Markdown plugin mapped to existing generated API reference files",
+    "Command/Config: npx sourcey build using sourcey.config.ts",
+    "Page List: application, auth, index, observability, parameters, request, resources, responses, testing",
+    "Gaps: Upstream has to merge the PR and update their documentation host to point to the Sourcey output."
+  ]
+}
