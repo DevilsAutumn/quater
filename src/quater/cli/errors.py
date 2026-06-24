@@ -43,12 +43,23 @@ def _syntax_error_source_lines(exc: SyntaxError) -> list[str]:
     if not stripped:
         return []
 
-    lines = [f"    {stripped}"]
-    if exc.offset is None:
-        return lines
+    source_lines = stripped.splitlines()
 
-    leading_spaces = len(line) - len(stripped)
-    caret_position = max(exc.offset - leading_spaces - 1, 0)
-    caret_position = min(caret_position, max(len(stripped) - 1, 0))
-    lines.append(f"    {' ' * caret_position}^")
+    caret_line_index: int | None = 0
+    if exc.lineno is not None:
+        if 1 <= exc.lineno <= len(source_lines):
+            caret_line_index = exc.lineno - 1
+        elif len(source_lines) > 1:
+            caret_line_index = None
+
+    lines: list[str] = []
+    for index, source_line in enumerate(source_lines):
+        lines.append(f"    {source_line}")
+        if exc.offset is None or caret_line_index is None or index != caret_line_index:
+            continue
+
+        leading_spaces = len(line) - len(stripped) if index == 0 else 0
+        caret_position = max(exc.offset - leading_spaces - 1, 0)
+        caret_position = min(caret_position, max(len(source_line) - 1, 0))
+        lines.append(f"    {' ' * caret_position}^")
     return lines
