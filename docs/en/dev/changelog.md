@@ -24,6 +24,13 @@ cut.
 ### Fixed
 
 - Fixed `TestClient` cookie replay so cookies stored from `Set-Cookie` respect
+  `Secure` and `Domain` attributes. Secure cookies are no longer sent over
+  `http`, domain cookies are only stored and replayed for matching request
+  hosts, and host-only cookies follow the effective `Host` header for each
+  request.
+  ([#152](https://github.com/DevilsAutumn/quater/issues/152))
+
+- Fixed `TestClient` cookie replay so cookies stored from `Set-Cookie` respect
   cookie path rules. A cookie set with `Path=/admin`, or set by
   `/admin/login` without an explicit `Path`, is now sent to `/admin` routes but
   not unrelated paths such as `/public`; matching duplicate-name cookies are

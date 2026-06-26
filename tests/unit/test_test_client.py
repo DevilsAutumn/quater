@@ -14,7 +14,11 @@ from quater import (
     StreamResponse,
     TestClient,
 )
-from quater.testing import _cookie_is_expired
+from quater.testing import (
+    _cookie_domain_for_request,
+    _cookie_is_expired,
+    _normalize_cookie_host,
+)
 from quater.typing import AuthContext
 
 
@@ -413,6 +417,134 @@ async def test_test_client_cookie_jar_deletes_matching_path_only() -> None:
         "negative": None,
         "session": "root",
     }
+
+
+@pytest.mark.asyncio
+async def test_test_client_cookie_jar_respects_secure_cookies() -> None:
+    app = Quater()
+
+    @app.get("/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers={"set-cookie": "secure_token=s; Secure; Path=/"},
+        )
+
+    @app.get("/me")
+    async def me(request: Request) -> dict[str, str | None]:
+        return {"secure_token": request.cookies.get("secure_token")}
+
+    http_client = TestClient(app, scheme="http")
+    await http_client.get("/login")
+    http_response = await http_client.get("/me")
+
+    https_client = TestClient(app, scheme="https")
+    await https_client.get("/login")
+    https_response = await https_client.get("/me")
+
+    assert http_response.json() == {"secure_token": None}
+    assert https_response.json() == {"secure_token": "s"}
+
+
+@pytest.mark.asyncio
+async def test_test_client_cookie_jar_respects_domain_cookies() -> None:
+    app = Quater(allowed_hosts=["testserver", "api.example.com"])
+
+    @app.get("/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers={"set-cookie": "domain_token=d; Domain=example.com; Path=/"},
+        )
+
+    @app.get("/logout")
+    async def logout() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers={
+                "set-cookie": "domain_token=; Max-Age=0; Domain=example.com; Path=/"
+            },
+        )
+
+    @app.get("/me")
+    async def me(request: Request) -> dict[str, str | None]:
+        return {"domain_token": request.cookies.get("domain_token")}
+
+    mismatched_client = TestClient(app, host="testserver")
+    await mismatched_client.get("/login")
+    mismatched_response = await mismatched_client.get("/me")
+
+    matched_client = TestClient(app, host="api.example.com")
+    await matched_client.get("/login")
+    matched_response = await matched_client.get("/me")
+    await matched_client.get("/logout")
+    deleted_response = await matched_client.get("/me")
+
+    assert mismatched_response.json() == {"domain_token": None}
+    assert matched_response.json() == {"domain_token": "d"}
+    assert deleted_response.json() == {"domain_token": None}
+
+
+@pytest.mark.asyncio
+async def test_test_client_cookie_jar_uses_effective_host_header() -> None:
+    app = Quater(allowed_hosts=["api.example.com", "other.example.com"])
+
+    @app.get("/login")
+    async def login() -> Response:
+        return JSONResponse(
+            {"ok": True},
+            headers={"set-cookie": "session=host-only; Path=/"},
+        )
+
+    @app.get("/me")
+    async def me(request: Request) -> dict[str, str | None]:
+        return {"session": request.cookies.get("session")}
+
+    client = TestClient(app, host="api.example.com")
+    await client.get("/login")
+    same_host_response = await client.get("/me")
+    other_host_response = await client.get(
+        "/me",
+        headers={"host": "other.example.com"},
+    )
+
+    assert same_host_response.json() == {"session": "host-only"}
+    assert other_host_response.json() == {"session": None}
+
+
+@pytest.mark.parametrize(
+    ("cookie_domain", "request_host", "expected"),
+    [
+        ("", "Example.COM:443", ("example.com", True)),
+        (".", "example.com", None),
+        ("example.com", "api.example.com", ("example.com", False)),
+        (".example.com", "example.com", ("example.com", False)),
+        ("example.com", "badexample.com", None),
+        ("example.com", "testserver", None),
+    ],
+)
+def test_cookie_domain_for_request_normalizes_and_matches_hosts(
+    cookie_domain: str,
+    request_host: str,
+    expected: tuple[str, bool] | None,
+) -> None:
+    normalized_host = _normalize_cookie_host(request_host)
+
+    assert _cookie_domain_for_request(cookie_domain, normalized_host) == expected
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("[::1]:8443", "::1"),
+        ("[::1", "[::1"),
+    ],
+)
+def test_cookie_host_normalization_handles_bracketed_hosts(
+    host: str,
+    expected: str,
+) -> None:
+    assert _normalize_cookie_host(host) == expected
 
 
 @pytest.mark.parametrize(
