@@ -804,8 +804,7 @@ def read_manual_reference(
             raise SystemExit(
                 f"Manual reference page {page.path} does not document {name!r}"
             )
-    
-    
+
     return outputs
 
 
