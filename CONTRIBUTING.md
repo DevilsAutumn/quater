@@ -33,8 +33,13 @@ You need:
 
 - Python 3.11 or newer
 - [uv](https://docs.astral.sh/uv/)
-- Rust stable toolchain
+- Rust stable toolchain, including a native linker
 - Node.js 20 and npm
+
+Quater includes a Rust router extension built through `maturin`, so the Rust
+toolchain is needed during local setup, not only when editing Rust files. On
+Windows, install the Visual Studio Build Tools C++ workload so `link.exe` is
+available before running `uv sync`.
 
 Fork the repo on GitHub, then clone your fork:
 
