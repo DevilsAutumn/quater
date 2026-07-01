@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import pytest
 
@@ -171,10 +172,13 @@ def test_app_compiles_dirty_action_registry_once(
     registry_builds = 0
     original_build_action_registry = action_registry_module.build_action_registry
 
-    def build_once(routes: tuple[RouteDefinition, ...]) -> ActionRegistry:
+    def build_once(
+        routes: tuple[RouteDefinition, ...],
+        **kwargs: Any,
+    ) -> ActionRegistry:
         nonlocal registry_builds
         registry_builds += 1
-        return original_build_action_registry(routes)
+        return original_build_action_registry(routes, **kwargs)
 
     monkeypatch.setattr(action_registry_module, "build_action_registry", build_once)
 
@@ -186,6 +190,41 @@ def test_app_compiles_dirty_action_registry_once(
     assert app._compiled_action_registry().get("get_order") is not None
     assert app._compiled_action_registry().get("get_order") is not None
     assert registry_builds == 1
+
+
+def test_app_rebuilds_missing_action_registry_with_current_middleware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])], debug=True)
+    captured_kwargs: list[dict[str, Any]] = []
+    original_build_action_registry = action_registry_module.build_action_registry
+
+    @app.before_request
+    async def global_before(request: Request) -> None:
+        return None
+
+    @app.get("/orders/{id:int}", cli=True, description="Fetch one order.")
+    async def get_order(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    app.compile_routes()
+
+    def build_once(
+        routes: tuple[RouteDefinition, ...],
+        **kwargs: Any,
+    ) -> ActionRegistry:
+        captured_kwargs.append(kwargs)
+        return original_build_action_registry(routes, **kwargs)
+
+    monkeypatch.setattr(action_registry_module, "build_action_registry", build_once)
+    app._action_registry = None
+
+    registry = app._compiled_action_registry()
+
+    assert registry.get("get_order") is not None
+    assert len(captured_kwargs) == 1
+    assert captured_kwargs[0]["middleware"] is app._middleware
+    assert captured_kwargs[0]["debug"] is True
 
 
 def test_action_registry_recompile_keeps_http_router_current() -> None:

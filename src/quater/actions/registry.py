@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from quater.actions.descriptions import resolve_action_description
+from quater.actions.executor import DEFAULT_ACTION_GLOBAL_STACK, compile_action_pipeline
 from quater.core import RouteDefinition
 from quater.exceptions import ConfigurationError
+from quater.middleware import MiddlewareStack, RouteHandler
 from quater.params import HandlerPlan, build_handler_plan
 from quater.routing import RoutePattern, parse_route_pattern, path_param_converters
 from quater.tools.schema import tool_input_schema
@@ -21,6 +23,9 @@ class ActionDefinition:
     route: RouteDefinition
     pattern: RoutePattern
     handler_plan: HandlerPlan
+    pipeline: RouteHandler
+    compiled_global_stack: MiddlewareStack
+    compiled_debug: bool
     input_schema: dict[str, object]
     cli: bool
     tool: bool
@@ -41,7 +46,15 @@ class ActionRegistry:
         return tuple(action for action in self.actions.values() if action.tool)
 
 
-def build_action_registry(routes: tuple[RouteDefinition, ...]) -> ActionRegistry:
+def build_action_registry(
+    routes: tuple[RouteDefinition, ...],
+    *,
+    middleware: MiddlewareStack | None = None,
+    debug: bool = False,
+) -> ActionRegistry:
+    global_middleware = (
+        DEFAULT_ACTION_GLOBAL_STACK if middleware is None else middleware
+    )
     actions: dict[str, ActionDefinition] = {}
     for route in routes:
         if not route.cli and not route.tool:
@@ -74,6 +87,14 @@ def build_action_registry(routes: tuple[RouteDefinition, ...]) -> ActionRegistry
             route=route,
             pattern=pattern,
             handler_plan=handler_plan,
+            pipeline=compile_action_pipeline(
+                handler_plan,
+                global_stack=global_middleware,
+                route_stack=route.middleware,
+                debug=debug,
+            ),
+            compiled_global_stack=global_middleware,
+            compiled_debug=debug,
             input_schema=tool_input_schema(handler_plan.parameters),
             cli=route.cli,
             tool=route.tool,
