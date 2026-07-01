@@ -5,10 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from quater.actions.executor import execute_action
+from quater.actions.executor import (
+    DEFAULT_ACTION_GLOBAL_STACK,
+    compile_action_pipeline,
+    execute_action,
+)
 from quater.core import RouteDefinition
 from quater.exceptions import ConfigurationError
-from quater.middleware import MiddlewareStack
+from quater.middleware import MiddlewareStack, RouteHandler
 from quater.params import HandlerPlan, build_handler_plan
 from quater.request import Request
 from quater.response import Response
@@ -25,6 +29,9 @@ class ToolDefinition:
     route: RouteDefinition
     pattern: RoutePattern
     handler_plan: HandlerPlan
+    pipeline: RouteHandler
+    compiled_global_stack: MiddlewareStack
+    compiled_debug: bool
     input_schema: dict[str, object]
 
     async def call(
@@ -67,7 +74,15 @@ class ToolRegistry:
         return self.tools.get(name)
 
 
-def build_tool_registry(routes: tuple[RouteDefinition, ...]) -> ToolRegistry:
+def build_tool_registry(
+    routes: tuple[RouteDefinition, ...],
+    *,
+    middleware: MiddlewareStack | None = None,
+    debug: bool = False,
+) -> ToolRegistry:
+    global_middleware = (
+        DEFAULT_ACTION_GLOBAL_STACK if middleware is None else middleware
+    )
     tools: dict[str, ToolDefinition] = {}
     for route in routes:
         if not route.tool:
@@ -98,6 +113,14 @@ def build_tool_registry(routes: tuple[RouteDefinition, ...]) -> ToolRegistry:
             route=route,
             pattern=pattern,
             handler_plan=handler_plan,
+            pipeline=compile_action_pipeline(
+                handler_plan,
+                global_stack=global_middleware,
+                route_stack=route.middleware,
+                debug=debug,
+            ),
+            compiled_global_stack=global_middleware,
+            compiled_debug=debug,
             input_schema=tool_input_schema(handler_plan.parameters),
         )
 

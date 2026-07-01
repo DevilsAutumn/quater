@@ -21,7 +21,7 @@ from quater.actions.approval import (
 from quater.core import RouteDefinition
 from quater.datastructures import encode_cookie_header
 from quater.exceptions import BadRequestError
-from quater.middleware import MiddlewareStack, compile_middleware_pipeline
+from quater.middleware import MiddlewareStack, RouteHandler, compile_middleware_pipeline
 from quater.params import BoundParameter, HandlerPlan
 from quater.request import Request
 from quater.response import Response
@@ -29,9 +29,10 @@ from quater.routing import ParamSegment, RoutePattern
 from quater.typing import ActionApproval, RequestEntrypoint
 
 ActionExecutionSource = Literal["mcp", "cli"]
+DEFAULT_ACTION_GLOBAL_STACK = MiddlewareStack()
 
 
-class ExecutableAction(Protocol):
+class ActionCallTarget(Protocol):
     @property
     def name(self) -> str: ...
 
@@ -43,6 +44,17 @@ class ExecutableAction(Protocol):
 
     @property
     def handler_plan(self) -> HandlerPlan: ...
+
+
+class ExecutableAction(ActionCallTarget, Protocol):
+    @property
+    def pipeline(self) -> RouteHandler: ...
+
+    @property
+    def compiled_global_stack(self) -> MiddlewareStack: ...
+
+    @property
+    def compiled_debug(self) -> bool: ...
 
 
 @dataclass(slots=True, frozen=True)
@@ -104,19 +116,24 @@ async def execute_action(
             context=prepared.request.context,
         )
 
-    async def endpoint(
-        action_request: Request,
-        path_params: Mapping[str, object],
-    ) -> Response:
-        return await action.handler_plan.call_response(action_request, path_params)
-
-    pipeline = compile_middleware_pipeline(
-        endpoint,
-        global_stack=global_stack or MiddlewareStack(),
-        route_stack=action.route.middleware,
-        debug=debug,
-        handle_unhandled_exceptions=False,
+    pipeline_global_stack = (
+        DEFAULT_ACTION_GLOBAL_STACK if global_stack is None else global_stack
     )
+    # Pipeline reuse is tied to the exact stack object and debug flag compiled
+    # into the registry. Equivalent fresh MiddlewareStack instances miss on
+    # purpose so callers do not accidentally reuse a stale execution contract.
+    if (
+        pipeline_global_stack is action.compiled_global_stack
+        and debug == action.compiled_debug
+    ):
+        pipeline = action.pipeline
+    else:
+        pipeline = compile_action_pipeline(
+            action.handler_plan,
+            global_stack=pipeline_global_stack,
+            route_stack=action.route.middleware,
+            debug=debug,
+        )
     try:
         response = await pipeline(prepared.request, prepared.path_params)
     except BaseException:
@@ -130,8 +147,30 @@ async def execute_action(
     return move_request_finalizers_to_response(prepared.request, response)
 
 
+def compile_action_pipeline(
+    handler_plan: HandlerPlan,
+    *,
+    global_stack: MiddlewareStack,
+    route_stack: MiddlewareStack,
+    debug: bool,
+) -> RouteHandler:
+    async def endpoint(
+        action_request: Request,
+        path_params: Mapping[str, object],
+    ) -> Response:
+        return await handler_plan.call_response(action_request, path_params)
+
+    return compile_middleware_pipeline(
+        endpoint,
+        global_stack=global_stack,
+        route_stack=route_stack,
+        debug=debug,
+        handle_unhandled_exceptions=False,
+    )
+
+
 async def preflight_action(
-    action: ExecutableAction,
+    action: ActionCallTarget,
     request: Request,
     arguments: Mapping[str, object],
     *,
@@ -155,7 +194,7 @@ async def preflight_action(
 
 
 async def prepare_action_call(
-    action: ExecutableAction,
+    action: ActionCallTarget,
     request: Request,
     arguments: Mapping[str, object],
     *,
@@ -230,7 +269,7 @@ def _approval_arguments(
 
 
 def _build_request_parts(
-    action: ExecutableAction,
+    action: ActionCallTarget,
     arguments: Mapping[str, object],
 ) -> _ActionRequestParts:
     expected_names = {

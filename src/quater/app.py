@@ -621,10 +621,18 @@ class Quater:
         )
         from quater.tools.registry import build_tool_registry
 
-        self._tool_registry = build_tool_registry(tuple(self._routes))
+        self._tool_registry = build_tool_registry(
+            tuple(self._routes),
+            middleware=self._middleware,
+            debug=self.config.debug,
+        )
         from quater.actions.registry import build_action_registry
 
-        self._action_registry = build_action_registry(tuple(self._routes))
+        self._action_registry = build_action_registry(
+            tuple(self._routes),
+            middleware=self._middleware,
+            debug=self.config.debug,
+        )
         self._validate_action_registry_security(self._action_registry)
         self._validate_auth_coverage()
         self._routes_dirty = False
@@ -915,7 +923,11 @@ class Quater:
         if self._tool_registry is None or self._routes_dirty:
             from quater.tools.registry import build_tool_registry
 
-            self._tool_registry = build_tool_registry(tuple(self._routes))
+            self._tool_registry = build_tool_registry(
+                tuple(self._routes),
+                middleware=self._middleware,
+                debug=self.config.debug,
+            )
         return self._tool_registry
 
     def _compiled_action_registry(self) -> ActionRegistry:
@@ -924,7 +936,11 @@ class Quater:
         if self._action_registry is None or self._routes_dirty:
             from quater.actions.registry import build_action_registry
 
-            self._action_registry = build_action_registry(tuple(self._routes))
+            self._action_registry = build_action_registry(
+                tuple(self._routes),
+                middleware=self._middleware,
+                debug=self.config.debug,
+            )
             self._validate_action_registry_security(self._action_registry)
         return self._action_registry
 

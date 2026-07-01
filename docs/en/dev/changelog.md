@@ -23,6 +23,11 @@ cut.
 
 ### Fixed
 
+- MCP `tools/call` and CLI action execution now reuse precompiled middleware
+  pipelines instead of rebuilding them for every call, matching HTTP route
+  dispatch while preserving middleware ordering and remote CLI single-execution
+  behavior. ([#61](https://github.com/DevilsAutumn/quater/issues/61))
+
 - Fixed CLI app discovery so Windows absolute `.py` app paths are validated as
   files instead of being treated as `module:attribute` targets, while app files
   outside the working directory still fail before import.
