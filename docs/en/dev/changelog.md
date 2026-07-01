@@ -23,6 +23,11 @@ cut.
 
 ### Fixed
 
+- Fixed CLI app discovery so Windows absolute `.py` app paths are validated as
+  files instead of being treated as `module:attribute` targets, while app files
+  outside the working directory still fail before import.
+  ([#127](https://github.com/DevilsAutumn/quater/issues/127))
+
 - Fixed `TestClient` cookie replay so cookies stored from `Set-Cookie` respect
   `Secure` and `Domain` attributes. Secure cookies are no longer sent over
   `http`, domain cookies are only stored and replayed for matching request

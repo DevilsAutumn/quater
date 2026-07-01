@@ -41,10 +41,10 @@ def resolve_app_target(
     """Resolve an explicit target or discover one from common app files."""
 
     root = (working_dir or Path.cwd()).resolve()
-    if target is not None and ":" in target:
-        return DiscoveredApp(target=target)
 
     if target is not None:
+        if ":" in target and not _is_windows_drive_path(target):
+            return DiscoveredApp(target=target)
         path = _target_path(target, root)
         if path is not None:
             discovered = _discover_from_file(path, root)
@@ -67,6 +67,15 @@ def resolve_app_target(
         names = ", ".join(COMMON_APP_FILES)
         raise CLIUsageError(f"Could not find a Quater app in {names}")
     raise CLIUsageError("Could not find a Quater app file")
+
+
+def _is_windows_drive_path(target: str) -> bool:
+    return (
+        len(target) >= 3
+        and target[0].isalpha()
+        and target[1] == ":"
+        and target[2] in ("/", "\\")
+    )
 
 
 def _target_path(target: str, root: Path) -> Path | None:
