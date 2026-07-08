@@ -16,6 +16,12 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
+### Changed
+
+- CLI: split parser setup, command dispatch, local action handling, and remote
+  action handling into focused internal modules. Command syntax and behavior are
+  unchanged. ([#167](https://github.com/DevilsAutumn/quater/issues/167))
+
 ## 0.2.1
 
 ### Changed
