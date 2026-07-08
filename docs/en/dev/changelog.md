@@ -21,7 +21,39 @@ cut.
 - CLI: improved syntax error formatting to correctly display multiline source
   text and caret positioning for indentation and end-of-line edge cases.
 
+- CLI: split parser setup, command dispatch, local action handling, and remote
+  action handling into focused internal modules. Command syntax and behavior are
+  unchanged. ([#167](https://github.com/DevilsAutumn/quater/issues/167))
+
+## 0.2.1
+
+### Changed
+
+- CLI: improved syntax error formatting to correctly display multiline source
+  text and caret positioning for indentation and end-of-line edge cases.
+
+- Documentation: clarified that local development builds Quater's native Rust
+  extension and that Windows setup needs Build Tools/MSVC linker before the full
+  setup flow. ([#160](https://github.com/DevilsAutumn/quater/issues/160))
+
 ### Fixed
+
+- MCP `tools/call` and CLI action execution now reuse precompiled middleware
+  pipelines instead of rebuilding them for every call, matching HTTP route
+  dispatch while preserving middleware ordering and remote CLI single-execution
+  behavior. ([#61](https://github.com/DevilsAutumn/quater/issues/61))
+
+- Fixed CLI app discovery so Windows absolute `.py` app paths are validated as
+  files instead of being treated as `module:attribute` targets, while app files
+  outside the working directory still fail before import.
+  ([#127](https://github.com/DevilsAutumn/quater/issues/127))
+
+- Fixed `TestClient` cookie replay so cookies stored from `Set-Cookie` respect
+  `Secure` and `Domain` attributes. Secure cookies are no longer sent over
+  `http`, domain cookies are only stored and replayed for matching request
+  hosts, and host-only cookies follow the effective `Host` header for each
+  request.
+  ([#152](https://github.com/DevilsAutumn/quater/issues/152))
 
 - Fixed `TestClient` cookie replay so cookies stored from `Set-Cookie` respect
   cookie path rules. A cookie set with `Path=/admin`, or set by

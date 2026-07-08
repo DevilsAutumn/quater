@@ -36,8 +36,13 @@ Requirements:
 
 - Python 3.11+
 - uv
-- Rust stable
+- Rust stable, including a native linker
 - Node.js 20 and npm
+
+Quater builds a Rust router extension through `maturin` during local setup, so
+Rust is required before running `uv sync`, even for Python-only changes. On
+Windows, install the Visual Studio Build Tools C++ workload so `link.exe` is
+available.
 
 Fork the repo on GitHub, then clone your fork:
 

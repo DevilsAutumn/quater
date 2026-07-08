@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import msgspec
 import pytest
 
 from quater import AuthConfig, Body, Cookie, Header, Quater, Request, Resource
+from quater.actions import executor as action_executor
 from quater.actions.approval import (
     ApprovalDeniedError,
     ApprovalRequiredError,
@@ -195,6 +196,73 @@ async def test_execute_action_uses_body_alias_for_action_arguments() -> None:
     )
 
     assert response.body == b'{"name":"Ada","age":37}'
+
+
+@pytest.mark.asyncio
+async def test_execute_action_without_global_stack_skips_app_middleware() -> None:
+    events: list[str] = []
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    @app.before_request
+    async def global_before(request: Request) -> None:
+        events.append("global_before")
+
+    @app.get("/items/{id:int}", cli=True, description="Fetch one item.")
+    async def get_item(id: int) -> dict[str, int]:
+        events.append("handler")
+        return {"id": id}
+
+    app.compile_routes()
+    action = app._compiled_action_registry().get("get_item")
+    assert action is not None
+
+    response = await execute_action(
+        action,
+        Request(method="POST", path="/__quater__/actions/call"),
+        {"id": 7},
+        source="cli",
+    )
+
+    assert response.body == b'{"id":7}'
+    assert events == ["handler"]
+
+
+@pytest.mark.asyncio
+async def test_execute_action_reuses_default_registry_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline_compiles = 0
+    original_compile = cast(Any, action_executor).compile_middleware_pipeline
+    app = Quater(auth=[AuthConfig(allow_auth, surfaces=["cli"])])
+
+    def compile_once(*args: Any, **kwargs: Any) -> Any:
+        nonlocal pipeline_compiles
+        pipeline_compiles += 1
+        return original_compile(*args, **kwargs)
+
+    monkeypatch.setattr(
+        action_executor,
+        "compile_middleware_pipeline",
+        compile_once,
+    )
+
+    @app.get("/items/{id:int}", cli=True, description="Fetch one item.")
+    async def get_item(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    action = action_for(app, "get_item")
+    compiles_after_registry_build = pipeline_compiles
+
+    for id_ in range(3):
+        response = await execute_action(
+            action,
+            Request(method="POST", path="/__quater__/actions/call"),
+            {"id": id_},
+            source="cli",
+        )
+        assert response.status_code == 200
+
+    assert pipeline_compiles == compiles_after_registry_build
 
 
 @pytest.mark.asyncio

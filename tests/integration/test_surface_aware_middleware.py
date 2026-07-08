@@ -10,6 +10,7 @@ from typing import Any, cast
 import pytest
 
 from quater import Quater, Request, Response, TestClient, TextResponse
+from quater.actions import executor as action_executor
 from quater.cli.main import main as cli_main
 from quater.exceptions import ConfigurationError, MiddlewareStateError
 from quater.middleware import ExceptionHandlerEntry
@@ -37,6 +38,25 @@ def mcp_result_text(response: Any) -> str:
     content = result["content"]
     assert isinstance(content, list)
     return str(content[0]["text"])
+
+
+def count_action_pipeline_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[[], int]:
+    compiles = 0
+    original_compile = cast(Any, action_executor).compile_middleware_pipeline
+
+    def compile_once(*args: Any, **kwargs: Any) -> Any:
+        nonlocal compiles
+        compiles += 1
+        return original_compile(*args, **kwargs)
+
+    monkeypatch.setattr(
+        action_executor,
+        "compile_middleware_pipeline",
+        compile_once,
+    )
+    return lambda: compiles
 
 
 def test_global_middleware_can_target_api_mcp_and_cli_surfaces(
@@ -188,6 +208,142 @@ def test_global_middleware_can_target_api_mcp_and_cli_surfaces(
         "agent-around-before:cli:local:/orders/ord_1001",
         "handler:cli:local:/orders/ord_1001",
         "agent-around-after:cli:local:/orders/ord_1001",
+    ]
+
+
+def test_mcp_tools_call_reuses_compiled_action_middleware_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline_compiles = count_action_pipeline_compiles(monkeypatch)
+    app = Quater()
+    events: list[str] = []
+
+    @app.before_request(surfaces=["mcp"])
+    async def global_before(request: Request) -> Response | None:
+        events.append(f"before:{request.context.source}:{request.path}")
+        return None
+
+    @app.get("/items/{id:int}", tool=True, description="Fetch one item.")
+    async def get_item(id: int, request: Request) -> dict[str, object]:
+        events.append(f"handler:{request.context.source}:{request.path}")
+        return {"id": id, "source": request.context.source}
+
+    app.compile_routes()
+    compiles_after_route_compile = pipeline_compiles()
+    client = TestClient(app)
+
+    for id_ in range(3):
+        response = run(client.mcp.tools_call("get_item", {"id": id_}))
+        assert response.status_code == 200
+        assert json.loads(mcp_result_text(response)) == {"id": id_, "source": "mcp"}
+
+    assert pipeline_compiles() == compiles_after_route_compile
+    assert events == [
+        "before:mcp:/items/0",
+        "handler:mcp:/items/0",
+        "before:mcp:/items/1",
+        "handler:mcp:/items/1",
+        "before:mcp:/items/2",
+        "handler:mcp:/items/2",
+    ]
+
+
+def test_remote_cli_call_reuses_compiled_action_middleware_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline_compiles = count_action_pipeline_compiles(monkeypatch)
+    app = Quater()
+    events: list[str] = []
+
+    @app.before_request(surfaces=["cli"])
+    async def global_before(request: Request) -> Response | None:
+        events.append(
+            f"before:{request.context.source}:"
+            f"{request.context.entrypoint}:{request.path}"
+        )
+        return None
+
+    @app.get("/items/{id:int}", cli=True, description="Fetch one item.")
+    async def get_item(id: int, request: Request) -> dict[str, object]:
+        events.append(
+            f"handler:{request.context.source}:"
+            f"{request.context.entrypoint}:{request.path}"
+        )
+        return {"id": id, "source": request.context.source}
+
+    app.compile_routes()
+    compiles_after_route_compile = pipeline_compiles()
+    client = TestClient(app)
+
+    for id_ in range(3):
+        response = run(client.cli.call("get_item", {"id": id_}))
+        assert response.status_code == 200
+        assert response.json()["body"] == {"id": id_, "source": "cli"}
+
+    assert pipeline_compiles() == compiles_after_route_compile
+    assert events == [
+        "before:cli:server:/items/0",
+        "handler:cli:server:/items/0",
+        "before:cli:server:/items/1",
+        "handler:cli:server:/items/1",
+        "before:cli:server:/items/2",
+        "handler:cli:server:/items/2",
+    ]
+
+
+def test_local_cli_call_reuses_compiled_action_middleware_pipeline(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline_compiles = count_action_pipeline_compiles(monkeypatch)
+    app = Quater()
+    events: list[str] = []
+
+    @app.before_request(surfaces=["cli"])
+    async def global_before(request: Request) -> Response | None:
+        events.append(
+            f"before:{request.context.source}:"
+            f"{request.context.entrypoint}:{request.path}"
+        )
+        return None
+
+    @app.get("/items/{id:int}", cli=True, description="Fetch one item.")
+    async def get_item(id: int, request: Request) -> dict[str, object]:
+        events.append(
+            f"handler:{request.context.source}:"
+            f"{request.context.entrypoint}:{request.path}"
+        )
+        return {"id": id, "source": request.context.source}
+
+    app.compile_routes()
+    compiles_after_route_compile = pipeline_compiles()
+    module_target = register_app_module(monkeypatch, app)
+    capsys.readouterr()
+
+    for id_ in range(3):
+        exit_code = cli_main(
+            [
+                "--app",
+                module_target,
+                "--json",
+                "call",
+                "get_item",
+                "--id",
+                str(id_),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert json.loads(captured.out)["body"] == {"id": id_, "source": "cli"}
+
+    assert pipeline_compiles() == compiles_after_route_compile
+    assert events == [
+        "before:cli:local:/items/0",
+        "handler:cli:local:/items/0",
+        "before:cli:local:/items/1",
+        "handler:cli:local:/items/1",
+        "before:cli:local:/items/2",
+        "handler:cli:local:/items/2",
     ]
 
 

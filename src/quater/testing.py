@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from http.cookies import Morsel, SimpleCookie
@@ -28,13 +29,21 @@ FileValue: TypeAlias = (
 )
 FilesInput: TypeAlias = Mapping[str, FileValue] | Sequence[tuple[str, FileValue]]
 JSONRPCID: TypeAlias = str | int
-CookieJar: TypeAlias = dict[tuple[str, str], str]
+CookieKey: TypeAlias = tuple[str, str, str]
+CookieJar: TypeAlias = dict[CookieKey, "_StoredCookie"]
 
 __all__ = ["CliTestClient", "MCPTestClient", "TestClient", "TestResponse"]
 
 _MCP_PATH = "/mcp"
 _MCP_PROTOCOL_VERSION = "2025-11-25"
 _UNSET = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _StoredCookie:
+    value: str
+    secure: bool = False
+    host_only: bool = True
 
 
 class TestResponse:
@@ -113,7 +122,7 @@ class TestClient:
         self._scheme = scheme
         self._client = client
         self._headers = tuple(Headers(headers or ()).raw)
-        self._cookies: CookieJar = _cookie_jar(cookies or {})
+        self._cookies: CookieJar = _cookie_jar(cookies or {}, self._host)
         self._started = False
         self.mcp = MCPTestClient(self)
         self.cli = CliTestClient(self)
@@ -143,7 +152,9 @@ class TestClient:
         self._started = False
 
     def set_cookie(self, name: str, value: str) -> None:
-        self._cookies[(name, "/")] = value
+        self._cookies[(name, _normalize_cookie_host(self._host), "/")] = _StoredCookie(
+            value=value
+        )
 
     def clear_cookies(self) -> None:
         self._cookies.clear()
@@ -186,7 +197,12 @@ class TestClient:
             )
         )
         test_response = await _collect_response(response)
-        self._store_response_cookies(test_response, request_path)
+        request_host = Headers(request_headers).get("host") or self._host
+        self._store_response_cookies(
+            test_response,
+            request_path,
+            request_host=request_host,
+        )
         return test_response
 
     async def get(
@@ -316,7 +332,13 @@ class TestClient:
             merged["content-type"] = content_type
 
         if "cookie" not in merged:
-            cookie_pairs = _cookie_pairs_for_path(self._cookies, path)
+            request_host = merged.get("host", self._host)
+            cookie_pairs = _cookie_pairs_for_request(
+                self._cookies,
+                path,
+                host=request_host,
+                scheme=self._scheme,
+            )
             if cookies:
                 explicit_cookies = dict(cookies)
                 explicit_names = set(explicit_cookies)
@@ -336,16 +358,31 @@ class TestClient:
         self,
         response: TestResponse,
         request_path: str,
+        *,
+        request_host: str,
     ) -> None:
+        request_host = _normalize_cookie_host(request_host)
         for header in response.headers.get_all("set-cookie"):
             parsed = SimpleCookie()
             parsed.load(header)
             for name, morsel in parsed.items():
                 path = _normalize_cookie_path(morsel["path"], request_path)
-                if _cookie_is_expired(morsel):
-                    self._cookies.pop((name, path), None)
+                domain_match = _cookie_domain_for_request(
+                    morsel["domain"],
+                    request_host,
+                )
+                if domain_match is None:
                     continue
-                self._cookies[(name, path)] = morsel.value
+                domain, host_only = domain_match
+                key = (name, domain, path)
+                if _cookie_is_expired(morsel):
+                    self._cookies.pop(key, None)
+                    continue
+                self._cookies[key] = _StoredCookie(
+                    value=morsel.value,
+                    secure=bool(morsel["secure"]),
+                    host_only=host_only,
+                )
 
 
 class MCPTestClient:
@@ -723,19 +760,35 @@ def _invalid_multipart_header_char(value: str) -> bool:
     return ordinal < 32 or ordinal == 127 or value in {'"', "\\"}
 
 
-def _cookie_jar(cookies: Mapping[str, str]) -> CookieJar:
-    return {(name, "/"): value for name, value in cookies.items()}
+def _cookie_jar(cookies: Mapping[str, str], host: str) -> CookieJar:
+    domain = _normalize_cookie_host(host)
+    return {
+        (name, domain, "/"): _StoredCookie(value=value)
+        for name, value in cookies.items()
+    }
 
 
-def _cookie_pairs_for_path(
+def _cookie_pairs_for_request(
     cookies: CookieJar,
     request_path: str,
+    *,
+    host: str,
+    scheme: Literal["http", "https"],
 ) -> list[tuple[str, str]]:
     selected: list[tuple[str, str, str]] = []
-    for (name, cookie_path), value in cookies.items():
+    request_host = _normalize_cookie_host(host)
+    for (name, cookie_domain, cookie_path), cookie in cookies.items():
+        if cookie.secure and scheme != "https":
+            continue
+        if not _cookie_domain_matches(
+            cookie_domain,
+            request_host,
+            host_only=cookie.host_only,
+        ):
+            continue
         if not _cookie_path_matches(cookie_path, request_path):
             continue
-        selected.append((name, cookie_path, value))
+        selected.append((name, cookie_path, cookie.value))
     selected.sort(key=lambda item: len(item[1]), reverse=True)
     return [(name, value) for name, _, value in selected]
 
@@ -771,6 +824,47 @@ def _cookie_is_expired(morsel: Morsel[str]) -> bool:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     return expires_at <= datetime.now(UTC)
+
+
+def _cookie_domain_for_request(
+    cookie_domain: str,
+    request_host: str,
+) -> tuple[str, bool] | None:
+    if not cookie_domain:
+        return request_host, True
+
+    normalized_domain = cookie_domain.strip().lower().lstrip(".").rstrip(".")
+    if not normalized_domain:
+        return None
+    if not _cookie_domain_matches(
+        normalized_domain,
+        request_host,
+        host_only=False,
+    ):
+        return None
+    return normalized_domain, False
+
+
+def _normalize_cookie_host(host: str) -> str:
+    normalized = host.strip().lower()
+    if normalized.startswith("["):
+        bracket_index = normalized.find("]")
+        if bracket_index != -1:
+            return normalized[1:bracket_index]
+    if normalized.count(":") == 1:
+        normalized = normalized.rsplit(":", 1)[0]
+    return normalized.rstrip(".")
+
+
+def _cookie_domain_matches(
+    cookie_domain: str,
+    request_host: str,
+    *,
+    host_only: bool,
+) -> bool:
+    if host_only:
+        return request_host == cookie_domain
+    return request_host == cookie_domain or request_host.endswith(f".{cookie_domain}")
 
 
 def _cookie_path_matches(cookie_path: str, request_path: str) -> bool:
