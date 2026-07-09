@@ -201,11 +201,25 @@ def _reject_variadic_parameters(provider: Callable[..., object]) -> None:
             raise ConfigurationError("Resource providers cannot use *args or **kwargs")
 
 
-def _provider_hints(provider: Callable[..., object]) -> Mapping[str, object]:
+def _provider_parameter_annotation(
+    provider: Callable[..., object],
+    parameter: inspect.Parameter,
+) -> object:
+    proxy = _AnnotationProxy()
+    proxy.__annotations__ = {parameter.name: parameter.annotation}
+    globalns = getattr(inspect.unwrap(provider), "__globals__", {})
     try:
-        return get_type_hints(provider, include_extras=True)
-    except (NameError, TypeError):
-        return {}
+        return get_type_hints(
+            proxy,
+            globalns=globalns,
+            include_extras=True,
+        )[parameter.name]
+    except (NameError, SyntaxError, TypeError):
+        return parameter.annotation
+
+
+class _AnnotationProxy:
+    __annotations__: dict[str, object]
 
 
 def _resource_from_annotation(annotation: object) -> Resource[Any] | None:
@@ -225,12 +239,11 @@ def _resource_from_annotation(annotation: object) -> Resource[Any] | None:
 def _build_plan(resource: Resource[Any]) -> tuple[_ProviderParam, ...]:
     provider = resource.provider
     signature = inspect.signature(provider)
-    hints = _provider_hints(provider)
     plan: list[_ProviderParam] = []
     seen_request = False
     # Variadic parameters are already rejected when the Resource is constructed.
     for parameter in signature.parameters.values():
-        annotation = hints.get(parameter.name, parameter.annotation)
+        annotation = _provider_parameter_annotation(provider, parameter)
         dependency = _resource_from_annotation(annotation)
         is_request = parameter.name == "request" or annotation is Request
         keyword_only = parameter.kind is inspect.Parameter.KEYWORD_ONLY

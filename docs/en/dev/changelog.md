@@ -22,6 +22,13 @@ cut.
   action handling into focused internal modules. Command syntax and behavior are
   unchanged. ([#167](https://github.com/DevilsAutumn/quater/issues/167))
 
+### Fixed
+
+- Fixed resource provider planning so valid provider parameters still resolve
+  when the same provider has an unrelated broken return annotation. This covers
+  `Annotated[..., Resource]` dependencies and `Request` parameters that are not
+  named `request`. ([#156](https://github.com/DevilsAutumn/quater/issues/156))
+
 ## 0.2.1
 
 ### Changed
