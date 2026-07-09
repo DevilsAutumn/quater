@@ -281,6 +281,79 @@ def test_unresolvable_provider_parameter_is_rejected_at_compile_time() -> None:
         app.compile_routes()
 
 
+class BrokenReturnSession:
+    pass
+
+
+async def _broken_return_session_provider() -> BrokenReturnSession:
+    return BrokenReturnSession()
+
+
+_broken_return_session = Resource(_broken_return_session_provider, name="session")
+
+
+@pytest.mark.asyncio
+async def test_provider_resource_parameter_survives_broken_return_annotation() -> None:
+    async def user_provider(session: object) -> dict[str, str]:
+        assert isinstance(session, BrokenReturnSession)
+        return {"session": "resolved"}
+
+    user_provider.__annotations__ = {
+        "session": "Annotated[BrokenReturnSession, _broken_return_session]",
+        "return": "MissingUser",
+    }
+
+    user = Resource(user_provider, name="user")
+    app = Quater()
+
+    @app.get("/x", inject={"value": user})
+    async def handler(value: dict[str, str]) -> dict[str, str]:
+        return value
+
+    async with TestClient(app) as client:
+        response = await client.get("/x")
+
+    assert response.body == b'{"session":"resolved"}'
+
+
+@pytest.mark.asyncio
+async def test_provider_request_parameter_survives_broken_return_annotation() -> None:
+    async def request_provider(ctx: object) -> str:
+        assert isinstance(ctx, Request)
+        return ctx.path
+
+    request_provider.__annotations__ = {
+        "ctx": "Request",
+        "return": "MissingRequestResult",
+    }
+
+    resource = Resource(request_provider, name="ctx-user")
+    app = Quater()
+
+    @app.get("/ctx", inject={"value": resource})
+    async def handler(value: str) -> dict[str, str]:
+        return {"path": value}
+
+    async with TestClient(app) as client:
+        response = await client.get("/ctx")
+
+    assert response.body == b'{"path":"/ctx"}'
+
+
+def test_broken_provider_parameter_still_fails_with_broken_return_annotation() -> None:
+    async def bad_provider(dep: object) -> object:
+        return dep
+
+    bad_provider.__annotations__ = {
+        "dep": "MissingDep",
+        "return": "MissingResult",
+    }
+    resource = Resource(bad_provider, name="bad")
+
+    with pytest.raises(ConfigurationError, match="dep"):
+        _compile_with_resource(resource)
+
+
 def _compile_with_resource(resource: Resource[Any]) -> None:
     app = Quater()
 
