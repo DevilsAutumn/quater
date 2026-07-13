@@ -138,7 +138,7 @@ class RouteGroup:
             cli=cli,
             needs_approval=needs_approval,
             public=public,
-            inject=normalize_inject(inject),
+            inject=inject,
             metadata=metadata,
             before=before,
             after=after,
