@@ -22,6 +22,14 @@ cut.
   action handling into focused internal modules. Command syntax and behavior are
   unchanged. ([#167](https://github.com/DevilsAutumn/quater/issues/167))
 
+- `Quater.add_route()` now validates the `inject` mapping at registration time,
+  matching `RouteGroup` behavior. Invalid injected parameter names (e.g.
+  `bad-name`) raise `ConfigurationError` and non-`Resource` values raise
+  `TypeError` when the route is added, instead of surfacing later during route
+  compilation. Deeper handler-plan checks (unused injected values, path/param
+  marker conflicts) remain compile-time.
+  ([#140](https://github.com/DevilsAutumn/quater/issues/140))
+
 ### Fixed
 
 - Fixed resource provider planning so valid provider parameters still resolve

@@ -71,7 +71,7 @@ def build_route_definition(
             cli=cli,
             route_name=route_name,
         ),
-        inject=dict(inject or {}),
+        inject=normalize_inject(inject),
         metadata=dict(metadata or {}),
         middleware=MiddlewareStack.from_parts(
             before=before,

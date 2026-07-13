@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from quater import AuthConfig, Quater, Request
+from quater import AuthConfig, Quater, Request, Resource
 from quater.config import AppConfig
 from quater.exceptions import ConfigurationError, RouteConflictError
 from quater.response import Response
@@ -486,3 +486,34 @@ def test_route_metadata_can_be_registered_without_compiling_routes() -> None:
     assert route.cli is False
     assert route.needs_approval is False
     assert route.public == ()
+
+
+def test_app_add_route_rejects_invalid_inject_parameter_names() -> None:
+    async def provider() -> str:
+        return "bad"
+
+    async def handler(value: str) -> dict[str, str]:
+        return {"value": value}
+
+    app = Quater()
+    with pytest.raises(ConfigurationError, match="Invalid injected parameter name"):
+        app.add_route(
+            "GET",
+            "/",
+            handler,
+            inject={"bad-name": Resource(provider)},
+        )
+
+
+def test_app_add_route_rejects_non_resource_inject_values() -> None:
+    async def handler(value: str) -> dict[str, str]:
+        return {"value": value}
+
+    app = Quater()
+    with pytest.raises(TypeError, match="inject values must be Resource instances"):
+        app.add_route(
+            "GET",
+            "/ok",
+            handler,
+            inject=cast(dict[str, Resource[str]], {"value": object()}),
+        )

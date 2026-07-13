@@ -278,6 +278,12 @@ decorator says where its value comes from. This is the only form that a
 [`RouteGroup`](#groups) can share across several routes, so prefer it when a
 whole feature needs the same resource.
 
+The `inject` map is validated when the route is registered (via
+`app.add_route()`, `@app.get(...)`, `RouteGroup(...)`, or `group.add_route()`).
+Keys must be valid Python identifiers and values must be `Resource` instances,
+otherwise registration raises `ConfigurationError` or `TypeError` immediately
+instead of failing later during route compilation.
+
 ### In the type annotation (`Annotated[T, resource]`)
 
 Put the `Resource` in the parameter's annotation. The parameter type is still
@@ -412,6 +418,14 @@ The generated MCP and CLI schemas include `order_id`, not `session`.
 
 `Resource provider 'db_session' yielded more than once`
 : Use one `yield`, then cleanup after it.
+
+`Invalid injected parameter name: 'bad-name'`
+: An `inject={...}` key is not a valid Python identifier. Rename the key.
+  Raised at route registration.
+
+`inject values must be Resource instances`
+: An `inject={...}` value is not a `Resource`. Wrap the provider with
+  `Resource(...)`. Raised at route registration.
 
 `Duplicate injected parameter: session`
 : A group and a route both define `session` with different `Resource` objects.
