@@ -22,6 +22,11 @@ cut.
   action handling into focused internal modules. Command syntax and behavior are
   unchanged. ([#167](https://github.com/DevilsAutumn/quater/issues/167))
 
+- Internal cleanup: moved built-in OpenAPI, Swagger UI, and MCP docs route
+  construction, including Swagger asset handlers, out of `Quater` into a
+  focused docs module. Paths, route names, auth metadata, and public behavior
+  are unchanged. ([#149](https://github.com/DevilsAutumn/quater/issues/149))
+
 - `Quater.add_route()` now validates the `inject` mapping at registration time,
   matching `RouteGroup` behavior. Invalid injected parameter names (e.g.
   `bad-name`) raise `ConfigurationError` and non-`Resource` values raise
