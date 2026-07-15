@@ -29,9 +29,9 @@ from quater.config import (
     MaxBodySize,
     SecurityMode,
     _Unset,
-    docs_asset_paths,
 )
 from quater.core import (
+    _AUTH_SURFACE_METADATA,
     _SKIP_GLOBAL_MIDDLEWARE_METADATA,
     Handler,
     PublicSurfaces,
@@ -99,10 +99,6 @@ logger = logging.getLogger("quater")
 HandlerT = TypeVar("HandlerT", bound=Handler)
 MCP_PATH = "/mcp"
 ACTION_APPROVAL_REQUIRED_MESSAGE = "Approval-required actions require action_approval"
-# Builtin routes served over HTTP but gated by an agent surface's AuthConfig.
-_AUTH_SURFACE_METADATA = "quater_auth_surface"
-
-
 _RESERVED_USER_ROUTE_PREFIXES = (MCP_PATH, "/__quater__")
 _RESERVED_USER_ROUTE_PATHS = frozenset(
     {
@@ -945,54 +941,16 @@ class Quater:
         return self._action_registry
 
     def _builtin_routes(self) -> tuple[RouteDefinition, ...]:
-        routes: list[RouteDefinition] = []
-        if self.config.openapi_path is not None:
-            routes.append(
-                RouteDefinition(
-                    method="GET",
-                    path=self.config.openapi_path,
-                    handler=self._openapi_json,
-                    name="quater_openapi_json",
-                    metadata={"include_in_openapi": False},
-                )
-            )
-        if self.config.docs_path is not None:
-            from quater.docs.swagger import ensure_swagger_ui_assets_available
+        from quater.docs.routes import build_builtin_docs_routes
 
-            ensure_swagger_ui_assets_available()
-            routes.append(
-                RouteDefinition(
-                    method="GET",
-                    path=self.config.docs_path,
-                    handler=self._openapi_docs,
-                    name="quater_openapi_docs",
-                    metadata={"include_in_openapi": False},
-                )
+        routes = list(
+            build_builtin_docs_routes(
+                self.config,
+                openapi_json_handler=self._openapi_json,
+                openapi_docs_handler=self._openapi_docs,
+                mcp_docs_handler=self._mcp_docs,
             )
-            asset_paths = docs_asset_paths(self.config.docs_path)
-            for asset_name, handler in self._swagger_ui_asset_handlers().items():
-                routes.append(
-                    RouteDefinition(
-                        method="GET",
-                        path=asset_paths[asset_name],
-                        handler=handler,
-                        name=f"quater_docs_{asset_name.replace('-', '_')}",
-                        metadata={"include_in_openapi": False},
-                    )
-                )
-        if self.config.mcp_docs_path is not None:
-            routes.append(
-                RouteDefinition(
-                    method="GET",
-                    path=self.config.mcp_docs_path,
-                    handler=self._mcp_docs,
-                    name="quater_mcp_docs",
-                    metadata={
-                        "include_in_openapi": False,
-                        _AUTH_SURFACE_METADATA: "mcp",
-                    },
-                )
-            )
+        )
         if self._has_cli_routes():
             routes.append(
                 RouteDefinition(
@@ -1043,43 +1001,6 @@ class Quater:
             ),
             headers={"content-security-policy": DOCS_CSP},
         )
-
-    async def _swagger_ui_css(self) -> Response:
-        from quater.docs.swagger import swagger_ui_asset_response
-
-        return swagger_ui_asset_response("swagger-ui.css")
-
-    async def _swagger_ui_bundle_js(self) -> Response:
-        from quater.docs.swagger import swagger_ui_asset_response
-
-        return swagger_ui_asset_response("swagger-ui-bundle.js")
-
-    async def _swagger_ui_standalone_preset_js(self) -> Response:
-        from quater.docs.swagger import swagger_ui_asset_response
-
-        return swagger_ui_asset_response("swagger-ui-standalone-preset.js")
-
-    async def _swagger_ui_initializer_js(self) -> Response:
-        from quater.docs.swagger import swagger_ui_initializer_response
-
-        openapi_path = self.config.openapi_path
-        if openapi_path is None:
-            raise RuntimeError("Swagger UI initializer requires an OpenAPI path")
-        return swagger_ui_initializer_response(openapi_path)
-
-    async def _swagger_ui_favicon(self) -> Response:
-        from quater.docs.swagger import swagger_ui_asset_response
-
-        return swagger_ui_asset_response("favicon-32x32.png")
-
-    def _swagger_ui_asset_handlers(self) -> dict[str, Handler]:
-        return {
-            "swagger-ui.css": self._swagger_ui_css,
-            "swagger-ui-bundle.js": self._swagger_ui_bundle_js,
-            "swagger-ui-standalone-preset.js": self._swagger_ui_standalone_preset_js,
-            "swagger-initializer.js": self._swagger_ui_initializer_js,
-            "favicon-32x32.png": self._swagger_ui_favicon,
-        }
 
     async def _mcp_docs(self) -> HTMLResponse:
         from quater.docs.html import DOCS_CSP, render_mcp_docs
