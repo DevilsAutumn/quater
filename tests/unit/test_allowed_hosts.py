@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 import pytest
 
 from quater import AuthConfig, Quater, Request
@@ -35,6 +37,8 @@ async def test_allowed_host_accepts_matching_host_with_port() -> None:
         "[api.example.com]evil.test",
         "[api.example.com]:bad",
         "[api.example.com]:",
+        "[::1",
+        "[127.0.0.1]",
     ),
 )
 async def test_allowed_host_rejects_malformed_bracketed_hosts(host: str) -> None:
@@ -50,6 +54,137 @@ async def test_allowed_host_rejects_malformed_bracketed_hosts(host: str) -> None
         allowed_hosts=["api.example.com"],
         auth=[AuthConfig(authenticate, surfaces=["api"])],
     )
+
+    @app.get("/private")
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(method="GET", path="/private", headers={"host": host})
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid Host header"
+    assert auth_calls == 0
+    assert handler_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    (
+        "localhost:bad",
+        "localhost:",
+        "api.example.com:bad",
+        "127.0.0.1:bad",
+        "example.com:443abc",
+        "localhost:\xb2",
+    ),
+)
+@pytest.mark.parametrize("mode", ("wildcard", "relaxed", "off"))
+async def test_malformed_unbracketed_host_is_rejected_before_auth_or_handler(
+    host: str,
+    mode: Literal["wildcard", "relaxed", "off"],
+) -> None:
+    auth_calls = 0
+    handler_calls = 0
+
+    async def authenticate(ctx: Request) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    if mode == "wildcard":
+        app = Quater(
+            allowed_hosts=["*"],
+            auth=[AuthConfig(authenticate, surfaces=["api"])],
+        )
+    else:
+        app = Quater(
+            security=mode,
+            auth=[AuthConfig(authenticate, surfaces=["api"])],
+        )
+
+    @app.get("/private")
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(method="GET", path="/private", headers={"host": host})
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid Host header"
+    assert auth_calls == 0
+    assert handler_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", ("[::1]:bad", "[::1]:", "[::1]:\xb2"))
+async def test_bracketed_ipv6_rejects_malformed_port_with_wildcard(
+    host: str,
+) -> None:
+    auth_calls = 0
+    handler_calls = 0
+
+    async def authenticate(ctx: Request) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    app = Quater(
+        allowed_hosts=["*"],
+        auth=[AuthConfig(authenticate, surfaces=["api"])],
+    )
+
+    @app.get("/private")
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(method="GET", path="/private", headers={"host": host})
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid Host header"
+    assert auth_calls == 0
+    assert handler_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("host", "allowed_hosts"),
+    (
+        ("::1", None),
+        ("::1", ("::1",)),
+        ("2001:db8::1", ("*",)),
+    ),
+)
+async def test_bare_ipv6_host_is_rejected_before_auth_or_handler(
+    host: str,
+    allowed_hosts: tuple[str, ...] | None,
+) -> None:
+    auth_calls = 0
+    handler_calls = 0
+
+    async def authenticate(ctx: Request) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    if allowed_hosts is None:
+        app = Quater(auth=[AuthConfig(authenticate, surfaces=["api"])])
+    else:
+        app = Quater(
+            allowed_hosts=allowed_hosts,
+            auth=[AuthConfig(authenticate, surfaces=["api"])],
+        )
 
     @app.get("/private")
     async def private() -> dict[str, bool]:
@@ -85,7 +220,7 @@ async def test_allowed_host_accepts_bracketed_ipv6_hosts(host: str) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("host", ("[localhost]", "[::1]."))
+@pytest.mark.parametrize("host", ("[localhost]", "[::1].", "."))
 async def test_present_malformed_host_is_rejected_in_strict_default_mode(
     host: str,
 ) -> None:
@@ -111,6 +246,7 @@ async def test_present_malformed_host_is_rejected_in_strict_default_mode(
         "localhost:8000",
         "127.0.0.1",
         "127.0.0.1:8000",
+        "[::1]",
         "[::1]:8000",
         "testserver",
     ),
@@ -306,6 +442,72 @@ async def test_host_and_authority_must_agree() -> None:
 
     assert response.status_code == 400
     assert response.body == b"Invalid Host header"
+
+
+@pytest.mark.asyncio
+async def test_bare_ipv6_authority_is_rejected_even_when_host_is_bracketed() -> None:
+    auth_calls = 0
+    handler_calls = 0
+
+    async def authenticate(ctx: Request) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    app = Quater(
+        allowed_hosts=["::1"],
+        auth=[AuthConfig(authenticate, surfaces=["api"])],
+    )
+
+    @app.get("/private")
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(
+            method="GET",
+            path="/private",
+            headers=(("host", "[::1]"), (":authority", "::1")),
+        )
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid Host header"
+    assert auth_calls == 0
+    assert handler_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_malformed_allowed_host_pattern_does_not_match_valid_host() -> None:
+    auth_calls = 0
+    handler_calls = 0
+
+    async def authenticate(ctx: Request) -> AuthContext | None:
+        nonlocal auth_calls
+        auth_calls += 1
+        return AuthContext(subject="user_1")
+
+    app = Quater(
+        allowed_hosts=["localhost:bad"],
+        auth=[AuthConfig(authenticate, surfaces=["api"])],
+    )
+
+    @app.get("/private")
+    async def private() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    response = await app.handle(
+        Request(method="GET", path="/private", headers={"host": "localhost"})
+    )
+
+    assert response.status_code == 400
+    assert response.body == b"Invalid Host header"
+    assert auth_calls == 0
+    assert handler_calls == 0
 
 
 @pytest.mark.asyncio

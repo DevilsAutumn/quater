@@ -37,6 +37,12 @@ cut.
 
 ### Fixed
 
+- Host header validation now rejects malformed authority values before auth or
+  handlers run. Bad ports such as `localhost:bad` and bare IPv6 values such as
+  `::1` now return `400 Invalid Host header`, even when `allowed_hosts=["*"]`;
+  valid bracketed IPv6 hosts such as `[::1]` and `[::1]:8000` still work.
+  ([#181](https://github.com/DevilsAutumn/quater/issues/181))
+
 - Fixed resource provider planning so valid provider parameters still resolve
   when the same provider has an unrelated broken return annotation. This covers
   `Annotated[..., Resource]` dependencies and `Request` parameters that are not
