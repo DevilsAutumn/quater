@@ -198,7 +198,7 @@ def _validate_allowed_host(
 
 
 def _host_matches(host: str, allowed: str) -> bool:
-    normalized_allowed = _normalize_host(allowed)
+    normalized_allowed = _normalize_allowed_host(allowed)
     if normalized_allowed == "*":
         return True
     if normalized_allowed is None:
@@ -241,28 +241,57 @@ def _normalize_host(value: str | None) -> str | None:
     if not host:
         return None
     if host.startswith("["):
-        end = host.find("]")
-        if end == -1:
+        return _normalize_bracketed_ipv6_host(host)
+
+    if ":" in host:
+        if host.count(":") != 1:
             return None
-        remainder = host[end + 1 :]
-        if remainder and (not remainder.startswith(":") or not remainder[1:].isdigit()):
+        name, port = host.rsplit(":", 1)
+        if not name or not _is_ascii_digits(port):
             return None
-        literal = host[1:end]
-        try:
-            parsed = ip_address(literal)
-        except ValueError:
-            return None
-        if parsed.version != 6:
-            return None
-        return literal
+        host = name
+
     if host.endswith("."):
         host = host[:-1]
-
-    if host.count(":") == 1:
-        name, port = host.rsplit(":", 1)
-        if port.isdigit():
-            return name
+    if not host:
+        return None
     return host
+
+
+def _normalize_allowed_host(value: str) -> str | None:
+    normalized = _normalize_host(value)
+    if normalized is not None:
+        return normalized
+
+    host = value.strip().lower()
+    try:
+        parsed = ip_address(host)
+    except ValueError:
+        return None
+    return str(parsed)
+
+
+def _normalize_bracketed_ipv6_host(host: str) -> str | None:
+    end = host.find("]")
+    if end == -1:
+        return None
+    remainder = host[end + 1 :]
+    if remainder and (
+        not remainder.startswith(":") or not _is_ascii_digits(remainder[1:])
+    ):
+        return None
+    literal = host[1:end]
+    try:
+        parsed = ip_address(literal)
+    except ValueError:
+        return None
+    if parsed.version != 6:
+        return None
+    return str(parsed)
+
+
+def _is_ascii_digits(value: str) -> bool:
+    return bool(value) and value.isascii() and value.isdigit()
 
 
 def _set_default_header(
