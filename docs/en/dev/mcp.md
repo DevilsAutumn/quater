@@ -215,7 +215,7 @@ safely.
 Use `needs_approval=True` when auth alone should not run an operation.
 
 ```python
-from quater import ApprovalRequest, AuthConfig, AuthContext, Quater
+from quater import ApprovalRequest, AuthConfig, AuthContext, Quater, Request
 
 
 async def authenticate(ctx: Request) -> AuthContext | None:
