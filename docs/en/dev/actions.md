@@ -324,7 +324,7 @@ Auth identifies the caller. Approval confirms that a sensitive operation should
 run for that caller and those exact arguments.
 
 ```python
-from quater import ApprovalRequest, AuthConfig, AuthContext, Quater
+from quater import ApprovalRequest, AuthConfig, AuthContext, Quater, Request
 
 
 async def authenticate(ctx: Request) -> AuthContext | None:
