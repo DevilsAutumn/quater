@@ -268,6 +268,41 @@ def test_wsgi_body_limit_caps_reads_without_content_length() -> None:
     assert stream.tell() == 3
 
 
+def test_wsgi_missing_input_returns_empty_body() -> None:
+    app = Quater()
+
+    environ = base_environ(method="POST", path="/echo")
+    del environ["wsgi.input"]
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    status, _, body = call_wsgi(app, environ)
+
+    assert status == "200 OK"
+    assert body == b""
+
+
+def test_wsgi_invalid_content_length_returns_400_without_reading_input() -> None:
+    app = Quater()
+
+    stream = CountingInput(b"should-not-be-read")
+    environ = base_environ(method="POST", path="/echo")
+    environ["CONTENT_LENGTH"] = "abc"
+    environ["wsgi.input"] = stream
+
+    @app.post("/echo")
+    async def echo(request: Request) -> bytes:
+        return await request.body()
+
+    status, _, body = call_wsgi(app, environ)
+
+    assert status == "400 Bad Request"
+    assert body == b"Invalid Content-Length header"
+    assert stream.read_calls == 0
+
+
 def test_wsgi_runs_response_finalizers_when_streaming_body_fails() -> None:
     events: list[str] = []
     app = Quater()
