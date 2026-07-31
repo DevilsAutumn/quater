@@ -37,6 +37,10 @@ cut.
 
 ### Fixed
 
+- Fixed generated OpenAPI and MCP docs so unresolved response annotations fail
+  with a clear route binding error instead of silently emitting generic object
+  schemas. ([#157](https://github.com/DevilsAutumn/quater/issues/157))
+
 - Host header validation now rejects malformed authority values before auth or
   handlers run. Bad ports such as `localhost:bad` and bare IPv6 values such as
   `::1` now return `400 Invalid Host header`, even when `allowed_hosts=["*"]`;

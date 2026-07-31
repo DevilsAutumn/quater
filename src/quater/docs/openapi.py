@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from inspect import Signature
-from typing import get_type_hints
 
 from quater.core import RouteDefinition
+from quater.docs.annotations import return_annotation
 from quater.params import BoundParameter, HandlerPlan, build_handler_plan
 from quater.request import Request
 from quater.response import Response
@@ -192,7 +192,7 @@ def _form_request_body(parameters: tuple[BoundParameter, ...]) -> dict[str, obje
 
 
 def _responses(route: RouteDefinition) -> dict[str, object]:
-    annotation = _return_annotation(route)
+    annotation = return_annotation(route)
     if annotation is None or annotation is type(None):
         return {"204": {"description": "No Content"}}
 
@@ -221,13 +221,6 @@ def _response_content(annotation: object) -> dict[str, object] | None:
             }
         }
     return {"application/json": {"schema": annotation_schema(annotation)}}
-
-
-def _return_annotation(route: RouteDefinition) -> object:
-    try:
-        return get_type_hints(route.handler).get("return", Signature.empty)
-    except NameError:
-        return route.handler.__annotations__.get("return", Signature.empty)
 
 
 def _summary(route: RouteDefinition) -> str:

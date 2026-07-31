@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import msgspec
 import pytest
 
@@ -38,6 +40,33 @@ async def test_mcp_docs_are_generated_by_default() -> None:
     assert '<h3>Output Schema</h3><pre>{\n  "type": "object"' in body
     assert '<h3>Example Request</h3><pre>{\n  "jsonrpc": "2.0"' in body
     assert '"method": "tools/call"' in body
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["MissingOut", f"{json.__name__}.MissingOut", "1 / 0"],
+)
+@pytest.mark.asyncio
+async def test_mcp_docs_fail_when_response_annotation_cannot_resolve(
+    annotation: str,
+) -> None:
+    app = Quater(debug=True)
+
+    @app.get("/bad", tool=True, description="Bad response model repro")
+    async def bad() -> object:
+        return {"ok": True}
+
+    bad.__annotations__["return"] = annotation
+
+    response = await app.handle(Request(method="GET", path="/mcp/docs"))
+    body = response.body.decode("utf-8")
+
+    assert response.status_code == 500
+    assert "RouteBindingError" in body
+    assert "Response annotation" in body
+    assert "bad" in body
+    assert annotation in body
+    assert "could not be resolved" in body
 
 
 @pytest.mark.asyncio

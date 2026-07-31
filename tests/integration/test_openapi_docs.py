@@ -87,6 +87,60 @@ async def test_openapi_json_is_generated_by_default() -> None:
 
 
 @pytest.mark.asyncio
+async def test_openapi_resolves_postponed_response_annotations() -> None:
+    app = Quater(name="Users API")
+
+    @app.get("/users/current")
+    async def current_user() -> CreateUser:
+        return CreateUser(name="Asha", age=33)
+
+    response = await app.handle(Request(method="GET", path="/openapi.json"))
+    body = json.loads(response.body)
+
+    assert response.status_code == 200
+    assert body["paths"]["/users/current"]["get"]["responses"]["200"]["content"] == {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "age": {"type": "integer"},
+                },
+                "additionalProperties": False,
+                "required": ["name", "age"],
+            }
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["MissingOut", f"{json.__name__}.MissingOut", "1 / 0"],
+)
+@pytest.mark.asyncio
+async def test_openapi_fails_when_response_annotation_cannot_resolve(
+    annotation: str,
+) -> None:
+    app = Quater(debug=True)
+
+    @app.get("/bad", tool=True, description="Bad response model repro")
+    async def bad() -> object:
+        return {"ok": True}
+
+    bad.__annotations__["return"] = annotation
+
+    response = await app.handle(Request(method="GET", path="/openapi.json"))
+    body = response.body.decode("utf-8")
+
+    assert response.status_code == 500
+    assert "RouteBindingError" in body
+    assert "Response annotation" in body
+    assert "bad" in body
+    assert annotation in body
+    assert "could not be resolved" in body
+
+
+@pytest.mark.asyncio
 async def test_openapi_uses_parameter_markers_for_metadata() -> None:
     app = Quater(name="Orders API")
 
