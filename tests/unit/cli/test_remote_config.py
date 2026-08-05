@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -31,8 +32,11 @@ def test_remote_config_is_written_with_strict_permissions(
     )
 
     config_path = quater_home / "remotes.json"
-    assert file_mode(quater_home) == 0o700
-    assert file_mode(config_path) == 0o600
+
+    if os.name != "nt":
+        assert file_mode(quater_home) == 0o700
+        assert file_mode(config_path) == 0o600
+
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     assert "manifest" not in payload["remotes"]["billing"]
 
