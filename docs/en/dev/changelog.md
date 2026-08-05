@@ -16,6 +16,10 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
+No changes yet.
+
+## 0.2.2
+
 ### Changed
 
 - CLI: split parser setup, command dispatch, local action handling, and remote
@@ -26,6 +30,10 @@ cut.
   construction, including Swagger asset handlers, out of `Quater` into a
   focused docs module. Paths, route names, auth metadata, and public behavior
   are unchanged. ([#149](https://github.com/DevilsAutumn/quater/issues/149))
+
+- Updated the locked release/development dependency set to resolve a
+  `cryptography` audit advisory. Build tooling only; no Quater runtime or
+  public API change.
 
 - `Quater.add_route()` now validates the `inject` mapping at registration time,
   matching `RouteGroup` behavior. Invalid injected parameter names (e.g.
@@ -51,6 +59,14 @@ cut.
   when the same provider has an unrelated broken return annotation. This covers
   `Annotated[..., Resource]` dependencies and `Request` parameters that are not
   named `request`. ([#156](https://github.com/DevilsAutumn/quater/issues/156))
+
+- Documentation: added `CliTestClient` to the public testing API lists in the
+  reference index and stability guide.
+  ([#175](https://github.com/DevilsAutumn/quater/issues/175))
+
+- Documentation: added missing `Request` imports to auth snippets in the
+  testing, actions, and MCP guides.
+  ([#176](https://github.com/DevilsAutumn/quater/issues/176))
 
 ## 0.2.1
 
