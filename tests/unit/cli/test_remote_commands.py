@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -55,7 +56,9 @@ def test_cli_connect_stores_remote_with_strict_permissions(
     assert "secret" not in captured.out
     assert seen_tokens == ["secret"]
     config_path = quater_home / "remotes.json"
-    assert file_mode(config_path) == 0o600
+
+    if os.name != "nt":
+        assert file_mode(config_path) == 0o600
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     assert payload["remotes"]["billing"]["url"] == "https://api.example.com"
     assert payload["remotes"]["billing"]["token"] == "secret"
