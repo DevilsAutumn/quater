@@ -764,7 +764,7 @@ def render_reference(
     public_api: tuple[str, ...],
     pages_by_symbol: Mapping[str, ReferencePage],
 ) -> dict[Path, str]:
-    manual_outputs = read_manual_reference(public_api, pages_by_symbol)
+    manual_outputs = read_manual_reference(package, public_api, pages_by_symbol)
     if manual_outputs is not None:
         return manual_outputs
 
@@ -782,6 +782,7 @@ def render_reference(
 
 
 def read_manual_reference(
+    package: Any,
     public_api: tuple[str, ...],
     pages_by_symbol: Mapping[str, ReferencePage],
 ) -> dict[Path, str] | None:
@@ -803,6 +804,7 @@ def read_manual_reference(
             raise SystemExit(
                 f"Manual reference page {page.path} does not document {name!r}"
             )
+
     return outputs
 
 

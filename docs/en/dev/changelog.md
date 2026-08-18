@@ -22,6 +22,9 @@ No changes yet.
 
 ### Changed
 
+- CLI: improved syntax error formatting to correctly display multiline source
+  text and caret positioning for indentation and end-of-line edge cases.
+
 - CLI: split parser setup, command dispatch, local action handling, and remote
   action handling into focused internal modules. Command syntax and behavior are
   unchanged. ([#167](https://github.com/DevilsAutumn/quater/issues/167))
