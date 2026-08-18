@@ -22,6 +22,13 @@ No changes yet.
 
 ### Changed
 
+- Docs: split `scripts/generate_reference.py` into focused internal modules
+  under `scripts/_reference/` (page definitions, manual page loading, signature
+  formatting, type and default rendering, table and reference validation, and
+  output/check-mode). `npm run docs:reference` and
+  `npm run docs:reference:check` behavior, generated files, and the docs
+  generator's public surface are unchanged.
+
 - CLI: split parser setup, command dispatch, local action handling, and remote
   action handling into focused internal modules. Command syntax and behavior are
   unchanged. ([#167](https://github.com/DevilsAutumn/quater/issues/167))
