@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from html import escape
 from inspect import Signature
-from typing import get_type_hints
 
 from quater.config import join_path
 from quater.core import RouteDefinition
+from quater.docs.annotations import return_annotation
 from quater.request import Request
 from quater.response import Response
 from quater.schema import annotation_schema, strip_optional
@@ -146,7 +146,7 @@ def _schema_block(title: str, value: object) -> str:
 
 
 def _output_schema(route: RouteDefinition) -> dict[str, object] | None:
-    annotation = _return_annotation(route)
+    annotation = return_annotation(route)
     if annotation is Signature.empty or annotation is None or annotation is type(None):
         return None
 
@@ -156,13 +156,6 @@ def _output_schema(route: RouteDefinition) -> dict[str, object] | None:
     if isinstance(stripped, type) and issubclass(stripped, Response):
         return None
     return annotation_schema(annotation)
-
-
-def _return_annotation(route: RouteDefinition) -> object:
-    try:
-        return get_type_hints(route.handler).get("return", Signature.empty)
-    except NameError:
-        return route.handler.__annotations__.get("return", Signature.empty)
 
 
 def _example_arguments(input_schema: dict[str, object]) -> dict[str, object]:

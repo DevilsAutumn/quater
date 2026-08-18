@@ -48,7 +48,7 @@ Use names exported from `quater` and documented in the
   `ActionApproval`, `HTTPError`, `ImproperlyConfigured`, `SignedCookieSigner`
 - resources: `Resource`
 - observability: `AccessLogEvent`, `AccessLogHook`, `ToolAuditEvent`
-- testing: `TestClient`, `MCPTestClient`, `TestResponse`
+- testing: `TestClient`, `CliTestClient`, `MCPTestClient`, `TestResponse`
 
 Some compatibility modules exist for advanced cases, but the top-level import
 should be enough for normal apps.

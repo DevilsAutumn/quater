@@ -543,3 +543,39 @@ async def test_allowed_host_rejection_is_transport_independent() -> None:
         assert headers["x-content-type-options"] == "nosniff"
     assert auth_subjects == []
     assert handler_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("host", "allowed_hosts"),
+    (
+        ("localhost:bad", ("*",)),
+        ("::1", None),
+    ),
+    ids=("bad-port-with-wildcard", "bare-ipv6-default-local"),
+)
+async def test_malformed_host_syntax_rejection_is_transport_independent(
+    host: str,
+    allowed_hosts: tuple[str, ...] | None,
+) -> None:
+    handler_calls = 0
+
+    app = Quater() if allowed_hosts is None else Quater(allowed_hosts=allowed_hosts)
+
+    @app.get("/me")
+    async def me() -> dict[str, bool]:
+        nonlocal handler_calls
+        handler_calls += 1
+        return {"ok": True}
+
+    responses = [
+        await asgi_response(app, host=host, authorization="user_1"),
+        wsgi_response(app, host=host, authorization="user_1"),
+        await rsgi_response(app, host=host, authorization="user_1"),
+    ]
+
+    for status, headers, body in responses:
+        assert status == 400
+        assert body == b"Invalid Host header"
+        assert headers["x-content-type-options"] == "nosniff"
+    assert handler_calls == 0

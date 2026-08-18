@@ -5,6 +5,7 @@ from typing import Any, assert_type
 from quater import (
     AuthConfig,
     AuthContext,
+    CliTestClient,
     MCPTestClient,
     Quater,
     Request,
@@ -55,6 +56,7 @@ async def client_contract() -> None:
     assert_type(response.text, str)
     assert_type(response.body, bytes)
     assert_type(response.is_success, bool)
+    assert_type(client.cli, CliTestClient)
     assert_type(client.mcp, MCPTestClient)
     assert_type(pair_response, TestResponse)
     assert_type(payload, Any)

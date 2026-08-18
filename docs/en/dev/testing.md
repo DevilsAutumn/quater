@@ -283,7 +283,7 @@ Use `client.mcp` to test MCP without a separate MCP client:
 ```python
 import pytest
 
-from quater import AuthConfig, AuthContext, Quater, TestClient
+from quater import AuthConfig, AuthContext, Quater, Request, TestClient
 
 
 async def authenticate(ctx: Request) -> AuthContext | None:
