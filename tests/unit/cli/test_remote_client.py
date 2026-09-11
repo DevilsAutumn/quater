@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from email.message import Message
 from io import BytesIO
 from typing import Protocol
@@ -58,7 +59,8 @@ def test_fetch_manifest_rejects_http_error_json(
         method: str,
         url: str,
         *,
-        token: str | None,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
         body: bytes | None = None,
     ) -> RemoteResponse:
         return RemoteResponse(
@@ -79,7 +81,8 @@ def test_fetch_manifest_rejects_non_quater_json(
         method: str,
         url: str,
         *,
-        token: str | None,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
         body: bytes | None = None,
     ) -> RemoteResponse:
         return RemoteResponse(status_code=200, body={"status": "ok"})
@@ -148,6 +151,81 @@ def test_call_action_sends_json_payload_and_bearer_token(
             },
         }
     ]
+
+
+def test_fetch_manifest_sends_custom_headers_and_preserves_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_headers: list[dict[str, str]] = []
+
+    def fake_urlopen(request: BuiltURLRequest, timeout: int) -> FakeHTTPResponse:
+        headers = {key.lower(): value for key, value in request.header_items()}
+        seen_headers.append(headers)
+        return FakeHTTPResponse(b'{"protocol": "quater-actions.v1", "actions": []}')
+
+    monkeypatch.setattr("quater.cli.client.urlopen", fake_urlopen)
+
+    fetch_manifest(
+        "https://api.example.com/",
+        token="secret",
+        headers={"x-operator": "admin"},
+    )
+
+    assert len(seen_headers) == 1
+    assert seen_headers[0]["authorization"] == "Bearer secret"
+    assert seen_headers[0]["x-operator"] == "admin"
+    assert seen_headers[0]["accept"] == "application/json"
+    assert seen_headers[0]["user-agent"] == "quater-cli"
+
+
+def test_call_action_sends_custom_headers_and_preserves_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_headers: list[dict[str, str]] = []
+
+    def fake_urlopen(request: BuiltURLRequest, timeout: int) -> FakeHTTPResponse:
+        headers = {key.lower(): value for key, value in request.header_items()}
+        seen_headers.append(headers)
+        return FakeHTTPResponse(b'{"ok": true, "body": {"accepted": true}}')
+
+    monkeypatch.setattr("quater.cli.client.urlopen", fake_urlopen)
+
+    call_action(
+        "https://api.example.com/",
+        token="secret",
+        headers={"x-operator": "admin"},
+        action="orders.ship",
+        arguments={"order_id": "ord_1001"},
+        dry_run=False,
+        approval_token=None,
+    )
+
+    assert len(seen_headers) == 1
+    assert seen_headers[0]["authorization"] == "Bearer secret"
+    assert seen_headers[0]["x-operator"] == "admin"
+    assert seen_headers[0]["content-type"] == "application/json"
+
+
+def test_custom_headers_can_override_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_headers: list[dict[str, str]] = []
+
+    def fake_urlopen(request: BuiltURLRequest, timeout: int) -> FakeHTTPResponse:
+        headers = {key.lower(): value for key, value in request.header_items()}
+        seen_headers.append(headers)
+        return FakeHTTPResponse(b'{"protocol": "quater-actions.v1", "actions": []}')
+
+    monkeypatch.setattr("quater.cli.client.urlopen", fake_urlopen)
+
+    fetch_manifest(
+        "https://api.example.com/",
+        token="secret",
+        headers={"authorization": "Bearer custom-token"},
+    )
+
+    assert len(seen_headers) == 1
+    assert seen_headers[0]["authorization"] == "Bearer custom-token"
 
 
 def test_request_json_accepts_json_error_bodies_from_http_errors(

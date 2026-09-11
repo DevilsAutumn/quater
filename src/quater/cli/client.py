@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol, cast
 from urllib.error import HTTPError, URLError
@@ -37,11 +38,17 @@ class RemoteResponse:
     body: dict[str, object]
 
 
-def fetch_manifest(base_url: str, *, token: str | None) -> dict[str, object]:
+def fetch_manifest(
+    base_url: str,
+    *,
+    token: str | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     response = _request_json(
         "GET",
         _remote_url(base_url, ACTIONS_MANIFEST_PATH),
         token=token,
+        headers=headers,
     )
     if response.status_code >= 400:
         message = f"Remote manifest request failed ({response.status_code})"
@@ -53,7 +60,8 @@ def fetch_manifest(base_url: str, *, token: str | None) -> dict[str, object]:
 def call_action(
     base_url: str,
     *,
-    token: str | None,
+    token: str | None = None,
+    headers: Mapping[str, str] | None = None,
     action: str,
     arguments: dict[str, object],
     dry_run: bool,
@@ -71,6 +79,7 @@ def call_action(
         "POST",
         _remote_url(base_url, ACTIONS_RPC_PATH),
         token=token,
+        headers=headers,
         body=dumps_json(payload),
     )
 
@@ -79,19 +88,22 @@ def _request_json(
     method: str,
     url: str,
     *,
-    token: str | None,
+    token: str | None = None,
+    headers: Mapping[str, str] | None = None,
     body: bytes | None = None,
 ) -> RemoteResponse:
-    headers = {
+    request_headers = {
         "accept": "application/json",
         "user-agent": "quater-cli",
     }
     if body is not None:
-        headers["content-type"] = "application/json"
+        request_headers["content-type"] = "application/json"
     if token is not None:
-        headers["authorization"] = f"Bearer {token}"
+        request_headers["authorization"] = f"Bearer {token}"
+    if headers:
+        request_headers.update(headers)
 
-    request = URLRequest(url, data=body, headers=headers, method=method)
+    request = URLRequest(url, data=body, headers=request_headers, method=method)
     try:
         with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS) as response:  # nosec B310
             status_code = response.status
