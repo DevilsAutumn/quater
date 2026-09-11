@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -32,7 +33,12 @@ def test_cli_connect_stores_remote_with_strict_permissions(
     quater_home = tmp_path / ".quater"
     seen_tokens: list[str | None] = []
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         seen_tokens.append(token)
         return {"protocol": "quater-actions.v1", "actions": []}
 
@@ -70,7 +76,12 @@ def test_cli_login_validates_token_without_storing_manifest(
     quater_home = tmp_path / ".quater"
     seen_tokens: list[str | None] = []
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         seen_tokens.append(token)
         return {"protocol": "quater-actions.v1", "actions": []}
 
@@ -101,7 +112,12 @@ def test_cli_remote_actions_list_uses_stored_token(
     quater_home = tmp_path / ".quater"
     seen_tokens: list[str | None] = []
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         seen_tokens.append(token)
         return {
             "protocol": "quater-actions.v1",
@@ -153,7 +169,12 @@ def test_cli_remote_actions_search_keeps_results_compact(
 ) -> None:
     quater_home = tmp_path / ".quater"
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         return {
             "protocol": "quater-actions.v1",
             "actions": [
@@ -206,7 +227,12 @@ def test_cli_remote_actions_describe_includes_usage(
 ) -> None:
     quater_home = tmp_path / ".quater"
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         return {
             "protocol": "quater-actions.v1",
             "actions": [
@@ -293,13 +319,19 @@ def test_cli_remote_call_sends_arguments_and_approval(
     quater_home = tmp_path / ".quater"
     seen: list[dict[str, object]] = []
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         return {"protocol": "quater-actions.v1", "actions": []}
 
     def fake_call_action(
         base_url: str,
         *,
-        token: str | None,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
         action: str,
         arguments: dict[str, object],
         dry_run: bool,
@@ -363,13 +395,19 @@ def _stub_remote_call(
     monkeypatch: pytest.MonkeyPatch,
     response: RemoteResponse,
 ) -> None:
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         return {"protocol": "quater-actions.v1", "actions": []}
 
     def fake_call_action(
         base_url: str,
         *,
-        token: str | None,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
         action: str,
         arguments: dict[str, object],
         dry_run: bool,
@@ -488,7 +526,12 @@ def test_cli_remote_call_rejects_empty_token_override(
 ) -> None:
     quater_home = tmp_path / ".quater"
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         return {"protocol": "quater-actions.v1", "actions": []}
 
     monkeypatch.setenv("QUATER_HOME", str(quater_home))
@@ -514,7 +557,12 @@ def test_cli_remote_call_rejects_empty_approval_token(
 ) -> None:
     quater_home = tmp_path / ".quater"
 
-    def fake_fetch_manifest(url: str, *, token: str | None) -> dict[str, object]:
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
         return {"protocol": "quater-actions.v1", "actions": []}
 
     monkeypatch.setenv("QUATER_HOME", str(quater_home))
@@ -541,3 +589,267 @@ def test_cli_remote_call_rejects_empty_approval_token(
     captured = capsys.readouterr()
     assert code == 2
     assert captured.err == "Approval token must not be empty\n"
+
+
+def test_cli_remote_actions_list_forwards_custom_headers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    quater_home = tmp_path / ".quater"
+    seen_headers: list[Mapping[str, str] | None] = []
+
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
+        seen_headers.append(headers)
+        return {"protocol": "quater-actions.v1", "actions": []}
+
+    monkeypatch.setenv("QUATER_HOME", str(quater_home))
+    monkeypatch.setattr("quater.cli.main.fetch_manifest", fake_fetch_manifest)
+
+    assert (
+        main(["connect", "billing", "https://api.example.com", "--token", "secret"])
+        == 0
+    )
+    capsys.readouterr()
+
+    code = main(
+        [
+            "--header",
+            "X-Operator: admin",
+            "actions",
+            "list",
+            "billing",
+        ]
+    )
+
+    capsys.readouterr()
+    assert code == 0
+    assert len(seen_headers) == 2
+    assert seen_headers[1] == {
+        "authorization": "Bearer secret",
+        "x-operator": "admin",
+    }
+
+
+def test_cli_remote_call_forwards_custom_headers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    quater_home = tmp_path / ".quater"
+    seen_headers: list[Mapping[str, str] | None] = []
+
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
+        return {"protocol": "quater-actions.v1", "actions": []}
+
+    def fake_call_action(
+        base_url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+        action: str,
+        arguments: dict[str, object],
+        dry_run: bool,
+        approval_token: str | None,
+    ) -> RemoteResponse:
+        seen_headers.append(headers)
+        return RemoteResponse(status_code=200, body={"ok": True, "body": {"id": 7}})
+
+    monkeypatch.setenv("QUATER_HOME", str(quater_home))
+    monkeypatch.setattr("quater.cli.main.fetch_manifest", fake_fetch_manifest)
+    monkeypatch.setattr("quater.cli.main.call_action", fake_call_action)
+
+    assert (
+        main(["connect", "billing", "https://api.example.com", "--token", "secret"])
+        == 0
+    )
+    capsys.readouterr()
+
+    code = main(
+        [
+            "--header",
+            "X-Operator: admin",
+            "call",
+            "billing",
+            "users.get",
+            "--id",
+            "7",
+        ]
+    )
+
+    capsys.readouterr()
+    assert code == 0
+    assert seen_headers == [
+        {
+            "authorization": "Bearer secret",
+            "x-operator": "admin",
+        }
+    ]
+
+
+def test_cli_remote_rejects_malformed_headers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("QUATER_HOME", str(tmp_path / ".quater"))
+
+    code = main(["--header", "InvalidHeader", "actions", "list", "billing"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.err == "Headers must be provided as 'Name: value'\n"
+
+
+def test_cli_remote_rejects_conflicting_token_and_auth_header(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("QUATER_HOME", str(tmp_path / ".quater"))
+
+    code = main(
+        [
+            "--token",
+            "secret",
+            "--header",
+            "Authorization: Bearer other",
+            "actions",
+            "list",
+            "billing",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.err == "Use either --token or an Authorization header\n"
+
+
+def test_cli_remote_custom_auth_header_overrides_stored_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    quater_home = tmp_path / ".quater"
+    seen_headers: list[Mapping[str, str] | None] = []
+
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
+        seen_headers.append(headers)
+        return {"protocol": "quater-actions.v1", "actions": []}
+
+    monkeypatch.setenv("QUATER_HOME", str(quater_home))
+    monkeypatch.setattr("quater.cli.main.fetch_manifest", fake_fetch_manifest)
+
+    assert (
+        main(
+            [
+                "connect",
+                "billing",
+                "https://api.example.com",
+                "--token",
+                "stored-secret",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    code = main(
+        [
+            "--header",
+            "Authorization: Bearer explicit-token",
+            "actions",
+            "list",
+            "billing",
+        ]
+    )
+
+    capsys.readouterr()
+    assert code == 0
+    assert len(seen_headers) == 2
+    assert seen_headers[1] == {
+        "authorization": "Bearer explicit-token",
+    }
+
+
+def test_cli_remote_actions_search_and_describe_forward_custom_headers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    quater_home = tmp_path / ".quater"
+    seen_headers: list[Mapping[str, str] | None] = []
+
+    def fake_fetch_manifest(
+        url: str,
+        *,
+        token: str | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, object]:
+        seen_headers.append(headers)
+        return {
+            "protocol": "quater-actions.v1",
+            "actions": [
+                {
+                    "name": "orders.get",
+                    "description": "Fetch one order.",
+                    "method": "GET",
+                    "path": "/orders/{id:int}",
+                    "needs_approval": False,
+                    "input_schema": {},
+                }
+            ],
+        }
+
+    monkeypatch.setenv("QUATER_HOME", str(quater_home))
+    monkeypatch.setattr("quater.cli.main.fetch_manifest", fake_fetch_manifest)
+
+    assert main(["connect", "store", "https://api.example.com"]) == 0
+    capsys.readouterr()
+
+    # Test actions search forwards custom header
+    code_search = main(
+        [
+            "--header",
+            "X-Operator: admin",
+            "actions",
+            "search",
+            "store",
+            "order",
+        ]
+    )
+    capsys.readouterr()
+    assert code_search == 0
+
+    # Test actions describe forwards custom header
+    code_describe = main(
+        [
+            "--header",
+            "X-Operator: admin",
+            "actions",
+            "describe",
+            "store",
+            "orders.get",
+        ]
+    )
+    capsys.readouterr()
+    assert code_describe == 0
+
+    assert len(seen_headers) == 2
+    assert seen_headers[0] == {"x-operator": "admin"}
+    assert seen_headers[1] == {"x-operator": "admin"}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from quater.cli.client import RemoteResponse
 from quater.cli.errors import CLIUsageError
@@ -13,6 +13,7 @@ from quater.cli.output import (
     print_json,
     print_preflight_payload,
 )
+from quater.cli.parsing import parse_headers
 from quater.cli.remotes import RemoteConfig, get_remote, load_remotes, save_remote
 from quater.cli.utils import _non_empty_approval, _non_empty_token, _unreachable
 
@@ -21,8 +22,9 @@ def connect_remote(namespace: argparse.Namespace) -> int:
     name = validate_remote_name(namespace.name)
     url = validate_remote_url(namespace.url)
     token = _non_empty_token(namespace.token)
-    if token is not None:
-        _fetch_manifest(url, token=token)
+    headers = parse_headers(token=token, headers=getattr(namespace, "header", []))
+    if token is not None or headers:
+        _fetch_manifest(url, token=token, headers=headers)
     save_remote(RemoteConfig(name=name, url=url, token=token))
     if namespace.as_json:
         print_json({"ok": True, "remote": {"name": name, "url": url}})
@@ -36,7 +38,8 @@ def login_remote(namespace: argparse.Namespace) -> int:
     token = _non_empty_token(namespace.token)
     if token is None:
         raise CLIUsageError("--token is required")
-    _fetch_manifest(remote.url, token=token)
+    headers = parse_headers(token=token, headers=getattr(namespace, "header", []))
+    _fetch_manifest(remote.url, token=token, headers=headers)
     save_remote(RemoteConfig(name=remote.name, url=remote.url, token=token))
     if namespace.as_json:
         print_json({"ok": True, "remote": {"name": remote.name, "url": remote.url}})
@@ -71,8 +74,19 @@ def list_remotes(namespace: argparse.Namespace) -> int:
 
 
 def remote_actions(namespace: argparse.Namespace) -> int:
+    raw_headers = getattr(namespace, "header", [])
+    token_override = (
+        _non_empty_token(namespace.token) if namespace.token is not None else None
+    )
+    headers = parse_headers(token=token_override, headers=raw_headers)
     remote = get_remote(namespace.remote_name)
-    manifest = remote_manifest(remote, token_override=namespace.token)
+    if token_override is None and "authorization" not in headers and remote.token:
+        headers = parse_headers(token=remote.token, headers=raw_headers)
+    manifest = remote_manifest(
+        remote,
+        token_override=namespace.token,
+        headers=headers,
+    )
     if namespace.actions_command == "list":
         actions = manifest_actions(manifest)
         print_action_summary_list(
@@ -105,14 +119,23 @@ def remote_actions(namespace: argparse.Namespace) -> int:
 
 
 def remote_call(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
+    raw_headers = getattr(namespace, "header", [])
+    token_override = (
+        _non_empty_token(namespace.token) if namespace.token is not None else None
+    )
+    headers = parse_headers(token=token_override, headers=raw_headers)
     remote_name, action_name = namespace.target
     remote = get_remote(remote_name)
     arguments = parse_action_arguments(unknown)
-    token = _non_empty_token(namespace.token) if namespace.token is not None else None
+    token = token_override
+    if token_override is None and "authorization" not in headers and remote.token:
+        token = remote.token
+        headers = parse_headers(token=token, headers=raw_headers)
     approval_token = _non_empty_approval(namespace.approval)
     response = _call_action(
         remote.url,
-        token=token or remote.token,
+        token=token,
+        headers=headers,
         action=action_name,
         arguments=arguments,
         dry_run=namespace.dry_run,
@@ -133,12 +156,15 @@ def remote_call(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
 def remote_manifest(
     remote: RemoteConfig,
     *,
-    token_override: str | None,
+    token_override: str | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     token = (
         _non_empty_token(token_override) if token_override is not None else remote.token
     )
-    return _fetch_manifest(remote.url, token=token)
+    if headers is None:
+        headers = parse_headers(token=token, headers=[])
+    return _fetch_manifest(remote.url, token=token, headers=headers)
 
 
 def manifest_actions(manifest: dict[str, object]) -> list[dict[str, object]]:
@@ -184,17 +210,19 @@ def parse_action_arguments(unknown: Sequence[str]) -> dict[str, object]:
 def _fetch_manifest(
     url: str,
     *,
-    token: str | None,
+    token: str | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     from quater.cli.main import fetch_manifest as main_fetch_manifest
 
-    return main_fetch_manifest(url, token=token)
+    return main_fetch_manifest(url, token=token, headers=headers)
 
 
 def _call_action(
     base_url: str,
     *,
-    token: str | None,
+    token: str | None = None,
+    headers: Mapping[str, str] | None = None,
     action: str,
     arguments: dict[str, object],
     dry_run: bool,
@@ -206,6 +234,7 @@ def _call_action(
     return main_call_action(
         base_url,
         token=token,
+        headers=headers,
         action=action,
         arguments=arguments,
         dry_run=dry_run,

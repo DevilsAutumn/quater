@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from quater.cli.client import (
     RemoteResponse,
@@ -70,17 +70,24 @@ async def _run(namespace: argparse.Namespace, unknown: Sequence[str]) -> int:
     return await _dispatch_run(namespace, unknown)
 
 
-def fetch_manifest(base_url: str, *, token: str | None) -> dict[str, object]:
+def fetch_manifest(
+    base_url: str,
+    *,
+    token: str | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     return _fetch_manifest(
         base_url,
         token=token,
+        headers=headers,
     )
 
 
 def call_action(
     base_url: str,
     *,
-    token: str | None,
+    token: str | None = None,
+    headers: Mapping[str, str] | None = None,
     action: str,
     arguments: dict[str, object],
     dry_run: bool,
@@ -89,6 +96,7 @@ def call_action(
     return _call_action(
         base_url,
         token=token,
+        headers=headers,
         action=action,
         arguments=arguments,
         dry_run=dry_run,

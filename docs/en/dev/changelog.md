@@ -16,7 +16,12 @@ Read [Stability](/en/dev/stability) before upgrading Quater versions.
 Unreleased changes on `main`. Renamed to the version number when the release is
 cut.
 
-No changes yet.
+### Fixed
+
+- Remote CLI commands (`actions list`, `call`, `connect`, and `login`) now
+  forward custom `--header` values in outer HTTP transport requests for CLI
+  surface auth, and validate header syntax and auth conflicts consistently with
+  local CLI actions. ([#191](https://github.com/DevilsAutumn/quater/issues/191))
 
 ## 0.2.2
 
